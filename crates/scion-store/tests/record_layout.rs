@@ -1,6 +1,6 @@
 use rusqlite::Connection;
 use scion_store::{ImmutableRecord, LocalStore, PreparedObject, Storage};
-use scion_types::ObjectKind;
+use scion_types::{Error, ObjectKind};
 use std::{
     path::Path,
     sync::{Arc, mpsc},
@@ -20,6 +20,25 @@ fn without_rowid(root: &Path, table: &str) -> bool {
             [table],
             |row| row.get(0),
         )
+        .unwrap()
+}
+
+fn record_storage(root: &Path) -> Vec<[String; 6]> {
+    let db = Connection::open(root.join("metadata.sqlite3")).unwrap();
+    let mut statement = db.prepare("SELECT typeof(namespace),hex(namespace),typeof(key),hex(key),typeof(value),hex(value) FROM records ORDER BY namespace,key").unwrap();
+    statement
+        .query_map([], |row| {
+            Ok([
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+                row.get(5)?,
+            ])
+        })
+        .unwrap()
+        .collect::<rusqlite::Result<Vec<_>>>()
         .unwrap()
 }
 
@@ -73,6 +92,11 @@ fn migration_preserves_bytes_logs_objects_and_cached_statement_behavior() {
             .compare_and_swap("repo/r/refs", "main", None, Some(b"old"))
             .unwrap()
     );
+    {
+        let db = Connection::open(dir.path().join("metadata.sqlite3")).unwrap();
+        db.execute_batch("INSERT INTO records(namespace,key,value) VALUES ('classes','blob',X'00ff'),('classes','text','000123'),('classes','integer',17),('classes','real',1.25)").unwrap();
+    }
+    let classes_before = record_storage(dir.path());
     let old = store.scan_records("n", "", 100).unwrap();
     let live = LocalStore::open_read_only(dir.path()).unwrap();
     assert_eq!(
@@ -81,6 +105,7 @@ fn migration_preserves_bytes_logs_objects_and_cached_statement_behavior() {
     );
     assert!(store.migrate_records_to_rowid().unwrap());
     assert!(!store.migrate_records_to_rowid().unwrap());
+    assert_eq!(record_storage(dir.path()), classes_before);
     assert_eq!(store.scan_records("n", "", 100).unwrap(), old);
     assert_eq!(store.get_record("other", "same").unwrap(), Some(Vec::new()));
     assert_eq!(
@@ -208,4 +233,51 @@ fn migration_rejects_custom_constraints_and_read_only_connections() {
             .is_err()
     );
     assert!(without_rowid(dir.path(), "records"));
+}
+
+#[test]
+fn quoted_declared_types_cannot_masquerade_as_the_standard_schema() {
+    for columns in [
+        r#"namespace "T E X T" NOT NULL, key TEXT NOT NULL, value BLOB NOT NULL"#,
+        r#"namespace TEXT NOT NULL, key TEXT NOT NULL, value "BLOB NOT NULL""#,
+        r#"namespace TEXT NOT NULL, key "TEXT NOT NULL", value BLOB NOT NULL"#,
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Connection::open(dir.path().join("metadata.sqlite3")).unwrap();
+        db.execute_batch(&format!("PRAGMA journal_mode=WAL; CREATE TABLE records({columns}, PRIMARY KEY(namespace,key)) WITHOUT ROWID;")).unwrap();
+        db.execute_batch("INSERT INTO records(namespace,key,value) VALUES ('000123','first',X'00ff'),('text','second','000456')").unwrap();
+        let before = record_storage(dir.path());
+        let schema: String = db
+            .query_row(
+                "SELECT sql FROM sqlite_schema WHERE name='records'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let store = LocalStore::open(dir.path()).unwrap();
+        assert!(
+            matches!(store.migrate_records_to_rowid(), Err(Error::Invalid(_))),
+            "accepted masquerading declared type: {columns}"
+        );
+        assert_eq!(record_storage(dir.path()), before);
+        assert!(without_rowid(dir.path(), "records"));
+        assert_eq!(
+            db.query_row(
+                "SELECT sql FROM sqlite_schema WHERE name='records'",
+                [],
+                |row| row.get::<_, String>(0)
+            )
+            .unwrap(),
+            schema
+        );
+        assert_eq!(
+            db.query_row(
+                "SELECT count(*) FROM sqlite_schema WHERE name='scion_records_rowid_migration'",
+                [],
+                |row| row.get::<_, i64>(0)
+            )
+            .unwrap(),
+            0
+        );
+    }
 }

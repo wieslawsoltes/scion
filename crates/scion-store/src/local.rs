@@ -682,6 +682,48 @@ impl Storage for LocalStore {
 }
 
 fn validate_legacy_records_schema(db: &Connection) -> Result<()> {
+    // SQL spelling alone is insufficient: quoted type names can contain spaces
+    // or constraint-looking words while compiling to different affinities or
+    // nullability. Require SQLite's actual column metadata before normalizing
+    // the stock DDL's harmless identifier quoting and whitespace below.
+    let mut columns = db
+        .prepare("PRAGMA table_xinfo(records)")
+        .map_err(db_error)?;
+    let mut rows = columns.query([]).map_err(db_error)?;
+    for (position, (name, declared_type, primary_key)) in [
+        ("namespace", "TEXT", 1),
+        ("key", "TEXT", 2),
+        ("value", "BLOB", 0),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let row = rows.next().map_err(db_error)?.ok_or_else(|| {
+            Error::Invalid("record-layout migration requires the standard records columns".into())
+        })?;
+        let matches = row.get::<_, i64>(0).map_err(db_error)? == position as i64
+            && row.get::<_, String>(1).map_err(db_error)? == name
+            && row
+                .get::<_, String>(2)
+                .map_err(db_error)?
+                .eq_ignore_ascii_case(declared_type)
+            && row.get::<_, i64>(3).map_err(db_error)? == 1
+            && row.get::<_, Option<String>>(4).map_err(db_error)?.is_none()
+            && row.get::<_, i64>(5).map_err(db_error)? == primary_key
+            && row.get::<_, i64>(6).map_err(db_error)? == 0;
+        if !matches {
+            return Err(Error::Invalid(
+                "record-layout migration requires the standard records columns".into(),
+            ));
+        }
+    }
+    if rows.next().map_err(db_error)?.is_some() {
+        return Err(Error::Invalid(
+            "record-layout migration requires exactly three records columns".into(),
+        ));
+    }
+    drop(rows);
+    drop(columns);
     let sql: String = db
         .query_row(
             "SELECT sql FROM sqlite_schema WHERE type='table' AND name='records'",
