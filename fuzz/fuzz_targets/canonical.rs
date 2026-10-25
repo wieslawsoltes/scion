@@ -10,7 +10,10 @@ fuzz_target!(|input: &[u8]| {
     let optimized = Tree::from_json(input);
     match (&reference, optimized) {
         (Ok(reference), Ok(optimized)) => {
-            assert_eq!(canonical(reference).unwrap(), canonical(&optimized).unwrap());
+            assert_eq!(
+                canonical(reference).unwrap(),
+                canonical(&optimized).unwrap()
+            );
         }
         (Err(_), Err(_)) => {}
         _ => panic!("stored-tree decoder changed input acceptance"),

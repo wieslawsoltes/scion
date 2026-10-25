@@ -26,7 +26,8 @@ ignore.workspace = true
 futures.workspace = true
 fs2.workspace = true
 blake3.workspace = true
-rusqlite.workspace = true
+# Inodes and timestamps use checked unsigned-to-SQL-integer conversion.
+rusqlite = { workspace = true, features = ["fallible_uint"] }
 unicode-normalization = "0.1"
 
 [dev-dependencies]
