@@ -29,11 +29,22 @@ pub fn build_node(graph: &impl GraphAccess, parents: &[ObjectId]) -> Result<Grap
     if parents.iter().collect::<BTreeSet<_>>().len() != parents.len() {
         return Err(Error::Invalid("duplicate graph parents".into()));
     }
+    // The first-parent and linear jump tables often consult exactly the same
+    // ancestors. Read each immutable record once rather than repeating backend
+    // membership checks, database round trips and decoding for each table.
+    let mut records = BTreeMap::<ObjectId, GraphNode>::new();
+    let mut read = |id| -> Result<GraphNode> {
+        match records.entry(id) {
+            std::collections::btree_map::Entry::Occupied(entry) => Ok(entry.get().clone()),
+            std::collections::btree_map::Entry::Vacant(entry) => {
+                Ok(entry.insert(graph.node(id)?).clone())
+            }
+        }
+    };
     let mut generation = 0;
     for parent in parents {
         generation = generation.max(
-            graph
-                .node(*parent)?
+            read(*parent)?
                 .generation
                 .checked_add(1)
                 .ok_or_else(|| Error::Limit("graph generation overflow".into()))?,
@@ -42,14 +53,13 @@ pub fn build_node(graph: &impl GraphAccess, parents: &[ObjectId]) -> Result<Grap
     let mut jumps = Vec::new();
     let mut first_parent_depth = 0;
     if let Some(first) = parents.first() {
-        first_parent_depth = graph
-            .node(*first)?
+        first_parent_depth = read(*first)?
             .first_parent_depth
             .checked_add(1)
             .ok_or_else(|| Error::Limit("first-parent depth overflow".into()))?;
         jumps.push(*first);
         let mut level = 0;
-        while let Some(ancestor) = graph.node(jumps[level])?.jumps.get(level).copied() {
+        while let Some(ancestor) = read(jumps[level])?.jumps.get(level).copied() {
             jumps.push(ancestor);
             level += 1;
         }
@@ -58,12 +68,7 @@ pub fn build_node(graph: &impl GraphAccess, parents: &[ObjectId]) -> Result<Grap
     if parents.len() == 1 {
         linear_jumps.push(parents[0]);
         let mut level = 0;
-        while let Some(ancestor) = graph
-            .node(linear_jumps[level])?
-            .linear_jumps
-            .get(level)
-            .copied()
-        {
+        while let Some(ancestor) = read(linear_jumps[level])?.linear_jumps.get(level).copied() {
             linear_jumps.push(ancestor);
             level += 1;
         }
@@ -181,16 +186,94 @@ pub fn ancestors(graph: &impl GraphAccess, start: ObjectId, limit: usize) -> Res
 
 /// All maximal common ancestors, including multiple criss-cross merge bases.
 pub fn merge_bases(graph: &impl GraphAccess, a: ObjectId, b: ObjectId) -> Result<Vec<ObjectId>> {
+    let (mut a, mut b) = (a, b);
+    let mut a_node = graph.node(a)?;
+    if a == b {
+        return Ok(vec![a]);
+    }
+    let mut b_node = graph.node(b)?;
+    // An endpoint on the other endpoint's first-parent chain is necessarily
+    // their unique maximal common ancestor. Prove that in logarithmic reads
+    // before painting what could be millions of intervening linear commits.
+    if a_node.generation < b_node.generation
+        && a_node.first_parent_depth < b_node.first_parent_depth
+        && nth_first_parent(
+            graph,
+            b,
+            b_node.first_parent_depth - a_node.first_parent_depth,
+        )? == Some(a)
+    {
+        return Ok(vec![a]);
+    }
+    if b_node.generation < a_node.generation
+        && b_node.first_parent_depth < a_node.first_parent_depth
+        && nth_first_parent(
+            graph,
+            a,
+            a_node.first_parent_depth - b_node.first_parent_depth,
+        )? == Some(b)
+    {
+        return Ok(vec![b]);
+    }
+    // Remove provably disjoint, single-parent prefixes before painting the DAG.
+    // At different generations, discarded nodes are newer than the other head
+    // and cannot be its ancestors. At equal generations, two merge-safe spans
+    // ending at different nodes cannot meet internally: a unique-parent chain
+    // cannot split again after meeting. Thus every reduction preserves the
+    // complete common-ancestor set, including second-parent/criss-cross bases.
+    // The optimization stops at merge nodes; the full DAG algorithm below then
+    // sees all their parents. A bounded loop also handles partial jump indexes.
+    for _ in 0..256 {
+        if a == b {
+            return Ok(vec![a]);
+        }
+        match a_node.generation.cmp(&b_node.generation) {
+            std::cmp::Ordering::Greater => {
+                if a_node.linear_jumps.is_empty() {
+                    break;
+                }
+                let distance = a_node.generation - b_node.generation;
+                let level =
+                    (63 - distance.leading_zeros() as usize).min(a_node.linear_jumps.len() - 1);
+                a = a_node.linear_jumps[level];
+                a_node = graph.node(a)?;
+            }
+            std::cmp::Ordering::Less => {
+                if b_node.linear_jumps.is_empty() {
+                    break;
+                }
+                let distance = b_node.generation - a_node.generation;
+                let level =
+                    (63 - distance.leading_zeros() as usize).min(b_node.linear_jumps.len() - 1);
+                b = b_node.linear_jumps[level];
+                b_node = graph.node(b)?;
+            }
+            std::cmp::Ordering::Equal => {
+                let levels = a_node.linear_jumps.len().min(b_node.linear_jumps.len());
+                if levels == 0 {
+                    break;
+                }
+                if a_node.linear_jumps[0] == b_node.linear_jumps[0] {
+                    return Ok(vec![a_node.linear_jumps[0]]);
+                }
+                let level = (0..levels)
+                    .rev()
+                    .find(|level| a_node.linear_jumps[*level] != b_node.linear_jumps[*level])
+                    .unwrap_or(0);
+                a = a_node.linear_jumps[level];
+                b = b_node.linear_jumps[level];
+                a_node = graph.node(a)?;
+                b_node = graph.node(b)?;
+            }
+        }
+    }
     // Paint both frontiers in descending generation. Once a node is common,
     // its ancestors cannot be maximal and need not be expanded along that route.
     // This avoids reading the entire shared history for every nearby merge.
     let mut colors = BTreeMap::new();
     colors.insert(a, 1_u8);
     *colors.entry(b).or_default() |= 2;
-    let mut pending = BinaryHeap::from([
-        (graph.node(a)?.generation, a),
-        (graph.node(b)?.generation, b),
-    ]);
+    let mut pending = BinaryHeap::from([(a_node.generation, a), (b_node.generation, b)]);
     let mut visited = BTreeSet::new();
     let mut common = Vec::new();
     while let Some((_, id)) = pending.pop() {
@@ -365,6 +448,12 @@ mod tests {
             measured.reads.get() < 20,
             "merge base scanned common history"
         );
+        measured.reads.set(0);
+        assert_eq!(merge_bases(&measured, root, tip).unwrap(), vec![root]);
+        assert!(
+            measured.reads.get() < 20,
+            "ancestor merge base scanned a linear chain"
+        );
     }
     #[test]
     fn criss_cross_returns_all_maximal_bases() {
@@ -379,6 +468,95 @@ mod tests {
         assert_eq!(merge_bases(&g, x, y).unwrap(), expected);
         let unrelated = g.add("u", &[]);
         assert!(merge_bases(&g, x, unrelated).unwrap().is_empty());
+    }
+    #[test]
+    fn divergent_linear_arms_use_bounded_reads_and_stop_at_merge_edges() {
+        let mut graph = Graph::default();
+        let root = graph.add("root", &[]);
+        let a = graph.add("a", &[root]);
+        let b = graph.add("b", &[root]);
+        let x = graph.add("x", &[a, b]);
+        let y = graph.add("y", &[b, a]);
+        let mut left = x;
+        let mut right = x;
+        let mut cross = y;
+        for i in 0..1024 {
+            left = graph.add(&format!("left{i}"), &[left]);
+            right = graph.add(&format!("right{i}"), &[right]);
+            cross = graph.add(&format!("cross{i}"), &[cross]);
+        }
+        struct Measured<'a> {
+            graph: &'a Graph,
+            reads: std::cell::Cell<usize>,
+        }
+        impl GraphAccess for Measured<'_> {
+            fn node(&self, id: ObjectId) -> Result<GraphNode> {
+                self.reads.set(self.reads.get() + 1);
+                self.graph.node(id)
+            }
+        }
+        let measured = Measured {
+            graph: &graph,
+            reads: std::cell::Cell::new(0),
+        };
+        assert_eq!(merge_bases(&measured, left, right).unwrap(), vec![x]);
+        assert!(
+            measured.reads.get() < 100,
+            "linear fork read {} nodes",
+            measured.reads.get()
+        );
+        measured.reads.set(0);
+        let mut bases = vec![a, b];
+        bases.sort_unstable();
+        assert_eq!(merge_bases(&measured, left, cross).unwrap(), bases);
+        assert!(
+            measured.reads.get() < 100,
+            "criss-cross prefixes read {} nodes",
+            measured.reads.get()
+        );
+        let shorter = nth_first_parent(&graph, right, 537).unwrap().unwrap();
+        measured.reads.set(0);
+        assert_eq!(merge_bases(&measured, left, shorter).unwrap(), vec![x]);
+        assert!(
+            measured.reads.get() < 100,
+            "unequal fork read {} nodes",
+            measured.reads.get()
+        );
+    }
+    #[test]
+    fn building_jump_tables_reads_each_backend_record_once() {
+        let mut graph = Graph::default();
+        let root = graph.add("root", &[]);
+        let mut tip = root;
+        for i in 0..1024 {
+            tip = graph.add(&format!("linear{i}"), &[tip]);
+        }
+        struct Measured<'a> {
+            graph: &'a Graph,
+            reads: std::cell::RefCell<BTreeMap<ObjectId, usize>>,
+        }
+        impl GraphAccess for Measured<'_> {
+            fn node(&self, id: ObjectId) -> Result<GraphNode> {
+                *self.reads.borrow_mut().entry(id).or_default() += 1;
+                self.graph.node(id)
+            }
+        }
+        let measured = Measured {
+            graph: &graph,
+            reads: Default::default(),
+        };
+        let node = build_node(&measured, &[tip]).unwrap();
+        assert_eq!(node.first_parent_depth, 1025);
+        assert_eq!(node.jumps, node.linear_jumps);
+        let reads = measured.reads.borrow();
+        assert!(
+            reads.len() <= 11,
+            "building one node scanned too much history"
+        );
+        assert!(
+            reads.values().all(|reads| *reads == 1),
+            "duplicate backend reads: {reads:?}"
+        );
     }
     #[test]
     fn bisect_chooses_middle() {
@@ -416,24 +594,24 @@ mod tests {
             reach.insert(id, ancestors);
             ids.push(id);
         }
-        for _ in 0..256 {
-            let a = ids[(random() as usize) % ids.len()];
-            let b = ids[(random() as usize) % ids.len()];
-            assert_eq!(is_ancestor(&graph, a, b).unwrap(), reach[&b].contains(&a));
-            let common = reach[&a]
-                .intersection(&reach[&b])
-                .copied()
-                .collect::<Vec<_>>();
-            let expected = common
-                .iter()
-                .filter(|candidate| {
-                    !common
-                        .iter()
-                        .any(|other| other != *candidate && reach[other].contains(*candidate))
-                })
-                .copied()
-                .collect::<Vec<_>>();
-            assert_eq!(merge_bases(&graph, a, b).unwrap(), expected);
+        for &a in &ids {
+            for &b in &ids {
+                assert_eq!(is_ancestor(&graph, a, b).unwrap(), reach[&b].contains(&a));
+                let common = reach[&a]
+                    .intersection(&reach[&b])
+                    .copied()
+                    .collect::<Vec<_>>();
+                let expected = common
+                    .iter()
+                    .filter(|candidate| {
+                        !common
+                            .iter()
+                            .any(|other| other != *candidate && reach[other].contains(*candidate))
+                    })
+                    .copied()
+                    .collect::<Vec<_>>();
+                assert_eq!(merge_bases(&graph, a, b).unwrap(), expected);
+            }
         }
     }
 }

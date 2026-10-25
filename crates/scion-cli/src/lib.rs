@@ -1,11 +1,14 @@
 //! The `scn` thin command-line client.
 use clap::{Parser, Subcommand};
-use scion_client::{Client, ObjectCache, WorkingCopy, WorkingCopyState};
+use scion_client::{
+    Client, ObjectCache, WorkingCopy, WorkingCopyState,
+    overlay::{Overlay, OverlayConfig},
+};
 use scion_protocol::{RpcRequest, now_ms};
 use scion_types::{Changeset, Error, ObjectId, RepoPath, Result};
 use serde::Serialize;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     io::Write,
     path::{Path, PathBuf},
     sync::Arc,
@@ -59,6 +62,12 @@ enum Commands {
     Status {
         #[arg(default_value = ".")]
         path: PathBuf,
+        /// Include measured cache hits and content hashing work.
+        #[arg(long)]
+        stats: bool,
+        /// Discard all saved fingerprints and verify tracked contents again.
+        #[arg(long)]
+        refresh: bool,
     },
     Commit {
         #[arg(short = 'm', long)]
@@ -193,6 +202,11 @@ enum Commands {
         #[command(subcommand)]
         command: CacheCommand,
     },
+    /// Manage a durable writable virtual worktree, with or without a mount.
+    Overlay {
+        #[command(subcommand)]
+        command: OverlayCommand,
+    },
     /// Invoke a typed protocol method supplied as JSON (or '-' for stdin).
     Rpc {
         request: String,
@@ -200,16 +214,63 @@ enum Commands {
     /// Display service protocol and tier information.
     Info,
     #[cfg(all(feature = "fuse", target_os = "linux"))]
-    /// Mount a read-only filesystem that fetches file contents on access (Linux/FUSE).
+    /// Mount a filesystem that fetches contents on access; --writable uses a durable overlay.
     Mount {
         revision: String,
         mountpoint: PathBuf,
+        #[arg(long, requires = "overlay")]
+        writable: bool,
+        /// Durable backing directory outside the mountpoint.
+        #[arg(long, requires = "writable")]
+        overlay: Option<PathBuf>,
         #[arg(long)]
         sparse: Vec<RepoPath>,
         #[arg(long, default_value_t = 1000)]
         uid: u32,
         #[arg(long, default_value_t = 1000)]
         gid: u32,
+    },
+}
+#[derive(Subcommand)]
+enum OverlayCommand {
+    /// Store a sparse immutable manifest; file contents remain virtual.
+    Init {
+        revision: String,
+        directory: PathBuf,
+        #[arg(long)]
+        sparse: Vec<RepoPath>,
+        #[arg(long, default_value_t = 1000)]
+        uid: u32,
+        #[arg(long, default_value_t = 1000)]
+        gid: u32,
+    },
+    Status {
+        directory: PathBuf,
+    },
+    /// Display the precise file delta, including rename/copy provenance.
+    Diff {
+        directory: PathBuf,
+    },
+    /// Freeze mounted writes, create a server commit, and advance the overlay.
+    Commit {
+        directory: PathBuf,
+        #[arg(short = 'm', long)]
+        message: String,
+        #[arg(long)]
+        author: String,
+        #[arg(long = "ref")]
+        reference: Option<String>,
+    },
+    Info {
+        directory: PathBuf,
+    },
+    /// Evict clean hydrated contents down to --cache-bytes; retain dirty/open files.
+    Prune {
+        directory: PathBuf,
+    },
+    /// Reclaim unlinked data and interrupted temporary files while unmounted.
+    Gc {
+        directory: PathBuf,
     },
 }
 #[derive(Subcommand)]
@@ -248,6 +309,22 @@ fn client(args: &Args, state: Option<&WorkingCopyState>, root: Option<&Path>) ->
         .map(|p| ObjectCache::open(p, args.cache_bytes))
         .transpose()?;
     Client::new(server, objects, repo, args.token.clone(), cache)
+}
+fn overlay_client(args: &Args, overlay: &Overlay) -> Result<Client> {
+    let config = overlay.config()?;
+    let cache = ObjectCache::open(
+        args.cache_dir
+            .clone()
+            .unwrap_or_else(|| overlay.root().join("cache")),
+        args.cache_bytes,
+    )?;
+    Client::new(
+        args.server.clone().unwrap_or(config.server),
+        Some(args.objects.clone().unwrap_or(config.objects)),
+        args.repo.clone().unwrap_or(config.repo),
+        args.token.clone(),
+        Some(cache),
+    )
 }
 fn output(args: &Args, value: impl Serialize) -> Result<()> {
     let value = serde_json::to_value(value)?;
@@ -311,9 +388,20 @@ pub async fn run(args: &Args) -> Result<()> {
                 serde_json::json!({"revision":id,"path":wc.root(),"files":wc.state().files.len(),"lazy":lazy}),
             )
         }
-        Commands::Status { path } => {
+        Commands::Status {
+            path,
+            stats,
+            refresh,
+        } => {
             let wc = WorkingCopy::open(path)?;
-            output(args, wc.status()?)
+            if *refresh {
+                wc.invalidate_status_cache(&RepoPath::root())?;
+            }
+            if *stats {
+                output(args, wc.status_report()?)
+            } else {
+                output(args, wc.status()?)
+            }
         }
         Commands::Commit {
             message,
@@ -354,27 +442,43 @@ pub async fn run(args: &Args) -> Result<()> {
             let (_watcher, events) = wc.watch()?;
             output(args, wc.status()?)?;
             drop(wc);
-            let mut pending = false;
+            let mut pending = BTreeSet::new();
             loop {
                 match events.recv_timeout(std::time::Duration::from_millis(250)) {
                     Ok(event) => {
                         let event = event.map_err(|e| Error::Storage(e.to_string()))?;
-                        if !event
-                            .paths
-                            .iter()
-                            .all(|p| p.starts_with(root.join(".scion")))
-                        {
-                            pending = true;
+                        if event.need_rescan() || event.paths.is_empty() {
+                            pending.insert(RepoPath::root());
+                        } else if !event.kind.is_access() {
+                            for path in event.paths {
+                                if path.starts_with(root.join(".scion"))
+                                    || path.starts_with(root.join(".git"))
+                                {
+                                    continue;
+                                }
+                                let relative = path
+                                    .strip_prefix(&root)
+                                    .ok()
+                                    .and_then(|p| {
+                                        p.components()
+                                            .map(|c| c.as_os_str().to_str())
+                                            .collect::<Option<Vec<_>>>()
+                                    })
+                                    .and_then(|parts| RepoPath::new(parts.join("/")).ok());
+                                pending.insert(relative.unwrap_or_else(RepoPath::root));
+                            }
                         }
                     }
                     Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
                     Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
                 }
-                if pending {
+                if !pending.is_empty() {
                     match WorkingCopy::open(&root) {
                         Ok(wc) => {
+                            let paths: Vec<_> = pending.iter().cloned().collect();
+                            wc.invalidate_status_paths(&paths)?;
                             output(args, wc.status()?)?;
-                            pending = false;
+                            pending.clear();
                         }
                         Err(Error::Conflict(_)) => {}
                         Err(error) => return Err(error),
@@ -428,6 +532,55 @@ pub async fn run(args: &Args) -> Result<()> {
                 serde_json::json!({"exported":scion_git::export(&repo,id,destination,reference)?}),
             )
         }
+        Commands::Overlay { command } => match command {
+            OverlayCommand::Init {
+                revision,
+                directory,
+                sparse,
+                uid,
+                gid,
+            } => {
+                let c = client(args, None, None)?;
+                let id = c.resolve(revision).await?;
+                let files = c.manifest(id, sparse).await?;
+                let overlay = Overlay::initialize(
+                    directory,
+                    OverlayConfig::new(&c, id, sparse.clone(), *uid, *gid),
+                    files,
+                )?;
+                output(args, overlay.config()?)
+            }
+            OverlayCommand::Status { directory } => {
+                output(args, Overlay::open(directory)?.status()?)
+            }
+            OverlayCommand::Diff { directory } => {
+                output(args, Overlay::open(directory)?.changes()?)
+            }
+            OverlayCommand::Info { directory } => output(args, Overlay::open(directory)?.config()?),
+            OverlayCommand::Prune { directory } => output(
+                args,
+                serde_json::json!({"bytes_removed":Overlay::open(directory)?.prune_clean_cache(args.cache_bytes)?}),
+            ),
+            OverlayCommand::Gc { directory } => {
+                output(args, Overlay::open(directory)?.collect_orphans()?)
+            }
+            OverlayCommand::Commit {
+                directory,
+                message,
+                author,
+                reference,
+            } => {
+                let overlay = Overlay::open(directory)?;
+                let c = overlay_client(args, &overlay)?;
+                let id = overlay
+                    .commit(&c, author.clone(), message.clone(), reference.clone())
+                    .await?;
+                output(
+                    args,
+                    serde_json::json!({"revision":id,"overlay":overlay.root()}),
+                )
+            }
+        },
         Commands::Cache { command } => match command {
             CacheCommand::Export {
                 directory,
@@ -707,17 +860,52 @@ pub async fn run(args: &Args) -> Result<()> {
                     sparse,
                     uid,
                     gid,
+                    writable,
+                    overlay,
                 } => {
-                    let id = c.resolve(revision).await?;
-                    let files = c.manifest(id, sparse).await?;
                     let mountpoint = mountpoint.clone();
-                    let uid = *uid;
-                    let gid = *gid;
-                    tokio::task::spawn_blocking(move || {
-                        scion_client::fuse::mount(c, id, files, &mountpoint, uid, gid)
-                    })
-                    .await
-                    .map_err(|e| Error::Storage(e.to_string()))??;
+                    if *writable {
+                        let path = overlay.as_ref().ok_or_else(|| {
+                            Error::Invalid("--writable requires --overlay".into())
+                        })?;
+                        let (c, backing) = if path.join("overlay.db").exists() {
+                            let backing = Overlay::open(path)?;
+                            let c = overlay_client(args, &backing)?;
+                            let config = backing.config()?;
+                            let id = c.resolve(revision).await?;
+                            if id != config.revision
+                                || (!sparse.is_empty() && *sparse != config.sparse)
+                            {
+                                return Err(Error::Conflict("existing overlay revision/sparse selection differs; inspect scn overlay info".into()));
+                            }
+                            (c, backing)
+                        } else {
+                            let id = c.resolve(revision).await?;
+                            let files = c.manifest(id, sparse).await?;
+                            let backing = Overlay::initialize(
+                                path,
+                                OverlayConfig::new(&c, id, sparse.clone(), *uid, *gid),
+                                files,
+                            )?;
+                            (c, backing)
+                        };
+                        let cache_bytes = args.cache_bytes;
+                        tokio::task::spawn_blocking(move || {
+                            scion_client::fuse::mount_writable(c, backing, &mountpoint, cache_bytes)
+                        })
+                        .await
+                        .map_err(|e| Error::Storage(e.to_string()))??;
+                    } else {
+                        let id = c.resolve(revision).await?;
+                        let files = c.manifest(id, sparse).await?;
+                        let uid = *uid;
+                        let gid = *gid;
+                        tokio::task::spawn_blocking(move || {
+                            scion_client::fuse::mount(c, id, files, &mountpoint, uid, gid)
+                        })
+                        .await
+                        .map_err(|e| Error::Storage(e.to_string()))??;
+                    }
                     Ok(())
                 }
                 _ => Err(Error::Invalid("unsupported command dispatch".into())),

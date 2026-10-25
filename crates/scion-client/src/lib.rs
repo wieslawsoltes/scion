@@ -3,7 +3,13 @@
 pub mod cache;
 #[cfg(all(feature = "fuse", target_os = "linux"))]
 pub mod fuse;
+#[cfg(target_os = "linux")]
+mod mount_session;
+pub mod overlay;
+mod status_cache;
 pub mod working_copy;
+#[cfg(all(feature = "fuse", target_os = "linux"))]
+pub mod writable_fuse;
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 pub use cache::ObjectCache;
@@ -18,7 +24,9 @@ use scion_types::{
 };
 use serde::de::DeserializeOwned;
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
-pub use working_copy::{StatusEntry, StatusKind, TrackedFile, WorkingCopy, WorkingCopyState};
+pub use working_copy::{
+    StatusEntry, StatusKind, StatusReport, StatusStats, TrackedFile, WorkingCopy, WorkingCopyState,
+};
 
 /// Reusable HTTP client with independent control and object transports.
 #[derive(Clone)]
@@ -333,7 +341,7 @@ impl Client {
                 }
                 Err(e) => return Err(e),
             };
-            let tree: Tree = serde_json::from_slice(&bytes)?;
+            let tree = Tree::from_json(&bytes)?;
             tree.validate()?;
             for (name, entry) in tree.entries {
                 let child = path.join(&name)?;

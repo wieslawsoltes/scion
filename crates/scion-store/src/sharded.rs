@@ -1,4 +1,4 @@
-use crate::{SharedStore, Storage};
+use crate::{ImmutableRecord, SharedStore, Storage};
 use scion_types::{Error, LogEntry, ObjectId, ObjectKind, Result};
 
 /// Independently scale immutable object storage and authoritative metadata.
@@ -54,6 +54,9 @@ impl Storage for ShardedStore {
     fn append_log(&self, r: &str, id: ObjectId) -> Result<u64> {
         self.metadata.append_log(r, id)
     }
+    fn publish_commit(&self, r: &str, id: ObjectId, records: &[ImmutableRecord]) -> Result<u64> {
+        self.metadata.publish_commit(r, id, records)
+    }
     fn read_log(&self, r: &str, a: u64, l: usize) -> Result<Vec<LogEntry>> {
         self.metadata.read_log(r, a, l)
     }
@@ -65,7 +68,7 @@ impl Storage for ShardedStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::MemoryStore;
+    use crate::{MemoryStore, PreparedObject};
     use std::sync::Arc;
     #[test]
     fn shard_data_is_not_replicated_to_metadata() {
@@ -82,5 +85,29 @@ mod tests {
             );
             assert_eq!(s.get_object(ObjectKind::Blob, id).unwrap(), n.to_le_bytes());
         }
+    }
+
+    #[test]
+    fn publication_batch_keeps_objects_out_of_metadata_backend() {
+        let metadata = Arc::new(MemoryStore::new());
+        let shard = Arc::new(MemoryStore::new());
+        let store = ShardedStore::new(metadata.clone(), vec![shard.clone()]).unwrap();
+        let objects = [
+            PreparedObject::new(ObjectKind::Tree, b"prepared tree".to_vec()).unwrap(),
+            PreparedObject::new(ObjectKind::Changeset, b"prepared commit".to_vec()).unwrap(),
+        ];
+        let id = objects[1].id();
+        store
+            .publish_commit_with_objects("r", id, &objects, &[])
+            .unwrap();
+        for object in &objects {
+            assert!(metadata.get_object(object.kind(), object.id()).is_err());
+            assert_eq!(
+                shard.get_object(object.kind(), object.id()).unwrap(),
+                object.bytes()
+            );
+        }
+        assert_eq!(metadata.read_log("r", 0, 10).unwrap().len(), 1);
+        assert!(shard.read_log("r", 0, 10).unwrap().is_empty());
     }
 }

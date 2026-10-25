@@ -2,7 +2,7 @@
 
 ## Deliverables
 
-Every workspace crate is independently packageable. The workspace uses one release version and versioned dependencies between crates. There are four executable deliverables:
+All thirteen product workspace crates are independently packageable. The workspace uses one release version and versioned dependencies between crates. There are four executable deliverables:
 
 | Executable | Package | Purpose |
 |---|---|---|
@@ -14,7 +14,7 @@ Every workspace crate is independently packageable. The workspace uses one relea
 Build all executables:
 
 ```sh
-cargo build --workspace --bins --release --locked
+cargo build --workspace --bins --release --all-features --locked
 ```
 
 Create and verify all crate archives, including unpublished interdependent crates:
@@ -28,13 +28,16 @@ Use current stable Cargo for workspace packaging. The MSRV check verifies source
 
 ## Continuous integration
 
-[CI](../.github/workflows/ci.yml) runs on every branch push and pull request. It includes:
+[CI](../.github/workflows/ci.yml) runs on pull requests, pushes to `main`, and manual dispatch. It includes:
 
 1. Rust formatting, Clippy with warnings denied, rustdoc with warnings denied, and documentation tests.
 2. Workspace builds and tests on Linux, macOS, and Windows.
 3. A build using the minimum supported Rust compiler.
 4. Metadata checks and full `cargo package` verification for every crate.
 5. Dependency license, source, and RustSec advisory checks with `cargo-deny`.
+6. PostgreSQL storage conformance and a built/running server → regional cache → node daemon container topology.
+
+Additional workflows run real Linux FUSE I/O and publication, provider SDK contracts and MinIO, official Spanner emulator transactions, three sanitizer fuzz targets, and a correctness-checked durable Git comparison. Path filters select the relevant integration workflows for a PR; fuzzing and the full Git comparison also have scheduled runs. [Testing](testing.md) links the workflow definitions and completed evidence.
 
 [Dependabot](../.github/dependabot.yml) opens weekly Cargo, GitHub Actions, and container-base updates. Dependency updates must preserve MSRV or deliberately raise the workspace requirement and update the CI job.
 
@@ -54,7 +57,7 @@ It then performs validation and builds native binary bundles for:
 
 Each bundle contains all four executables, licenses, user documentation, and `RELEASE.json` identifying the source commit, target, and compiler. Unix bundles preserve executable permissions. Windows bundles use ZIP. Archive timestamps are normalized to the source commit time; this does not imply that compiler outputs are bit-for-bit reproducible across machines.
 
-Release binaries are built with all workspace features, including PostgreSQL support and, on Linux, the read-only FUSE mount. Default source builds can choose a smaller feature set. FUSE still requires host filesystem support and appropriate mount permissions at runtime.
+Release binaries are built with all workspace features, including PostgreSQL, S3/GCS/Azure objects, Spanner metadata, and Linux read-only/writable FUSE mounts. Default source builds can choose a smaller feature set. FUSE still requires host filesystem support and appropriate mount permissions at runtime.
 
 The GitHub release contains the bundles, a source archive, all `.crate` archives, and `SHA256SUMS`. The release becomes visible only after all binary builds succeed and the assets have been uploaded. Release reruns can replace assets for the same tag; do not move an already published tag to another commit.
 
@@ -90,6 +93,10 @@ python scripts/release.py publish --execute
 ```
 
 Do not paste tokens into tracked files or command arguments. Publishing a version is an external registry operation; the workflow definition does not by itself establish that the crates have already been published.
+
+## Local-store upgrade compatibility
+
+This version stores small immutable objects in SQLite as well as larger loose files. Existing loose-object stores remain readable, but older file-only binaries cannot read newly inlined objects. Back up the complete authoritative store, including the database/WAL, before changing binaries; do not downgrade an upgraded live directory. Object IDs and network envelopes are unchanged. The bundled SQLite runtime is 3.51.3 to include the upstream [WAL-reset corruption fix](https://sqlite.org/releaselog/3_51_3.html); the workspace checks the linked version. See [persistence and recovery](operations.md#persistence-and-scaling).
 
 ## Preparing a version
 

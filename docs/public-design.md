@@ -18,22 +18,23 @@ The article does not publish Scion's source code, object format, API schema, mer
 | SCN-02 | Immutable changed-file commits | Ordered parents, first-parent put/delete deltas, domain-separated IDs, independently stored blobs | `scion-types`; canonical/type tests; `immutable_commit_is_independent_of_refs_and_idempotent` |
 | SCN-03 | Incremental commits | Persistent directory updates rewrite affected paths and reuse unrelated subtree IDs | Engine tree implementation; `one_file_commit_does_not_read_or_rewrite_unrelated_subtrees` |
 | SCN-04 | Independent refs | Atomic expected-value updates and deletes; commit creation never moves a ref | Storage CAS tests and `concurrent_commits_do_not_move_refs_and_cas_has_one_winner` |
-| SCN-05 | Durable change log | Idempotent publication and repository membership; committed sequence frontier for PostgreSQL | Local restart tests, PostgreSQL conformance job |
+| SCN-05 | Durable change log | Idempotent publication and repository membership; committed sequence frontiers for PostgreSQL and Spanner | Local restart/process-exit tests, PostgreSQL conformance, official Spanner emulator |
 | SCN-06 | Generic recursive indexes | Versioned `DerivedData`, iterative parent evaluation, eager/lazy policy | Engine derived-data test and public trait |
-| SCN-07 | Graph skip indexes | Generations and first-parent binary lifting; all-parent ancestry and maximal merge bases | `binary_lifting_and_second_parent_reachability`; `criss_cross_returns_all_maximal_bases` |
+| SCN-07 | Graph skip indexes | Generations, binary lifting, paired linear spans, all-parent ancestry, and maximal merge bases | Graph tests, exhaustive small-DAG oracle, and bounded graph-read regressions |
 | SCN-08 | History and blame | Persistent path trie/history chains; line attribution with copy provenance | Engine history/blame implementation and `blame_tracks_unchanged_lines_and_explicit_copies` |
 | SCN-09 | Copy and path indexes | Explicit/exact-content copy lookup; prefix-scoped path search | Engine copy hash trie and path-search tests |
 | SCN-10 | Checkout-free operations | Typed RPCs for commits, diff, ancestry, history, blame, merge, rebase, revert, and bisection | `RpcRequest`; authority integration suite; CLI `rpc` |
 | SCN-11 | Sparse working copies | Component-aware sparse manifest traversal and selected content materialization | `Client::manifest`; working-copy selection tests |
-| SCN-12 | On-demand files | Explicit lazy hydration plus optional Linux read-only FUSE mount | Lazy-file tests; FUSE implementation; real mounts require a capable Linux host |
+| SCN-12 | On-demand files | Explicit lazy hydration, durable writable overlay, Linux read-only/writable FUSE | Portable overlay tests; real kernel mount, mmap, orphan lifetime, commit, and remount workflow |
 | SCN-13 | Immutable object negotiation | Exact tree/blob requests with bounded payloads and integrity checks | Object codec tests and `envelope` fuzz target |
 | SCN-14 | Shared cache tiers | Same object endpoint, byte-bounded disk/memory cache, miss coalescing, validated upstream topology | Cache tests, service integration, container topology CI |
 | SCN-15 | Snapshot bootstrapping | Portable verified cache snapshots, idempotent imports, startup restoration, periodic/shutdown export | Snapshot round-trip and corruption tests |
-| SCN-16 | Distributed persistence | Pluggable storage, pooled PostgreSQL, independent hash-partitioned object backends | `Storage`, `PostgresStore`, `ShardedStore`; backend conformance tests |
-| SCN-17 | Repository/directory IAM | Hashed bearer credentials, component-aware rules, path witnesses, signed object tickets | Policy/ticket tests and authority integration tests |
+| SCN-16 | Distributed persistence | SQLite/PostgreSQL/Spanner metadata, object sharding, S3/GCS/Azure adapters | Backend conformance, provider SDK contracts, real MinIO, and official Spanner emulator tests |
+| SCN-17 | Repository/directory IAM | Static bearer or configured OIDC identities, atomic policy reload, directory rules, path witnesses, signed tickets | Signed JWT/JWKS fixtures, revocation, directory-grant, and authority tests |
 | SCN-18 | Git migration | Streaming topological ingestion, first-parent deltas, durable OID mapping, supported mode/content preservation | `scion-git` migration/restart/export tests |
 | SCN-19 | Operational controls | Request admission, rate limiting, payload bounds, health/readiness/metrics, graceful shutdown | Authority configuration and integration tests |
 | SCN-20 | Verification | Deterministic repository/backend scenarios, corruption tests, fuzz targets, cross-platform builds | Workspace tests, Fuzz workflow, CI workflow |
+| SCN-21 | Multiple merge bases | Deterministic recursive synthesis over maximal common bases; explicit unresolved conflicts | Symmetry, idempotence, nested/criss-cross and structural-conflict tests |
 
 ## Independent design choices
 
@@ -42,13 +43,13 @@ The article does not publish Scion's source code, object format, API schema, mer
 | Hashing | BLAKE3 with kind and format domain separation |
 | Structured encoding | Deterministic JSON of versioned Rust model types |
 | Compression | Zstandard; same encoded object bytes for storage and transfer |
-| Local metadata | SQLite with durable immutable file storage |
-| Shared metadata | Optional PostgreSQL backend and object shards |
+| Local metadata | FULL-synchronous SQLite WAL with small inline objects and larger durable object files |
+| Shared metadata | PostgreSQL or Spanner, with object shards or independently configured cloud objects |
 | Control transport | Versioned HTTP/JSON RPC |
 | Object authorization | Short-lived keyed-BLAKE3 capabilities over repository/revision/path/object scope |
 | Working-copy portability | Validated UTF-8 repository-relative paths |
-| Text merge | Three-way merge with explicit unresolved-conflict results |
-| Transparent virtualization | Linux read-only FUSE, behind a Cargo feature |
+| Text merge | Three-way merge and recursive virtual-base synthesis with explicit unresolved-conflict results |
+| Transparent virtualization | Linux read-only/writable FUSE over a portable durable overlay, behind a Cargo feature |
 
 These choices are documented in [architecture](architecture.md), [protocol](protocol.md), and [operations](operations.md). They are not inferred upstream implementation details.
 
@@ -56,27 +57,27 @@ These choices are documented in [architecture](architecture.md), [protocol](prot
 
 ### Durability and scale
 
-The engine avoids a repository-wide mutation mutex and creates commits without moving refs. Durable backends still coordinate writes: SQLite serializes writers; PostgreSQL uses transactions and a log frontier gate. Strictly lock-free distributed persistence is therefore not a verified property of this implementation.
+The engine avoids a repository-wide mutation mutex and creates commits without moving refs. Durable backends still coordinate writes: SQLite serializes writers; PostgreSQL uses transactions and a log frontier gate; Spanner publication updates a per-repository counter row. Strictly lock-free distributed persistence is therefore not a verified property of this implementation.
 
-PostgreSQL and hash-partitioned objects provide a shared backend topology. Google Spanner, cloud-object-store-specific adapters, automatic shard rebalancing, cross-region failover orchestration, and production load characterization are not included. A storage trait makes alternate backends possible; it does not constitute an implemented adapter.
+PostgreSQL, Spanner, hash-partitioned objects, and S3/GCS/Azure adapters provide concrete shared-backend choices. Automatic shard rebalancing, cross-region failover orchestration, fleet snapshot distribution, and production load characterization remain deployment responsibilities. Emulator and SDK contract tests establish exercised behavior; they do not reproduce a production cloud region.
 
 No component packs the complete repository into Git packfiles. There is no repack requirement. Authoritative retention, backup scheduling, and capacity management are still operator responsibilities.
 
 ### Virtualization and filesystem behavior
 
-Writable sparse/lazy workspaces explicitly hydrate selected files. Linux FUSE provides transparent read-only access to an immutable revision. A writable virtual filesystem, Windows ProjFS, and macOS File Provider integrations are not implemented. FUSE compilation and unit checks do not demonstrate that a restricted container can mount `/dev/fuse`.
+Ordinary sparse/lazy workspaces explicitly hydrate selected files. Linux FUSE also provides transparent writable access through the durable overlay. Its integration workflow mounts the real kernel filesystem and verifies mmap writeback, commits, inode lifetime, orphan cleanup, and remount. Windows and macOS run the portable client/overlay tests; native ProjFS and File Provider integrations are not implemented. Mounting requires a capable Linux host with `/dev/fuse`. Concurrent application writers must be quiesced for an application-consistent checkpoint, and portable source history does not version empty directories or every host filesystem attribute.
 
 ### Merge and query semantics
 
-Multiple merge bases with different trees produce an explicit virtual-base conflict. The engine does not silently choose one base or claim a recursive virtual-base synthesis algorithm. Binary changes are versioned exactly; conflicting binary edits require resolution. Large text operations have resource bounds.
+Multiple merge bases are sorted and combined through a deterministic recursive virtual-base synthesis. It memoizes common-base and tree work, and preserves structured conflicts when virtual ancestors cannot be reconciled. The work is bounded by recursion depth, head count, subproblem count, and graph traversal limits. Binary changes are versioned exactly; conflicting binary edits require resolution. Large text operations have resource bounds.
 
 The CLI rebase operation replays one delta by default and supports a first-parent interval with `--base`; the reusable engine exposes both forms. The bisection API chooses a candidate and leaves test execution to its caller. Search is path-based. A dedicated content-search index and review application are separate products.
 
 ### Identity and access management
 
-Repository policies and directory rules are implemented. Enterprise SSO provisioning, external identity federation, policy hot reload, and a review approval UI are not part of this release. Shared capability keys trust cache operators; deployments needing distinct trust boundaries must introduce an appropriate key and authorization topology.
+Configured OIDC/JWKS federation, exact issuer/subject bindings, static credentials, repository/directory policies, and atomic policy reload are implemented. Interactive login, enterprise account provisioning, provider application registration, policy distribution across authorities, and a review approval UI are separate integrations. Shared capability keys trust cache operators; deployments needing distinct trust boundaries must introduce an appropriate key and authorization topology.
 
-Already issued capabilities expire after a bounded interval. A policy change does not erase previously downloaded source content. Root-tree and full-history queries require full repository read access; path-scoped views use filtered APIs rather than exposing protected directory names.
+Already issued capabilities expire after five minutes. A policy change does not erase previously downloaded source content. Root-tree and full-history queries require full repository read access; path-scoped views use filtered APIs rather than exposing protected directory names.
 
 ### Git interoperability
 

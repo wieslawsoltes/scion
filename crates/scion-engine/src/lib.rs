@@ -1,7 +1,7 @@
 //! Server-side source control independent of transport, runtime and working copy.
 //! Changesets are immutable first-parent file deltas; refs are separate CAS rows.
 use scion_graph::{GraphAccess, GraphNode};
-use scion_store::SharedStore;
+use scion_store::{ImmutableRecord, PreparedObject, SharedStore};
 use scion_types::*;
 use std::collections::BTreeMap;
 
@@ -9,8 +9,11 @@ mod derived;
 mod history;
 mod merge;
 mod tree;
+mod tree_cache;
+mod virtual_base;
 pub use derived::{DerivedData, DerivedPolicy};
 pub use merge::RebaseResult;
+pub use tree_cache::TreeCacheStats;
 
 /// A namespaced repository over an independently reusable storage backend.
 #[derive(Clone)]
@@ -18,6 +21,7 @@ pub struct Repository {
     name: String,
     store: SharedStore,
     flights: std::sync::Arc<derived::Flights>,
+    trees: std::sync::Arc<tree_cache::TreeCache>,
 }
 
 impl Repository {
@@ -34,6 +38,7 @@ impl Repository {
             name,
             store,
             flights: Default::default(),
+            trees: Default::default(),
         })
     }
     pub fn name(&self) -> &str {
@@ -41,6 +46,19 @@ impl Repository {
     }
     pub fn store(&self) -> &SharedStore {
         &self.store
+    }
+    /// Configure decoded immutable-tree retention; zero disables it. The default
+    /// is 8 MiB of conservative accounting, shared by clones of this repository.
+    pub fn with_tree_cache_capacity(mut self, bytes: usize) -> Self {
+        self.trees = std::sync::Arc::new(tree_cache::TreeCache::new(bytes));
+        self
+    }
+    /// Discard retained trees; existing readers retain their immutable snapshots.
+    pub fn clear_tree_cache(&self) {
+        self.trees.clear();
+    }
+    pub fn tree_cache_stats(&self) -> TreeCacheStats {
+        self.trees.stats()
     }
     pub(crate) fn namespace(&self, suffix: &str) -> String {
         format!("repo/{}/{suffix}", self.name)
@@ -83,22 +101,34 @@ impl Repository {
             None => None,
         };
         // Validation and persistent-tree construction touch only modified directories.
-        let root = self.apply_tree(parent_root, &request.changes)?;
+        let mut prepared = self.prepare_tree(parent_root, &request.changes)?;
         let graph = scion_graph::build_node(self, &request.parents)?;
-        let bytes = canonical(&request)?;
-        let id = self.store.put_object(ObjectKind::Changeset, &bytes)?;
-        self.store.put_record(
-            &self.namespace("derived/tree/1"),
-            &id.to_string(),
-            &canonical(&root)?,
+        let object = PreparedObject::new(ObjectKind::Changeset, canonical(&request)?)?;
+        let id = object.id();
+        prepared.objects.push(object);
+        // Backends may batch immutable content and metadata into one durable
+        // transaction; the portable fallback writes all content before indexes,
+        // membership and the log. No staged tree enters the cache before success.
+        self.store.publish_commit_with_objects(
+            &self.name,
+            id,
+            &prepared.objects,
+            &[
+                ImmutableRecord {
+                    namespace: self.namespace("derived/tree/1"),
+                    key: id.to_string(),
+                    value: canonical(&prepared.root)?,
+                },
+                ImmutableRecord {
+                    namespace: self.namespace("graph"),
+                    key: id.to_string(),
+                    value: canonical(&graph)?,
+                },
+            ],
         )?;
-        self.store.put_record(
-            &self.namespace("graph"),
-            &id.to_string(),
-            &canonical(&graph)?,
-        )?;
-        // Backend transaction atomically creates membership and appends a deduplicated log record.
-        self.store.append_log(&self.name, id)?;
+        for (id, tree) in prepared.decoded {
+            self.trees.insert(id, tree);
+        }
         Ok(request)
     }
 

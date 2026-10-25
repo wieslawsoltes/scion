@@ -2,6 +2,7 @@
 //! manifest; opening a file fetches its verified blob. Reads use local file handles
 //! and kernel caching, avoiding whole-object decompression for each read request.
 use crate::Client;
+pub use crate::writable_fuse::{WritableFs, mount_writable};
 use fuser::{
     FileAttr, FileType, Filesystem, MountOption, ReplyAttr, ReplyData, ReplyDirectory, ReplyEmpty,
     ReplyEntry, ReplyOpen, Request,

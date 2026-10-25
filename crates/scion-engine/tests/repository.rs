@@ -4,7 +4,7 @@ use scion_types::*;
 use std::collections::BTreeMap;
 use std::sync::{
     Arc,
-    atomic::{AtomicUsize, Ordering},
+    atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 
 fn repo() -> Repository {
@@ -306,10 +306,14 @@ struct CountingStore {
     tree_reads: AtomicUsize,
     tree_writes: AtomicUsize,
     blob_reads: AtomicUsize,
+    fail_tree_writes: AtomicBool,
 }
 impl Storage for CountingStore {
     fn put_object(&self, k: ObjectKind, b: &[u8]) -> Result<ObjectId> {
         if k == ObjectKind::Tree {
+            if self.fail_tree_writes.load(Ordering::Relaxed) {
+                return Err(Error::Storage("injected tree write failure".into()));
+            }
             self.tree_writes.fetch_add(1, Ordering::Relaxed);
         }
         self.inner.put_object(k, b)
@@ -356,6 +360,45 @@ impl Storage for CountingStore {
 }
 
 #[test]
+fn failed_publication_does_not_cache_or_expose_prepared_trees() {
+    let store = Arc::new(CountingStore::default());
+    let repo = Repository::new("test", store.clone()).unwrap();
+    let file = entry(&repo, b"not yet published");
+    let expected_tree = Tree {
+        entries: BTreeMap::from([(
+            "file".into(),
+            TreeEntry::File {
+                entry: file.clone(),
+            },
+        )]),
+    };
+    let root = ObjectId::hash(ObjectKind::Tree, &canonical(&expected_tree).unwrap());
+    let request = Changeset {
+        parents: vec![],
+        author: "a".into(),
+        committer: None,
+        timestamp_ms: 0,
+        message: "failed publication".into(),
+        changes: BTreeMap::from([(path("file"), FileChange::put(file))]),
+        metadata: BTreeMap::new(),
+    };
+    let id = request.id().unwrap();
+    store.fail_tree_writes.store(true, Ordering::Relaxed);
+    assert!(repo.create_commit(request.clone()).is_err());
+    assert!(repo.tree(root).is_err());
+    assert!(repo.get_changeset(id).is_err());
+    assert!(store.read_log("test", 0, 10).unwrap().is_empty());
+    assert_eq!(repo.tree_cache_stats().entries, 0);
+    store.fail_tree_writes.store(false, Ordering::Relaxed);
+    repo.create_commit(request).unwrap();
+    assert_eq!(repo.root_tree(id).unwrap(), root);
+    assert_eq!(
+        repo.read_file(id, &path("file")).unwrap(),
+        b"not yet published"
+    );
+}
+
+#[test]
 fn one_file_commit_does_not_read_or_rewrite_unrelated_subtrees() {
     let store = Arc::new(CountingStore::default());
     let repo = Repository::new("test", store.clone()).unwrap();
@@ -376,9 +419,10 @@ fn one_file_commit_does_not_read_or_rewrite_unrelated_subtrees() {
         metadata: BTreeMap::new(),
     };
     let root = repo.create_commit(initial).unwrap().id().unwrap();
+    repo.clear_tree_cache();
     store.tree_reads.store(0, Ordering::Relaxed);
     store.tree_writes.store(0, Ordering::Relaxed);
-    let _ = commit(
+    let edited = commit(
         &repo,
         &[root],
         &[("dir500/f", Some(b"changed"))],
@@ -386,6 +430,22 @@ fn one_file_commit_does_not_read_or_rewrite_unrelated_subtrees() {
     );
     assert_eq!(store.tree_reads.load(Ordering::Relaxed), 2);
     assert_eq!(store.tree_writes.load(Ordering::Relaxed), 2);
+    repo.clear_tree_cache();
+    store.tree_reads.store(0, Ordering::Relaxed);
+    let diff = repo.diff(root, edited).unwrap();
+    assert_eq!(diff.len(), 1);
+    assert_eq!(diff[0].path, path("dir500/f"));
+    assert_eq!(store.tree_reads.load(Ordering::Relaxed), 4);
+
+    store.tree_reads.store(0, Ordering::Relaxed);
+    store.tree_writes.store(0, Ordering::Relaxed);
+    let empty = commit(&repo, &[edited], &[], "metadata only");
+    assert_eq!(
+        repo.root_tree(empty).unwrap(),
+        repo.root_tree(edited).unwrap()
+    );
+    assert_eq!(store.tree_reads.load(Ordering::Relaxed), 0);
+    assert_eq!(store.tree_writes.load(Ordering::Relaxed), 0);
 }
 
 #[test]

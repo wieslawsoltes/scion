@@ -2,12 +2,12 @@
 //! blocking pool behind bounded admission. No source content is logged.
 pub mod auth;
 
-use auth::{Access, Policy};
+use auth::{Access, Authenticated, Policy, PolicyStore};
 use axum::{
     Extension, Json, Router,
     body::Bytes,
     extract::{DefaultBodyLimit, Path, Request, State},
-    http::{HeaderMap, StatusCode, header},
+    http::{StatusCode, header},
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -87,6 +87,7 @@ impl AsRef<[u8]> for BudgetedBody {
 pub struct ServerState {
     store: SharedStore,
     config: ServerConfig,
+    auth: Arc<PolicyStore>,
     admission: Arc<Semaphore>,
     upload_bytes: Arc<Semaphore>,
     repositories: Mutex<BTreeMap<String, Repository>>,
@@ -94,8 +95,8 @@ pub struct ServerState {
     metrics: Metrics,
 }
 impl ServerState {
-    pub fn new(store: SharedStore, config: ServerConfig) -> Result<Arc<Self>> {
-        config.policy.validate()?;
+    pub fn new(store: SharedStore, mut config: ServerConfig) -> Result<Arc<Self>> {
+        let auth = Arc::new(PolicyStore::new(std::mem::take(&mut config.policy))?);
         if !config.development && config.capability_key == [0; 32] {
             return Err(Error::Invalid(
                 "production requires a nonzero capability key".into(),
@@ -108,6 +109,7 @@ impl ServerState {
         }
         Ok(Arc::new(Self {
             store,
+            auth,
             admission: Arc::new(Semaphore::new(config.max_concurrent)),
             upload_bytes: Arc::new(Semaphore::new(1024)),
             repositories: Mutex::new(BTreeMap::new()),
@@ -116,12 +118,13 @@ impl ServerState {
             metrics: Metrics::default(),
         }))
     }
-    fn authenticate(&self, h: &HeaderMap, repo: &str) -> Result<Access> {
+    /// Shared identity policy; replacements take effect atomically on requests.
+    pub fn policy_store(&self) -> Arc<PolicyStore> {
+        self.auth.clone()
+    }
+    fn authenticate(&self, identity: &Authenticated, repo: &str) -> Result<Access> {
         validate_name(repo)?;
-        let access = self
-            .config
-            .policy
-            .authenticate(h, repo, self.config.development)?;
+        let access = self.auth.authorize(identity, repo)?;
         self.rate_limit(&access.principal)?;
         Ok(access)
     }
@@ -194,16 +197,24 @@ async fn admit(State(s): State<Arc<ServerState>>, mut request: Request, next: Ne
     }
     let is_upload = request.uri().path().ends_with("/blobs");
     let needs_token = is_upload || request.uri().path().ends_with("/rpc");
-    if needs_token
-        && !s.config.development
-        && let Err(e) = s.config.policy.authenticate_headers(request.headers())
-    {
-        return fail(e, &s);
-    }
     let permit = match s.admission.clone().try_acquire_owned() {
         Ok(p) => p,
         Err(_) => return fail(Error::Limit("server is at capacity".into()), &s),
     };
+    // Admission also bounds requests waiting for an external signing-key
+    // refresh. Authenticate before either JSON or blob body extraction.
+    if needs_token {
+        match s
+            .auth
+            .authenticate(request.headers(), s.config.development)
+            .await
+        {
+            Ok(identity) => {
+                request.extensions_mut().insert(identity);
+            }
+            Err(error) => return fail(error, &s),
+        }
+    }
     // Reserve upload memory before reading the body. Chunked requests reserve
     // the complete object ceiling; length-delimited requests reserve their size.
     let memory = if is_upload {
@@ -254,11 +265,11 @@ async fn rpc(
     State(state): State<Arc<ServerState>>,
     Path(repo): Path<String>,
     Extension(budget): Extension<Arc<RequestBudget>>,
-    headers: HeaderMap,
+    Extension(identity): Extension<Authenticated>,
     Json(request): Json<RpcRequest>,
 ) -> Response {
     state.metrics.rpc.fetch_add(1, Ordering::Relaxed);
-    let access = match state.authenticate(&headers, &repo) {
+    let access = match state.authenticate(&identity, &repo) {
         Ok(a) => a,
         Err(e) => return fail(e, &state),
     };
@@ -288,14 +299,14 @@ async fn upload(
     State(state): State<Arc<ServerState>>,
     Path(repo): Path<String>,
     Extension(budget): Extension<Arc<RequestBudget>>,
-    headers: HeaderMap,
+    Extension(identity): Extension<Authenticated>,
     body: Bytes,
 ) -> Response {
-    let access = match state.authenticate(&headers, &repo) {
+    let access = match state.authenticate(&identity, &repo) {
         Ok(a) => a,
         Err(e) => return fail(e, &state),
     };
-    if !access.permissions.write {
+    if !access.permissions.allows_any(true) {
         return fail(Error::Permission("repository upload denied".into()), &state);
     }
     let s = state.clone();
@@ -436,7 +447,7 @@ fn tree_at(repo: &Repository, commit: ObjectId, path: &RepoPath) -> Result<Objec
 }
 
 fn check_commit(repo: &Repository, a: &Access, c: &scion_types::Changeset) -> Result<()> {
-    if !a.permissions.write {
+    if !a.permissions.allows_any(true) {
         return Err(Error::Permission("repository commit denied".into()));
     }
     for (path, change) in &c.changes {
@@ -524,13 +535,13 @@ fn visible_page(
 
 fn dispatch(state: &ServerState, name: &str, a: &Access, request: RpcRequest) -> Result<RpcReply> {
     let repo = state.repository(name)?;
-    if !a.permissions.read && !a.permissions.write {
+    if !a.permissions.allows_any(false) && !a.permissions.allows_any(true) && !a.permissions.admin {
         return Err(Error::Permission("repository access denied".into()));
     }
     let bounded = |limit: usize| limit.clamp(1, 10_000);
     match request {
         RpcRequest::PutBlob { data } => {
-            if !a.permissions.write {
+            if !a.permissions.allows_any(true) {
                 return Err(Error::Permission("repository upload denied".into()));
             }
             let bytes = STANDARD
@@ -549,19 +560,19 @@ fn dispatch(state: &ServerState, name: &str, a: &Access, request: RpcRequest) ->
             RpcReply::success(repo.get_changeset(id)?)
         }
         RpcRequest::Resolve { revision } => {
-            if !a.permissions.read {
+            if !a.permissions.allows_any(false) {
                 return Err(Error::Permission("read access required".into()));
             }
             RpcReply::success(repo.resolve(&revision)?)
         }
         RpcRequest::GetRef { name } => {
-            if !a.permissions.read {
+            if !a.permissions.allows_any(false) {
                 return Err(Error::Permission("read access required".into()));
             }
             RpcReply::success(repo.resolve_ref(&name)?)
         }
         RpcRequest::ListRefs => {
-            if !a.permissions.read {
+            if !a.permissions.allows_any(false) {
                 return Err(Error::Permission("read access required".into()));
             }
             RpcReply::success(repo.list_refs()?)

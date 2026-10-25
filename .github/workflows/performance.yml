@@ -1,0 +1,67 @@
+name: Git comparison
+
+on:
+  pull_request:
+    paths:
+      - "crates/scion-engine/**"
+      - "crates/scion-graph/**"
+      - "crates/scion-store/**"
+      - "crates/scion-types/**"
+      - "scripts/compare_git.py"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/performance.yml"
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Dataset size
+        type: choice
+        options: [quick, full]
+        default: full
+  schedule:
+    - cron: "19 4 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: performance-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_TERM_COLOR: always
+
+jobs:
+  compare:
+    name: Durable Scion and Git
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - uses: Swatinem/rust-cache@v2
+      - name: Build release comparison worker
+        run: cargo build --release --locked -p scion-engine --example comparison_driver
+      - name: Measure and verify
+        env:
+          PROFILE: ${{ github.event_name == 'schedule' && 'full' || inputs.profile || 'quick' }}
+        shell: bash
+        run: |
+          if [ "$PROFILE" = full ]; then
+            python scripts/compare_git.py --no-build --output target/git-comparison/results
+          else
+            python scripts/compare_git.py --no-build --quick --output target/git-comparison/results
+          fi
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: git-comparison-${{ github.run_id }}
+          path: target/git-comparison/*
+          if-no-files-found: error
+          retention-days: 30

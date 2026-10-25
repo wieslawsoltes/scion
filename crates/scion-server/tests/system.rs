@@ -13,6 +13,7 @@ use std::{collections::BTreeMap, sync::Arc};
 struct Service {
     url: String,
     task: tokio::task::JoinHandle<()>,
+    state: Arc<ServerState>,
 }
 impl Drop for Service {
     fn drop(&mut self) {
@@ -22,11 +23,12 @@ impl Drop for Service {
 async fn start(store: SharedStore, config: ServerConfig) -> Service {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("http://{}", listener.local_addr().unwrap());
-    let app = router(ServerState::new(store, config).unwrap());
+    let state = ServerState::new(store, config).unwrap();
+    let app = router(state.clone());
     let task = tokio::spawn(async move {
         axum::serve(listener, app).await.unwrap();
     });
-    Service { url, task }
+    Service { url, task, state }
 }
 fn client(s: &Service, repo: &str, token: Option<&str>) -> Client {
     Client::new(&s.url, None, repo, token.map(str::to_owned), None).unwrap()
@@ -38,6 +40,324 @@ fn dev() -> ServerConfig {
         burst: 20_000,
         ..ServerConfig::default()
     }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn overlay_commits_virtual_renames_and_reused_open_inodes_through_authority() {
+    use scion_client::overlay::{OpenFileOptions, Overlay, OverlayConfig, ROOT_INODE, RenameMode};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let service = start(Arc::new(MemoryStore::new()), dev()).await;
+    let client = client(&service, "overlay", None);
+    let base = commit(
+        &client,
+        None,
+        &[("src/a.txt", b"virtual file"), ("stable.txt", b"hello")],
+        "base",
+    )
+    .await;
+    assert!(
+        client
+            .rpc::<bool>(RpcRequest::SetRef {
+                name: "main".into(),
+                expected: None,
+                target: Some(base)
+            })
+            .await
+            .unwrap()
+    );
+    let dir = tempfile::tempdir().unwrap();
+    let overlay = Overlay::initialize(
+        dir.path().join("overlay"),
+        OverlayConfig::new(&client, base, vec![], 1000, 1000),
+        client.manifest(base, &[]).await.unwrap(),
+    )
+    .unwrap();
+    let fetches = AtomicUsize::new(0);
+    let source = |witness| {
+        fetches.fetch_add(1, Ordering::SeqCst);
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(client.fetch_object(witness))
+        })
+    };
+    let src = overlay
+        .resolve(&RepoPath::new("src").unwrap())
+        .unwrap()
+        .inode;
+    overlay
+        .rename(src, "a.txt", src, "moved.txt", RenameMode::Replace)
+        .unwrap();
+    let fresh = overlay
+        .create(ROOT_INODE, "new.txt", 0o644, 1000, 1000)
+        .unwrap();
+    let options = OpenFileOptions {
+        read: true,
+        write: true,
+        ..Default::default()
+    };
+    let mut handle = overlay.open_file(fresh.inode, options, &source).unwrap();
+    overlay.write(&mut handle, 0, b"new contents").unwrap();
+    let first = overlay
+        .commit(
+            &client,
+            "Test".into(),
+            "virtual rename and edit".into(),
+            Some("main".into()),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        fetches.load(Ordering::SeqCst),
+        0,
+        "virtual rename fetched its blob"
+    );
+    let change: Changeset = client
+        .rpc(RpcRequest::GetChangeset { id: first })
+        .await
+        .unwrap();
+    assert!(
+        matches!(&change.changes[&RepoPath::new("src/moved.txt").unwrap()], FileChange::Put{copy_from:Some(source),..} if source.changeset==base && source.path==RepoPath::new("src/a.txt").unwrap())
+    );
+    assert_eq!(
+        client
+            .read_file(first, RepoPath::new("new.txt").unwrap())
+            .await
+            .unwrap(),
+        b"new contents"
+    );
+    assert_eq!(
+        client
+            .read_file(first, RepoPath::new("src/moved.txt").unwrap())
+            .await
+            .unwrap(),
+        b"virtual file"
+    );
+
+    let stable = overlay
+        .resolve(&RepoPath::new("stable.txt").unwrap())
+        .unwrap();
+    let mut reused = overlay.open_file(stable.inode, options, &source).unwrap();
+    overlay.write(&mut reused, 0, b"world").unwrap();
+    overlay.write(&mut reused, 0, b"hello").unwrap();
+    overlay.write(&mut handle, 0, b"NEW contents").unwrap();
+    let second = overlay
+        .commit(
+            &client,
+            "Test".into(),
+            "commit while another edit is reverted".into(),
+            Some("main".into()),
+        )
+        .await
+        .unwrap();
+    let change: Changeset = client
+        .rpc(RpcRequest::GetChangeset { id: second })
+        .await
+        .unwrap();
+    assert!(
+        !change
+            .changes
+            .contains_key(&RepoPath::new("stable.txt").unwrap())
+    );
+    assert!(overlay.status().unwrap().changes.is_empty());
+    overlay.write(&mut reused, 0, b"world").unwrap();
+    assert_eq!(overlay.status().unwrap().changes.len(), 1);
+    let third = overlay
+        .commit(
+            &client,
+            "Test".into(),
+            "reuse original file handle".into(),
+            Some("main".into()),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        client
+            .read_file(third, RepoPath::new("stable.txt").unwrap())
+            .await
+            .unwrap(),
+        b"world"
+    );
+    drop(handle);
+    drop(reused);
+    drop(overlay);
+    let reopened = Overlay::open(dir.path().join("overlay")).unwrap();
+    assert_eq!(reopened.config().unwrap().revision, third);
+    assert!(reopened.status().unwrap().changes.is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn live_policy_replacement_revokes_credentials_and_authenticates_before_body_read() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let make_policy = |token: &str| Policy {
+        principals: vec![Principal {
+            name: "test".into(),
+            token_hash: blake3::hash(token.as_bytes()).to_hex().to_string(),
+            repositories: BTreeMap::from([(
+                "demo".into(),
+                Permissions {
+                    read: true,
+                    ..Default::default()
+                },
+            )]),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let service = start(
+        Arc::new(MemoryStore::new()),
+        ServerConfig {
+            policy: make_policy("old"),
+            capability_key: [4; 32],
+            ..Default::default()
+        },
+    )
+    .await;
+    let old = client(&service, "demo", Some("old"));
+    old.rpc::<BTreeMap<String, ObjectId>>(RpcRequest::ListRefs)
+        .await
+        .unwrap();
+    let policies = service.state.policy_store();
+    let mut invalid = make_policy("old");
+    invalid.principals.push(invalid.principals[0].clone());
+    assert!(policies.replace(invalid).is_err());
+    old.rpc::<BTreeMap<String, ObjectId>>(RpcRequest::ListRefs)
+        .await
+        .unwrap();
+    policies.replace(make_policy("new")).unwrap();
+    assert!(
+        old.rpc::<BTreeMap<String, ObjectId>>(RpcRequest::ListRefs)
+            .await
+            .is_err()
+    );
+    let new = client(&service, "demo", Some("new"));
+    new.rpc::<BTreeMap<String, ObjectId>>(RpcRequest::ListRefs)
+        .await
+        .unwrap();
+    let mut stream = tokio::net::TcpStream::connect(service.url.trim_start_matches("http://"))
+        .await
+        .unwrap();
+    stream.write_all(b"POST /v1/repos/demo/blobs HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer old\r\nContent-Length: 104857600\r\nConnection: close\r\n\r\n").await.unwrap();
+    // The client sends no body. A server buffering before authentication would
+    // stall here and reserve the entire advertised upload until disconnect.
+    let mut bytes = [0; 1024];
+    let length = tokio::time::timeout(std::time::Duration::from_secs(5), stream.read(&mut bytes))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        std::str::from_utf8(&bytes[..length])
+            .unwrap()
+            .starts_with("HTTP/1.1 403")
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn directory_grants_work_with_denied_repository_defaults() {
+    let storage: SharedStore = Arc::new(MemoryStore::new());
+    let admin = start(storage.clone(), dev()).await;
+    let administrator = client(&admin, "demo", None);
+    let base = commit(
+        &administrator,
+        None,
+        &[("allowed/a", b"visible"), ("secret/b", b"hidden")],
+        "base",
+    )
+    .await;
+    administrator
+        .rpc::<bool>(RpcRequest::SetRef {
+            name: "main".into(),
+            expected: None,
+            target: Some(base),
+        })
+        .await
+        .unwrap();
+    let token = "directory-only-credential";
+    let policy = Policy {
+        principals: vec![Principal {
+            name: "limited".into(),
+            token_hash: blake3::hash(token.as_bytes()).to_hex().to_string(),
+            repositories: BTreeMap::from([(
+                "demo".into(),
+                Permissions {
+                    rules: vec![PathRule {
+                        prefix: RepoPath::new("allowed").unwrap(),
+                        read: Some(true),
+                        write: Some(true),
+                    }],
+                    ..Default::default()
+                },
+            )]),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let service = start(
+        storage,
+        ServerConfig {
+            policy,
+            capability_key: [3; 32],
+            ..Default::default()
+        },
+    )
+    .await;
+    let limited = client(&service, "demo", Some(token));
+    assert_eq!(limited.resolve("main").await.unwrap(), base);
+    let manifest = limited.manifest(base, &[]).await.unwrap();
+    assert_eq!(manifest.len(), 1);
+    assert!(manifest.contains_key(&RepoPath::new("allowed/a").unwrap()));
+    assert_eq!(
+        limited
+            .read_file(base, RepoPath::new("allowed/a").unwrap())
+            .await
+            .unwrap(),
+        b"visible"
+    );
+    assert!(
+        limited
+            .read_file(base, RepoPath::new("secret/b").unwrap())
+            .await
+            .is_err()
+    );
+    assert!(
+        limited
+            .rpc::<Changeset>(RpcRequest::GetChangeset { id: base })
+            .await
+            .is_err()
+    );
+    let added = commit(
+        &limited,
+        Some(base),
+        &[("allowed/new", b"permitted edit")],
+        "scoped write",
+    )
+    .await;
+    let blob = limited.put_blob(b"denied edit").await.unwrap();
+    let forbidden = Changeset {
+        parents: vec![added],
+        author: "Limited".into(),
+        committer: None,
+        timestamp_ms: 2,
+        message: "forbidden".into(),
+        changes: BTreeMap::from([(
+            RepoPath::new("secret/b").unwrap(),
+            FileChange::put(FileEntry {
+                id: blob,
+                size: 11,
+                kind: FileKind::Regular,
+            }),
+        )]),
+        metadata: BTreeMap::new(),
+    };
+    assert!(limited.create_commit(forbidden).await.is_err());
+    assert!(
+        limited
+            .rpc::<bool>(RpcRequest::SetRef {
+                name: "main".into(),
+                expected: Some(base),
+                target: Some(added)
+            })
+            .await
+            .is_err()
+    );
 }
 async fn commit(
     c: &Client,
@@ -364,6 +684,7 @@ async fn directory_permissions_cover_metadata_object_paths_and_blob_provenance()
                 name: "alice".into(),
                 token_hash: blake3::hash(token.as_bytes()).to_hex().to_string(),
                 repositories: BTreeMap::from([("demo".into(), limited)]),
+                ..Principal::default()
             },
             Principal {
                 name: "reader".into(),
@@ -375,8 +696,10 @@ async fn directory_permissions_cover_metadata_object_paths_and_blob_provenance()
                         ..Permissions::default()
                     },
                 )]),
+                ..Principal::default()
             },
         ],
+        ..Policy::default()
     };
     let s = start(
         store,

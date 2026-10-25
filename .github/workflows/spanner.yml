@@ -1,0 +1,53 @@
+name: Spanner transactions
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'crates/scion-store/**'
+      - 'crates/scion-store-spanner/**'
+      - 'crates/scion-types/**'
+      - 'Cargo.*'
+      - 'scripts/test-spanner.py'
+      - '.github/workflows/spanner.yml'
+  pull_request:
+    paths:
+      - 'crates/scion-store/**'
+      - 'crates/scion-store-spanner/**'
+      - 'crates/scion-types/**'
+      - 'Cargo.*'
+      - 'scripts/test-spanner.py'
+      - '.github/workflows/spanner.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spanner-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_INCREMENTAL: '0'
+
+jobs:
+  emulator:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      spanner:
+        image: gcr.io/cloud-spanner-emulator/emulator:1.5.59
+        ports:
+          - 9010:9010
+          - 9020:9020
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - name: Unit and documentation tests
+        run: cargo test -p scion-store-spanner --locked
+      - name: Real emulator transaction contract
+        run: python3 scripts/test-spanner.py

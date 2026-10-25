@@ -34,7 +34,7 @@ Stop the services with `docker compose down`. Add `--volumes` only when you inte
 
 ## Authenticated authority
 
-The authority requires an explicit development mode or an access policy. A production policy maps token hashes to principals and repository permissions. Hash a credential using the server helper instead of storing its plaintext in the policy:
+The authority requires an explicit development mode or an access policy. A production policy maps static token hashes or verified OIDC issuer/subject pairs to principals and repository/directory permissions. See [identity federation and policy reload](identity.md) for provider configuration, signing-key rotation, and atomic replacement. Hash a credential using the server helper instead of storing its plaintext in the policy:
 
 ```sh
 # Set SCION_TOKEN through your credential manager.
@@ -65,7 +65,7 @@ Example `policy.json`:
 }
 ```
 
-Rules use component-aware prefixes and longest-prefix selection. An omitted permission inherits the repository or applicable parent policy. `src` does not match `src-other`. Policy files are operator configuration, not repository-controlled content.
+Rules use component-aware prefixes and longest-prefix selection. An omitted permission inherits the repository or applicable parent policy. Repository permissions are defaults: a default-deny principal can receive explicit read/write grants for selected directories. `src` does not match `src-other`. Policy files are operator configuration, not repository-controlled content.
 
 ```sh
 export SCION_CAPABILITY_KEY="$(openssl rand -hex 32)"
@@ -74,6 +74,8 @@ scion-server \
   --data ./scion-data \
   --policy ./policy.json
 ```
+
+Policy files reload every ten seconds by default. Set `--policy-reload-seconds 0` to disable polling. Invalid replacements retain the last valid policy; a valid empty principal list revokes all authenticated principals. Policy distribution across several authorities remains an operator responsibility.
 
 The client reads its bearer credential from `SCION_TOKEN`. Working-copy state stores the server, object endpoint, and repository identity, but does not store the token.
 
@@ -153,7 +155,11 @@ Blob uploads have a 256 MiB object ceiling and share a 1 GiB reservation pool. L
 
 ## Persistence and scaling
 
-The local backend stores compressed immutable objects on disk and metadata in SQLite. It is convenient for a single authority and deterministic tests. SQLite serializes writes; this backend does not claim distributed write scalability.
+The local backend uses FULL-synchronous SQLite WAL for metadata and encoded objects up to 256 KiB. Larger objects use synchronized loose files. Prepared commit objects and records normally share the final membership/log transaction, reducing durability barriers; batches above the 16 MiB encoded buffer spill immutable content durably before final publication. Standalone blob writes and ref compare-and-swap remain independently durable operations. SQLite serializes writers, so this backend suits a single local authority and does not claim distributed write scalability.
+
+The bundled SQLite dependency is 3.51.3, which includes the upstream [concurrent WAL-reset corruption fix](https://sqlite.org/releaselog/3_51_3.html). A linked-version regression test prevents reintroducing an older affected bundled runtime. Read-only library access uses `LocalStore::open_read_only`: it skips schema/data mutation and participates in live WAL coordination, rather than opening the database as an immutable snapshot. SQLite may still create or use WAL/SHM coordination sidecars when filesystem permissions allow.
+
+Existing loose objects remain readable. This is a local storage-layout upgrade, not a change to object IDs or network encoding. Once small objects have been written to `inline_objects`, an older file-only Scion binary cannot read the complete repository. Plan a consistent backup before upgrade, and do not downgrade a live upgraded directory. Back up the database and any live WAL together with loose objects; the object directory alone is no longer sufficient.
 
 Build the server with PostgreSQL support for shared transactional metadata:
 
@@ -163,19 +169,25 @@ cargo build -p scion-server --release --features postgres --locked
 
 Configure `--database-url` with a PostgreSQL connection string. TLS connections use Rustls with the platform's trusted root certificates. Additional `--object-shard` connection strings select independent object-storage shards. Instances sharing the same repository authority must use compatible metadata and shard configuration. Keep the shard layout stable: changing a hash-to-shard mapping requires moving the existing objects or providing a migration layer.
 
+The [cloud adapter](cloud-storage.md) stores immutable objects in S3, GCS, or Azure Blob Storage while retaining transactional metadata in SQLite, PostgreSQL, or Spanner. Shared authorities need the same shared metadata backend and cloud namespace. [Spanner deployment](spanner.md) covers the provisioned schema, identity, transaction limits, and official emulator conformance. The server's `spanner` feature includes cloud support; `--spanner-database` requires a configured cloud provider and cannot be combined with PostgreSQL metadata.
+
 The storage interface separates immutable object operations from mutable metadata and reference CAS. A persistent backend must preserve durability, idempotence, and atomic reference updates; sharing only the object directory is not a substitute for shared transactional metadata.
 
 ### Change-log ordering
 
 Changeset identity is independent of the change-log sequence. Concurrent PostgreSQL transactions can reserve sequence numbers and commit in a different order. Log writers use a shared advisory gate, and a log reader briefly takes the exclusive gate to establish a committed sequence frontier. This prevents a consumer from advancing its cursor past a transaction that has not committed yet.
 
+Spanner publication increments a per-repository counter in the same transaction as membership, immutable records, and its log row. Strong readers therefore observe a committed sequence frontier. The counter is a coordination point; separate repositories have separate counters.
+
 The repository engine does not acquire a repository-wide mutation mutex or move a ref when creating immutable commits. The durable backends still use transactions and storage-level coordination. Calling the entire deployment strictly lock-free would be inaccurate.
 
 ## Recovery
 
-Back up authoritative metadata and objects as a consistent set. Preserve policy configuration and the signing key separately according to the organization's secret-management process. Immutable objects may be copied incrementally, but references and derived-data mappings need a consistent restore point.
+Back up authoritative metadata and objects as a consistent set. For LocalStore, stop writers and copy the complete store, or use a SQLite-aware backup procedure together with a consistent loose-object snapshot; copying an active database file without its WAL is insufficient. For shared databases, pair a consistent metadata snapshot with retained cloud or shard objects. Preserve policy configuration and the signing key separately according to the organization's secret-management process. Immutable objects may be copied incrementally, but references and derived-data mappings need a consistent restore point.
 
 After restoring, start an isolated authority, check known refs and representative changesets, and materialize selected files to verify hashes and modes. Rebuild disposable node and regional caches from the authority or validated cache snapshots. Do not substitute cache data for missing authoritative history.
+
+Uncommitted overlay work has its own backing directory; retain its database, local inode data, and related files together. Node/regional object caches are disposable, while dirty overlay bytes are user work. [Working-copy recovery](working-copies.md) documents ordinary checkout journals, mount synchronization, and safe overlay cleanup.
 
 ## Diagnostics
 

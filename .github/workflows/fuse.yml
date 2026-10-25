@@ -1,0 +1,70 @@
+name: Linux FUSE integration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'crates/scion-cli/**'
+      - 'crates/scion-client/**'
+      - 'crates/scion-server/**'
+      - 'crates/scion-engine/**'
+      - 'crates/scion-store/**'
+      - 'crates/scion-types/**'
+      - 'Cargo.*'
+      - 'scripts/smoke_fuse.py'
+      - '.github/workflows/fuse.yml'
+  pull_request:
+    paths:
+      - 'crates/scion-cli/**'
+      - 'crates/scion-client/**'
+      - 'crates/scion-server/**'
+      - 'crates/scion-engine/**'
+      - 'crates/scion-store/**'
+      - 'crates/scion-types/**'
+      - 'Cargo.*'
+      - 'scripts/smoke_fuse.py'
+      - '.github/workflows/fuse.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fuse-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_INCREMENTAL: '0'
+
+jobs:
+  mounted-working-copy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - name: Enable FUSE
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fuse3
+          if [ ! -c /dev/fuse ]; then
+            sudo modprobe fuse
+          fi
+          test -c /dev/fuse
+          sudo chmod a+rw /dev/fuse
+      - name: Build mounted client and authority
+        run: cargo build --release -p scion-cli -p scion-server --features scion-cli/fuse --locked
+      - name: Verify kernel I/O, mmap, publication, and remount
+        run: python3 scripts/smoke_fuse.py --scn target/release/scn --server-bin target/release/scion-server
+      - name: Preserve failure logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuse-failure-logs
+          path: /tmp/scion-fuse-smoke-*/**/*.log
+          if-no-files-found: ignore
+          retention-days: 7
