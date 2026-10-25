@@ -188,11 +188,22 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     }
     let directory = arguments
         .first()
-        .ok_or("usage: comparison_driver STORE [--once]")?;
-    let once = arguments
-        .get(1)
-        .is_some_and(|argument| argument == "--once");
-    let repository = Repository::new("benchmark", Arc::new(LocalStore::open(directory)?))?;
+        .ok_or("usage: comparison_driver STORE [--once] [--read-only]")?;
+    if arguments
+        .iter()
+        .skip(1)
+        .any(|argument| argument != "--once" && argument != "--read-only")
+    {
+        return Err("unknown comparison driver option".into());
+    }
+    let once = arguments.iter().any(|argument| argument == "--once");
+    let read_only = arguments.iter().any(|argument| argument == "--read-only");
+    let store = if read_only {
+        LocalStore::open_read_only(directory)?
+    } else {
+        LocalStore::open(directory)?
+    };
+    let repository = Repository::new("benchmark", Arc::new(store))?;
     let stdout = io::stdout();
     let mut output = stdout.lock();
     if !once {

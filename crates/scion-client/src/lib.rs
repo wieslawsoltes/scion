@@ -341,7 +341,7 @@ impl Client {
                 }
                 Err(e) => return Err(e),
             };
-            let tree: Tree = serde_json::from_slice(&bytes)?;
+            let tree = Tree::from_json(&bytes)?;
             tree.validate()?;
             for (name, entry) in tree.entries {
                 let child = path.join(&name)?;

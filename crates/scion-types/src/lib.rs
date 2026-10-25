@@ -6,6 +6,8 @@
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fmt, str::FromStr};
 
+mod tree_json;
+
 /// Errors cross crate boundaries without depending on a particular backend.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -198,28 +200,7 @@ pub struct RepoPath(String);
 impl RepoPath {
     pub fn new(value: impl Into<String>) -> Result<Self> {
         let value = value.into();
-        if value.len() > 4096
-            || value.contains(['\\', '\0', ':'])
-            || value.starts_with('/')
-            || value.ends_with('/') && !value.is_empty()
-        {
-            return Err(Error::Invalid(format!(
-                "nonportable repository path: {value:?}"
-            )));
-        }
-        if !value.is_empty()
-            && value.split('/').any(|p| {
-                p.is_empty()
-                    || p == "."
-                    || p == ".."
-                    || p.eq_ignore_ascii_case(".scion")
-                    || p.eq_ignore_ascii_case(".git")
-                    || p.len() > 255
-                    || reserved_component(p)
-            })
-        {
-            return Err(Error::Invalid(format!("unsafe repository path: {value:?}")));
-        }
+        validate_path(&value)?;
         Ok(Self(value))
     }
     pub fn root() -> Self {
@@ -252,17 +233,45 @@ impl RepoPath {
     }
 }
 
+// Validate borrowed names so tree decoding does not clone every component.
+fn validate_path(value: &str) -> Result<()> {
+    if value.len() > 4096
+        || value.contains(['\\', '\0', ':'])
+        || value.starts_with('/')
+        || value.ends_with('/') && !value.is_empty()
+    {
+        return Err(Error::Invalid(format!(
+            "nonportable repository path: {value:?}"
+        )));
+    }
+    if !value.is_empty()
+        && value.split('/').any(|p| {
+            p.is_empty()
+                || p == "."
+                || p == ".."
+                || p.eq_ignore_ascii_case(".scion")
+                || p.eq_ignore_ascii_case(".git")
+                || p.len() > 255
+                || reserved_component(p)
+        })
+    {
+        return Err(Error::Invalid(format!("unsafe repository path: {value:?}")));
+    }
+    Ok(())
+}
+
 fn reserved_component(name: &str) -> bool {
     if name.ends_with(['.', ' ']) {
         return true;
     }
-    let stem = name.split('.').next().unwrap_or(name).to_ascii_uppercase();
-    matches!(
-        stem.as_str(),
-        "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$"
-    ) || (stem.len() == 4
-        && (stem.starts_with("COM") || stem.starts_with("LPT"))
-        && matches!(stem.as_bytes()[3], b'1'..=b'9'))
+    let stem = name.split('.').next().unwrap_or(name);
+    ["CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"]
+        .iter()
+        .any(|reserved| stem.eq_ignore_ascii_case(reserved))
+        || (stem.len() == 4
+            && (stem.as_bytes()[..3].eq_ignore_ascii_case(b"COM")
+                || stem.as_bytes()[..3].eq_ignore_ascii_case(b"LPT"))
+            && matches!(stem.as_bytes()[3], b'1'..=b'9'))
 }
 impl fmt::Display for RepoPath {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -419,10 +428,25 @@ pub struct Tree {
     pub entries: BTreeMap<String, TreeEntry>,
 }
 impl Tree {
+    /// Decode stored tree JSON with a streaming path for the canonical shape.
+    ///
+    /// The accepted inputs and resulting values are identical to the derived
+    /// [`Deserialize`] implementation. Noncanonical shapes use that decoder as
+    /// a fallback; canonical bytes avoid internally tagged enum buffering.
+    /// Names are validated separately by [`Self::validate`].
+    pub fn from_json(bytes: &[u8]) -> Result<Self> {
+        match serde_json::from_slice::<tree_json::CanonicalTree>(bytes) {
+            Ok(tree) => Ok(Self {
+                entries: tree.entries,
+            }),
+            Err(_) => Ok(serde_json::from_slice(bytes)?),
+        }
+    }
+
     pub fn validate(&self) -> Result<()> {
         for name in self.entries.keys() {
-            let path = RepoPath::new(name.clone())?;
-            if path.is_root() || path.components().count() != 1 {
+            validate_path(name)?;
+            if name.is_empty() || name.contains('/') {
                 return Err(Error::Invalid(
                     "tree entries must be single path components".into(),
                 ));

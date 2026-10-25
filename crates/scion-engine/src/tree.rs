@@ -31,7 +31,7 @@ impl Repository {
         if let Some(tree) = self.trees.get(id) {
             return Ok(tree);
         }
-        let result: Tree = serde_json::from_slice(&self.store().get_object(ObjectKind::Tree, id)?)?;
+        let result = Tree::from_json(&self.store().get_object(ObjectKind::Tree, id)?)?;
         result.validate()?;
         let result = std::sync::Arc::new(result);
         self.trees.insert(id, result.clone());

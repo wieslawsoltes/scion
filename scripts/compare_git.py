@@ -71,9 +71,10 @@ def encoded(request):
 
 
 class ScionWorker:
-    def __init__(self, executable, store, log):
+    def __init__(self, executable, store, log, *, read_only=False):
         self.log = open(log, "w+b")
-        self.process = subprocess.Popen([str(executable), str(store)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.log, env=ENV)
+        command = [str(executable), str(store)] + (["--read-only"] if read_only else [])
+        self.process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.log, env=ENV)
         ready = self.process.stdout.readline()
         if not ready or json.loads(ready) != {"ready": True}:
             raise RuntimeError(f"Scion worker did not become ready: {ready!r}")
@@ -302,7 +303,7 @@ def main():
         "warmup": args.warmup,
     }
     if min(value for key, value in dimensions.items() if key != "warmup") < 1 or args.warmup < 0 or args.blob_bytes < 32:
-        parser.error("dimensions must be positive, warmup nonnegative, and blob size at least32 bytes")
+        parser.error("dimensions must be positive, warmup nonnegative, and blob size at least 32 bytes")
     source_before = source_metadata()
     build = ["cargo", "build", "--release", "--locked", "-p", "scion-engine", "--example", "comparison_driver"]
     if args.offline: build.append("--offline")
@@ -318,7 +319,7 @@ def main():
     result = {
         "schema": 1, "dimensions": dimensions, "host": host_metadata(work), "source": source_after,
         "build": {"command": build, "performed": not args.no_build, "incremental": False, "source_changed_during_build": source_before["source_sha256"] != source_after["source_sha256"], "driver_sha256": hashlib.sha256(driver.read_bytes()).hexdigest()},
-        "configuration": {"git": GIT_CONFIG, "scion": {"backend": "LocalStore", "sqlite": "WAL, synchronous=FULL", "object_durability": "file fsync and directory fsync on Unix"}, "cache": f"warm OS cache;{args.warmup} warmups;fresh query processes;no cache dropping", "sample_order": "alternating Scion/Git, then Git/Scion", "git_object_format": "sha1", "scion_object_format": "blake3", "fixture": f"files share{args.variants} deterministic{args.blob_bytes}-byte text bodies;metadata-heavy fixture, not a real repository"},
+        "configuration": {"git": GIT_CONFIG, "scion": {"backend": "LocalStore", "sqlite": "WAL, synchronous=FULL", "object_durability": "small objects and publication metadata in FULL-synchronous SQLite; larger loose objects use file fsync and directory fsync on Unix", "read_queries": "read-only SQLite connection with live WAL; no schema migrations"}, "cache": f"warm OS cache; {args.warmup} warmups; fresh query processes; no cache dropping", "sample_order": "alternating Scion/Git, then Git/Scion", "git_object_format": "sha1", "scion_object_format": "blake3", "fixture": f"files share {args.variants} deterministic {args.blob_bytes}-byte text bodies; metadata-heavy fixture, not a real repository"},
         "work_directory": str(work), "setup": [], "samples": [], "verification": {},
     }
     rows = result["samples"]
@@ -393,7 +394,7 @@ def main():
             for sample in range(args.warmup + dimensions["samples"]):
                 for implementation in (["scion", "git"] if sample % 2 == 0 else ["git", "scion"]):
                     if implementation == "scion":
-                        completed, elapsed = run([driver, scion_dir, "--once"], input=encoded(request))
+                        completed, elapsed = run([driver, scion_dir, "--once", "--read-only"], input=encoded(request))
                         response = json.loads(completed.stdout)
                         if not response["ok"]: raise RuntimeError(response["error"])
                         value = response["result"]
@@ -417,7 +418,7 @@ def main():
                 completed, elapsed = run([driver, "--version"] if implementation == "scion" else ["git", "--version"])
                 record(rows, "process_startup", "fresh_process", implementation, sample, elapsed, output_bytes=len(completed.stdout))
         print("Measuring resident reads across deterministic warmed paths", file=sys.stderr, flush=True)
-        scion = ScionWorker(driver, scion_dir, work / "scion-read.stderr")
+        scion = ScionWorker(driver, scion_dir, work / "scion-read.stderr", read_only=True)
         reader = GitReader(git_dir, work / "git-read.stderr")
         indices = [(sample * 104729) % dimensions["files"] for sample in range(dimensions["samples"])]
         result["configuration"]["resident_reads"] = {
