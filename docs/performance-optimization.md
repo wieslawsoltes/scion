@@ -102,12 +102,27 @@ compare the new writer with the original canonical oracle and exercise held
 readers, failures, and cache bounds. Envelope decoders continue accepting prior
 standard Zstandard frames.
 
+## Frozen graph follow-up
+
+The public graph snapshot API and local CLI remove SQLite opening from explicitly
+prepared graph queries. Both full comparison profiles beat Git in every
+functional median, and all eight graph measurements (four operations at two
+history sizes) improve by at least 2× over the preserved Scion baseline. Export
+costs, artifact size, frozen membership, raw samples, and all controls are in the
+[frozen graph comparison](git-comparison.md#frozen-graph-comparisons-25-october-2026).
+
+The Windows held-reader replacement regression exposed `tempfile::persist`'s
+platform limitation. Publication now uses the standard library's atomic rename
+with a guarded temporary-file lifetime; the old reader stays open throughout the
+regression. Failure cleanup and Windows normal-file attributes are also checked.
+
 ## Remaining investigation
 
-1. Reduce graph-query repository-opening cost through an explicit frozen graph
-   artifact with validated source identity, bounded reads and caches, and visible
-   preparation/storage costs. Live queries must retain their existing semantics.
-2. Repeat the larger-history comparison with sufficient local disk capacity and
-   publish only runs whose correctness checks finish successfully.
+1. Reduce repeated decoding in resident graph queries within the existing shared
+   repository cache budget, and compare the original MemoryStore scaling workload
+   against a clean preserved baseline with complete per-trial provenance.
+2. Reduce cold inline-object read overhead. The subsequent default profile shows
+   1.870× fresh-read and 1.942× durable-commit improvements; the large profile's
+   fresh-read improvement is 1.950×. Keep these observations alongside prior runs.
 3. Keep every remaining target and control visible; these local measurements do
    not establish arbitrary-workload or distributed-service speedups.

@@ -85,6 +85,25 @@ Directory history includes descendant changes and remains available after the di
 
 Text patches are omitted for binary data and files beyond the patch-size limit; before/after entries remain available. Blame requires UTF-8 text without NUL bytes. Complete logs and graph metadata require full repository read permission; path-scoped APIs enforce directory policy.
 
+## Frozen local graph queries
+
+```sh
+mkdir -p snapshots
+scn --repo demo graph-snapshot create --data ./scion-data snapshots/demo.graph
+scn --json graph-snapshot info snapshots/demo.graph
+scn --repo demo graph-snapshot ancestor snapshots/demo.graph ANCESTOR DESCENDANT
+scn --repo demo graph-snapshot merge-base snapshots/demo.graph LEFT RIGHT
+scn --repo demo graph-snapshot nth-parent snapshots/demo.graph REVISION 100
+```
+
+Creation reads one consistent local publication view, verifies changesets, and
+rebuilds the graph. The output must be outside the source store. `--max-commits N`
+bounds export size. Queries require an explicit repository and full changeset
+IDs; `--identity ID` additionally pins the source identity printed by `info`.
+These commands run locally without a server, working-copy context, or async
+runtime. Later publications require another export. Missing IDs fail explicitly.
+See [frozen graph snapshots](graph-snapshots.md) for examples and lifecycle rules.
+
 ## Reference updates
 
 ```sh

@@ -14,6 +14,7 @@ readme = "README.md"
 scion-types.workspace = true
 scion-store.workspace = true
 scion-engine.workspace = true
+scion-graph.workspace = true
 scion-protocol.workspace = true
 scion-client.workspace = true
 scion-cache.workspace = true
