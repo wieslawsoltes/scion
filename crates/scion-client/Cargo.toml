@@ -25,6 +25,8 @@ notify.workspace = true
 ignore.workspace = true
 futures.workspace = true
 fs2.workspace = true
+blake3.workspace = true
+rusqlite.workspace = true
 unicode-normalization = "0.1"
 
 [dev-dependencies]
@@ -39,5 +41,6 @@ default = []
 fuse = ["dep:fuser", "dep:libc"]
 
 [target.'cfg(target_os = "linux")'.dependencies]
+rustix = { version = "1", features = ["fs"] }
 fuser = { version = "0.16", default-features = false, features = ["abi-7-31"], optional = true }
 libc = { workspace = true, optional = true }

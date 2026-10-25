@@ -1,5 +1,6 @@
 //! Sparse working-copy state, safe hydration, dirty checks and filesystem events.
-use crate::Client;
+pub use crate::status_cache::StatusStats;
+use crate::{Client, status_cache::StatCache};
 use fs2::FileExt;
 use futures::{StreamExt, TryStreamExt, stream};
 use scion_protocol::{ObjectWitness, RpcRequest, now_ms};
@@ -42,11 +43,18 @@ pub struct StatusEntry {
     pub status: StatusKind,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StatusReport {
+    pub changes: Vec<StatusEntry>,
+    pub stats: StatusStats,
+}
+
 /// An exclusively locked working copy. Credentials are never persisted in state.
 pub struct WorkingCopy {
     root: PathBuf,
     state: WorkingCopyState,
     _lock: File,
+    stat_cache: parking_lot::Mutex<Option<StatCache>>,
 }
 impl WorkingCopy {
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
@@ -69,6 +77,7 @@ impl WorkingCopy {
             root,
             state,
             _lock: lock,
+            stat_cache: parking_lot::Mutex::new(None),
         })
     }
     pub fn root(&self) -> &Path {
@@ -121,6 +130,7 @@ impl WorkingCopy {
             root,
             state,
             _lock: lock,
+            stat_cache: parking_lot::Mutex::new(None),
         };
         wc.save()?;
         if !lazy {
@@ -134,15 +144,37 @@ impl WorkingCopy {
     /// Absent unmaterialized entries are intentionally ignored. This invariant
     /// prevents a commit from deleting every file in a lazy checkout.
     pub fn status(&self) -> Result<Vec<StatusEntry>> {
+        Ok(self.status_report()?.changes)
+    }
+    /// Scan the worktree with a disposable persisted content fingerprint cache.
+    /// Unix hits require identity, change time, mode and size to match, and the
+    /// verified observation must be outside a conservative timestamp race window.
+    /// Platforms without a reliable change counter always verify content.
+    pub fn status_report(&self) -> Result<StatusReport> {
+        let cache_path = self.root.join(".scion/stat-cache");
+        let mut guard = self.stat_cache.lock();
+        let cache = guard.get_or_insert_with(|| StatCache::load(&cache_path));
+        cache.retain(|path| self.state.files.contains_key(path));
+        let mut stats = StatusStats::default();
         let mut changes = BTreeMap::new();
         for (path, tracked) in &self.state.files {
+            stats.files_examined += 1;
             // A virtual file that is merely absent is unchanged. A physical
             // directory at that file, or a regular-file ancestor, is an explicit
             // type replacement and needs deletion of the old virtual entries.
             let (current, replaced) = match locate_tracked(&self.root, path)? {
                 TrackedLocation::Path(disk) => match fs::symlink_metadata(&disk) {
                     Ok(metadata) if metadata.is_dir() => (None, true),
-                    Ok(_) => (disk_entry(&disk, Some(tracked.entry.kind))?, false),
+                    Ok(metadata) => (
+                        Some(cache.inspect(
+                            path,
+                            &disk,
+                            &metadata,
+                            tracked.entry.kind,
+                            &mut stats,
+                        )?),
+                        false,
+                    ),
                     Err(error) if error.kind() == std::io::ErrorKind::NotFound => (None, false),
                     Err(error) => return Err(error.into()),
                 },
@@ -150,11 +182,14 @@ impl WorkingCopy {
                 TrackedLocation::Replaced => (None, true),
             };
             match current {
-                Some((entry, _)) if entry != tracked.entry => {
+                Some(entry) if entry != tracked.entry => {
                     changes.insert(path.clone(), StatusKind::Modified);
                 }
-                None if tracked.materialized || replaced => {
-                    changes.insert(path.clone(), StatusKind::Deleted);
+                None => {
+                    cache.remove(path);
+                    if tracked.materialized || replaced {
+                        changes.insert(path.clone(), StatusKind::Deleted);
+                    }
                 }
                 _ => {}
             }
@@ -178,12 +213,26 @@ impl WorkingCopy {
                 continue;
             }
             safe_path(&self.root, &path, false)?;
+            stats.untracked_entries += 1;
             changes.insert(path, StatusKind::Added);
         }
-        Ok(changes
-            .into_iter()
-            .map(|(path, status)| StatusEntry { path, status })
-            .collect())
+        cache.save(&cache_path)?;
+        Ok(StatusReport {
+            changes: changes
+                .into_iter()
+                .map(|(path, status)| StatusEntry { path, status })
+                .collect(),
+            stats,
+        })
+    }
+    /// Explicitly discard optimization data after an external filesystem event.
+    /// This does not change tracked files, sparse selections or materialization.
+    pub fn invalidate_status_cache(&self, prefix: &RepoPath) -> Result<()> {
+        let path = self.root.join(".scion/stat-cache");
+        let mut guard = self.stat_cache.lock();
+        let cache = guard.get_or_insert_with(|| StatCache::load(&path));
+        cache.invalidate(prefix);
+        cache.save(&path)
     }
     fn selected(&self, path: &RepoPath) -> bool {
         self.state.sparse.is_empty() || self.state.sparse.iter().any(|p| p.contains(path))
@@ -968,6 +1017,7 @@ mod tests {
                 root,
                 state,
                 _lock: lock,
+                stat_cache: parking_lot::Mutex::new(None),
             },
         )
     }
@@ -1222,5 +1272,62 @@ mod tests {
                 },
             ]
         );
+    }
+    #[cfg(unix)]
+    #[test]
+    fn status_cache_is_persisted_and_checks_ctime_identity_and_corruption() {
+        use std::time::{Duration, SystemTime};
+        let (temp, wc) = fixture(false);
+        let disk = temp.path().join("src/main.rs");
+        fs::create_dir(disk.parent().unwrap()).unwrap();
+        fs::write(&disk, b"hello").unwrap();
+        wc.save().unwrap();
+        // A near-write observation must not become trusted just by waiting.
+        let racy = wc.status_report().unwrap();
+        assert_eq!(racy.stats.files_hashed, 1);
+        std::thread::sleep(Duration::from_millis(2100));
+        let settled = wc.status_report().unwrap();
+        assert_eq!(settled.stats.files_hashed, 1);
+        let hit = wc.status_report().unwrap();
+        assert_eq!(hit.stats.cache_hits, 1);
+        assert_eq!(hit.stats.bytes_hashed, 0);
+        drop(wc);
+        let wc = WorkingCopy::open(temp.path()).unwrap();
+        assert_eq!(wc.status_report().unwrap().stats.cache_hits, 1);
+        let old_mtime = fs::metadata(&disk).unwrap().modified().unwrap();
+        fs::write(&disk, b"world").unwrap();
+        File::options()
+            .write(true)
+            .open(&disk)
+            .unwrap()
+            .set_times(fs::FileTimes::new().set_modified(old_mtime))
+            .unwrap();
+        let modified = wc.status_report().unwrap();
+        assert_eq!(modified.changes[0].status, StatusKind::Modified);
+        assert_eq!(modified.stats.cache_hits, 0);
+        // A replacement inode with identical length and mtime is not a hit.
+        fs::rename(&disk, disk.with_extension("old")).unwrap();
+        fs::write(&disk, b"hello").unwrap();
+        File::options()
+            .write(true)
+            .open(&disk)
+            .unwrap()
+            .set_times(fs::FileTimes::new().set_modified(old_mtime))
+            .unwrap();
+        let replacement = wc.status_report().unwrap();
+        assert!(
+            replacement
+                .changes
+                .iter()
+                .all(|s| s.path.as_str() != "src/main.rs")
+        );
+        assert_eq!(replacement.stats.files_hashed, 1);
+        wc.invalidate_status_cache(&RepoPath::root()).unwrap();
+        assert_eq!(wc.status_report().unwrap().stats.cache_hits, 0);
+        drop(wc);
+        fs::write(temp.path().join(".scion/stat-cache"), b"corrupt cache").unwrap();
+        let wc = WorkingCopy::open(temp.path()).unwrap();
+        assert_eq!(wc.status_report().unwrap().stats.files_hashed, 1);
+        assert!(fs::metadata(disk).unwrap().modified().unwrap() < SystemTime::now());
     }
 }

@@ -35,6 +35,46 @@ struct Args {
         hide_env_values = true
     )]
     object_shard: Vec<String>,
+    /// Store immutable objects in an existing cloud bucket/container.
+    #[cfg(feature = "cloud")]
+    #[arg(long, env = "SCION_CLOUD_PROVIDER", requires = "cloud_bucket")]
+    cloud_provider: Option<scion_store_cloud::CloudProvider>,
+    #[cfg(feature = "cloud")]
+    #[arg(long, env = "SCION_CLOUD_BUCKET", requires = "cloud_provider")]
+    cloud_bucket: Option<String>,
+    #[cfg(feature = "cloud")]
+    #[arg(long, env = "SCION_CLOUD_PREFIX", default_value = "scion")]
+    cloud_prefix: String,
+    #[cfg(feature = "cloud")]
+    #[arg(long, env = "SCION_CLOUD_REGION", requires = "cloud_provider")]
+    cloud_region: Option<String>,
+    #[cfg(feature = "cloud")]
+    #[arg(long, env = "SCION_CLOUD_ACCOUNT", requires = "cloud_provider")]
+    cloud_account: Option<String>,
+    #[cfg(feature = "cloud")]
+    #[arg(
+        long,
+        env = "SCION_CLOUD_ENDPOINT",
+        hide_env_values = true,
+        requires = "cloud_provider"
+    )]
+    cloud_endpoint: Option<String>,
+    #[cfg(feature = "cloud")]
+    #[arg(long, requires = "cloud_endpoint")]
+    cloud_allow_http: bool,
+    #[cfg(feature = "cloud")]
+    #[arg(long, requires = "cloud_provider")]
+    cloud_virtual_hosted_style: bool,
+    /// Permit anonymous GCS/Azure requests only to an explicit loopback emulator.
+    #[cfg(feature = "cloud")]
+    #[arg(long, requires = "cloud_endpoint")]
+    cloud_anonymous_emulator: bool,
+    #[cfg(feature = "cloud")]
+    #[arg(long, default_value_t = 60)]
+    cloud_timeout_seconds: u64,
+    #[cfg(feature = "cloud")]
+    #[arg(long, default_value_t = 16)]
+    cloud_max_inflight: usize,
 }
 
 #[tokio::main]
@@ -76,15 +116,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None if args.dev => [0; 32],
         None => return Err("set --capability-key or SCION_CAPABILITY_KEY".into()),
     };
-    #[cfg(not(feature = "postgres"))]
-    let store: SharedStore = Arc::new(LocalStore::open(&args.data)?);
-    #[cfg(feature = "postgres")]
     let store: SharedStore =
         tokio::task::spawn_blocking(move || -> scion_types::Result<SharedStore> {
-            if let Some(url) = args.database_url {
+            #[cfg(all(feature = "cloud", feature = "postgres"))]
+            if args.cloud_provider.is_some() && !args.object_shard.is_empty() {
+                return Err(scion_types::Error::Invalid(
+                    "--cloud-provider and --object-shard select alternative object backends".into(),
+                ));
+            }
+            #[cfg(feature = "postgres")]
+            let store: SharedStore = if let Some(url) = args.database_url {
                 let metadata: SharedStore = Arc::new(scion_store::PostgresStore::connect(&url, 8)?);
                 if args.object_shard.is_empty() {
-                    Ok(metadata)
+                    metadata
                 } else {
                     let shards = args
                         .object_shard
@@ -94,7 +138,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 .map(|s| Arc::new(s) as SharedStore)
                         })
                         .collect::<scion_types::Result<Vec<_>>>()?;
-                    Ok(Arc::new(scion_store::ShardedStore::new(metadata, shards)?))
+                    Arc::new(scion_store::ShardedStore::new(metadata, shards)?)
                 }
             } else {
                 if !args.object_shard.is_empty() {
@@ -102,8 +146,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         "--object-shard requires --database-url".into(),
                     ));
                 }
-                Ok(Arc::new(LocalStore::open(&args.data)?))
+                Arc::new(LocalStore::open(&args.data)?)
+            };
+            #[cfg(not(feature = "postgres"))]
+            let store: SharedStore = Arc::new(LocalStore::open(&args.data)?);
+            #[cfg(feature = "cloud")]
+            if let Some(provider) = args.cloud_provider {
+                let bucket = args.cloud_bucket.ok_or_else(|| {
+                    scion_types::Error::Invalid("cloud bucket/container is required".into())
+                })?;
+                let mut cloud = scion_store_cloud::CloudConfig::new(provider, bucket);
+                cloud.prefix = args.cloud_prefix;
+                cloud.region = args.cloud_region;
+                cloud.account = args.cloud_account;
+                cloud.endpoint = args.cloud_endpoint;
+                cloud.allow_http = args.cloud_allow_http;
+                cloud.virtual_hosted_style = args.cloud_virtual_hosted_style;
+                cloud.anonymous_emulator = args.cloud_anonymous_emulator;
+                cloud.limits.max_inflight = args.cloud_max_inflight;
+                cloud.limits.operation_timeout =
+                    std::time::Duration::from_secs(args.cloud_timeout_seconds);
+                return Ok(Arc::new(scion_store_cloud::CloudStore::connect(
+                    store, cloud,
+                )?));
             }
+            Ok(store)
         })
         .await??;
     let config = ServerConfig {
