@@ -28,7 +28,7 @@ The article does not publish Scion's source code, object format, API schema, mer
 | SCN-12 | On-demand files | Explicit lazy hydration plus optional Linux read-only FUSE mount | Lazy-file tests; FUSE implementation; real mounts require a capable Linux host |
 | SCN-13 | Immutable object negotiation | Exact tree/blob requests with bounded payloads and integrity checks | Object codec tests and `envelope` fuzz target |
 | SCN-14 | Shared cache tiers | Same object endpoint, byte-bounded disk/memory cache, miss coalescing, validated upstream topology | Cache tests, service integration, container topology CI |
-| SCN-15 | Snapshot bootstrapping | Portable verified cache snapshots, idempotent imports, daemon startup snapshot option | Snapshot round-trip and corruption tests |
+| SCN-15 | Snapshot bootstrapping | Portable verified cache snapshots, idempotent imports, startup restoration, periodic/shutdown export | Snapshot round-trip and corruption tests |
 | SCN-16 | Distributed persistence | Pluggable storage, pooled PostgreSQL, independent hash-partitioned object backends | `Storage`, `PostgresStore`, `ShardedStore`; backend conformance tests |
 | SCN-17 | Repository/directory IAM | Hashed bearer credentials, component-aware rules, path witnesses, signed object tickets | Policy/ticket tests and authority integration tests |
 | SCN-18 | Git migration | Streaming topological ingestion, first-parent deltas, durable OID mapping, supported mode/content preservation | `scion-git` migration/restart/export tests |
@@ -70,7 +70,7 @@ Writable sparse/lazy workspaces explicitly hydrate selected files. Linux FUSE pr
 
 Multiple merge bases with different trees produce an explicit virtual-base conflict. The engine does not silently choose one base or claim a recursive virtual-base synthesis algorithm. Binary changes are versioned exactly; conflicting binary edits require resolution. Large text operations have resource bounds.
 
-The CLI rebase operation replays one delta; the reusable engine also provides stack replay. The bisection API chooses a candidate and leaves test execution to its caller. Search is path-based. A dedicated content-search index and review application are separate products.
+The CLI rebase operation replays one delta by default and supports a first-parent interval with `--base`; the reusable engine exposes both forms. The bisection API chooses a candidate and leaves test execution to its caller. Search is path-based. A dedicated content-search index and review application are separate products.
 
 ### Identity and access management
 

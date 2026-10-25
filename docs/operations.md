@@ -117,6 +117,8 @@ An optional Unix socket can be selected with `--socket /path/to/scion.sock`; Uni
 
 The configured upstream must have the expected tier: daemon → cache → server. An upstream failure must not cause a daemon to bypass its cache and contact the authority. This preserves the failure boundary and prevents an outage from concentrating the entire node load on the authority.
 
+After five consecutive upstream failures, the cache opens its circuit breaker for five seconds. When that cooldown expires, one probe checks whether the upstream has recovered before normal traffic resumes. The `scion_cache_circuit_rejections_total` metric distinguishes requests rejected during that interval from requests that reached the upstream. Concurrent misses for the same object share one upstream fetch, and `--max-inflight` bounds concurrent upstream work.
+
 Cache byte budgets govern stored object bytes. Leave additional disk space for metadata, temporary files, and snapshots. A useful initial budget comes from the working set of overlapping jobs on the node, not from the complete repository size.
 
 ### Snapshots
@@ -127,7 +129,21 @@ scn --cache-bytes 536870912 cache import ./new-node-cache ./node-cache.snapshot
 scn cache stats ./new-node-cache
 ```
 
-A cache snapshot warms a disposable cache. It does not back up repository references, change logs, access policy, or the authoritative object collection. Use a quiescent cache when exporting or importing unless the selected backend explicitly guarantees a concurrent snapshot contract.
+A cache directory is exclusively owned by its running process. Stop the service before opening that directory with the standalone `scn cache` commands. Use the service's snapshot options for ongoing snapshots:
+
+```sh
+scion-daemon \
+  --data ./node-cache \
+  --upstream http://127.0.0.1:7421 \
+  --capability-key "$SCION_CAPABILITY_KEY" \
+  --snapshot ./warm.snapshot \
+  --snapshot-out ./next.snapshot \
+  --snapshot-interval 300
+```
+
+`--snapshot` imports a snapshot at startup. `--snapshot-out` writes a snapshot during clean shutdown and periodically while the daemon runs. `--snapshot-interval` is in seconds and defaults to 300; setting it to `0` disables periodic writes while retaining the shutdown snapshot. The regional cache accepts the same snapshot options. Snapshot import validates object framing, sizes, and content hashes.
+
+A cache snapshot warms a disposable cache. It does not back up repository references, change logs, access policy, or the authoritative object collection.
 
 ## Persistence and scaling
 

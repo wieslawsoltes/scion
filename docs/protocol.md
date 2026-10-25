@@ -68,6 +68,7 @@ Each request is a JSON object tagged by `method` in snake case. IDs below are fu
 | `root_tree` | `commit` | Root tree ID |
 | `tree_at` | `commit`, `path` | Directory tree ID |
 | `list_files` | `commit`, `prefix` | Path-to-file-entry map |
+| `list_files_page` | `commit`, `prefix`, `after`, `limit` | `entries` map and `next` cursor |
 | `read_file` | `commit`, `path` | Base64 bytes |
 | `diff` | `base`, `target` | File differences and optional text patches |
 | `log` | `revision`, `limit` | Ordered ID/changeset pairs |
@@ -80,6 +81,7 @@ Each request is a JSON object tagged by `method` in snake case. IDs below are fu
 | `nth_parent` | `revision`, `distance` | First-parent ancestor ID or null |
 | `merge` | `ours`, `theirs`, `author`, `message`, `timestamp_ms` | Merge result |
 | `rebase` | `revision`, `onto` | Merge result |
+| `rebase_stack` | `tip`, `base`, `onto` | Rebased tip, old-to-new mapping, and stopping conflicts |
 | `revert` | `revision`, `onto`, `mainline`, `author`, `message`, `timestamp_ms` | Merge result |
 | `bisect` | `good`, `bad`, `skip` | Candidate ID or null |
 | `object_access` | `commit`, `path`, `kind`, `id` | Signed object ticket |
@@ -90,7 +92,11 @@ Each request is a JSON object tagged by `method` in snake case. IDs below are fu
 
 A merge result contains `changeset` and `conflicts`. Successful operations contain an ID and an empty conflict list. Unresolved operations contain `changeset: null` and path-scoped conflict records with base/ours/theirs entries. This is a semantic result, not necessarily an HTTP error. An API caller must inspect it before treating the operation as completed.
 
-`rebase` replays one changeset. The engine's `rebase_stack` API is a separate reusable library operation. `bisect` selects a candidate; it does not execute a test process. `search` searches paths, not arbitrary file contents.
+`rebase` replays one changeset. `rebase_stack` replays the first-parent interval `(base, tip]` onto `onto`. Its result contains `rewritten` (an old-to-new ID map), `tip` (the last successfully replayed revision), and `conflicts`. Replay stops at the first conflict, while completed immutable rewrites remain available. Both operations also exist in the reusable engine API. `bisect` selects a candidate; it does not execute a test process. `search` searches paths, not arbitrary file contents.
+
+`list_files_page` returns lexically ordered, authorized paths. Start with `after: null`, then pass the response's `next` value as the next request's exclusive `after` cursor. A null `next` marks completion. The authority advances over inaccessible entries internally and returns only a visible path as a continuation cursor, so pagination does not reveal hidden filenames. Keep the same immutable commit and prefix throughout the scan. Prefer this method when a full manifest could exceed the control-reply bound.
+
+`history` also accepts a directory prefix, including a directory that has been deleted. Directory history requires read access throughout that subtree because its result can reveal descendant activity.
 
 ## Changeset representation
 

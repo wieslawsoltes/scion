@@ -36,7 +36,7 @@ Use Rust 1.88 or later and a C compiler. Git is required for Git migration. Use 
 ```sh
 git clone https://github.com/wieslawsoltes/scion.git
 cd scion
-cargo build --workspace --bins --release --locked
+cargo build --workspace --bins --release --all-features --locked
 ```
 
 The executables are in `target/release`:
@@ -51,10 +51,12 @@ The executables are in `target/release`:
 To install the commands from this checkout:
 
 ```sh
-cargo install --path crates/scion-cli --locked
-cargo install --path crates/scion-server --locked
-cargo install --path crates/scion-cache --locked
+cargo install --path crates/scion-cli --all-features --locked
+cargo install --path crates/scion-server --all-features --locked
+cargo install --path crates/scion-cache --all-features --locked
 ```
+
+These commands enable PostgreSQL support and the Linux FUSE client where applicable. Embedding applications can select only the features they need.
 
 Tagged releases are built for Linux x64/ARM64, macOS x64/ARM64, and Windows x64. [Release documentation](docs/releases.md) explains binary bundles, crate archives, checksums, and registry publication.
 
@@ -134,6 +136,7 @@ All product crates carry package metadata and versioned internal dependencies. C
 | [Protocol](docs/protocol.md) | Control RPCs, binary object format, capabilities, errors, and compatibility |
 | [Operations](docs/operations.md) | Deployment, identity policy, caches, persistence, recovery, and diagnostics |
 | [Testing and performance](docs/testing.md) | Test suites, fuzz targets, measurement methodology |
+| [Measured engine performance](docs/performance.md) | Reproducible workloads, measured latency, complexity, and limits |
 | [Build and release](docs/releases.md) | CI, native assets, checksums, and topological crate publication |
 | [Contributing](CONTRIBUTING.md) | Development setup and change invariants |
 | [Security](SECURITY.md) | Disclosure process and trust boundaries |

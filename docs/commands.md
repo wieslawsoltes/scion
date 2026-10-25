@@ -52,7 +52,11 @@ scn checkout CHANGESET_ID --force
 scn watch
 ```
 
-`hydrate` downloads a selected prefix, or all selected paths when the prefix is omitted. `checkout` rejects dirty-file replacement unless `--force` was requested. Untracked-file and unsafe-path checks remain relevant even for a forced checkout. `watch` reports working-copy changes using filesystem notifications.
+`hydrate` downloads a selected prefix, or all selected paths when the prefix is omitted. `checkout` rejects dirty-file replacement unless `--force` was requested. Untracked-file and unsafe-path checks remain relevant even for a forced checkout. On Windows and macOS, checkout rejects case-equivalent and Unicode-equivalent path collisions before changing files.
+
+Checkout stages downloads before installing files, rechecks local modifications, and records a recovery journal. Opening a working copy after an interrupted checkout automatically restores its previous state. If a file changed outside the transaction, recovery preserves it and reports an actionable conflict instead of replacing it. Keep the working-copy metadata and recovery backups together until recovery completes.
+
+`watch` reports working-copy changes using filesystem notifications. It releases the working-copy lock while waiting for events, so other Scion commands can operate on the same checkout. It waits and retries if a commit temporarily holds that lock.
 
 Working-copy operations accept `--path DIRECTORY` where shown by their help output; `status` and `watch` accept a positional directory. This is useful for automation that manages several workspaces without changing the process working directory.
 
@@ -64,6 +68,7 @@ scn refs
 scn cat main src/lib.rs
 scn log main --limit 50
 scn history main src/lib.rs --limit 50
+scn history main src --limit 50
 scn blame main src/lib.rs
 scn diff BASE TARGET
 scn search main parser --prefix src --limit 100
@@ -73,6 +78,8 @@ scn merge-base LEFT RIGHT
 ```
 
 Revisions can be full IDs or ref names. Prefix IDs are display conveniences and are not accepted as identity. `log` uses DAG history; path history follows the first-parent history index. `search` matches paths. `copies` reports exact-content or explicit copy provenance available to the engine.
+
+Directory history includes descendant changes and remains available after the directory is deleted. The authenticated principal needs read access to the whole selected subtree.
 
 Text patches are omitted for binary data and files beyond the patch-size limit; before/after entries remain available. Blame requires UTF-8 text without NUL bytes. Complete logs and graph metadata require full repository read permission; path-scoped APIs enforce directory policy.
 
@@ -92,14 +99,15 @@ An update without `--expected` means create only if absent. It is not a force up
 ```sh
 scn merge LEFT RIGHT --author "Ada <ada@example.test>" -m "Merge feature"
 scn rebase CHANGESET ONTO
+scn rebase TIP ONTO --base BASE
 scn revert CHANGESET ONTO --mainline 0 --author "Ada <ada@example.test>" -m "Revert regression"
 scn bisect GOOD BAD
 scn bisect GOOD BAD --skip UNTESTABLE_CHANGESET
 ```
 
-These operations run on the authority and do not modify a working copy or move a ref. Inspect the returned `changeset` and `conflicts`. A successful merge-like result has an ID and no conflicts. A conflict result has a null ID and explicit conflict records; callers must not treat a successful HTTP exchange alone as a successful merge.
+These operations run on the authority and do not modify a working copy or move a ref. For a merge, single-commit rebase, or revert, inspect the returned `changeset` and `conflicts`. A successful result has an ID and no conflicts. A conflict result has a null ID and explicit conflict records; callers must not treat a successful HTTP exchange alone as a successful merge.
 
-The CLI rebase command replays one first-parent delta. Applications needing an interval can use the engine's `rebase_stack` API. Rebase of a merge changeset flattens its first-parent delta. Revert uses a **zero-based** mainline parent; `0` means the first parent. Bisection returns a candidate; your automation executes tests and records good/bad outcomes.
+The CLI rebase command replays one first-parent delta by default. With `--base BASE`, it replays the first-parent range `(BASE, TIP]` and returns `rewritten` (the old-to-new changeset mapping), `tip` (the last successfully replayed commit), and `conflicts`. It stops at the first conflict; completed rewrites remain available. The base must be on that first-parent chain. Rebase of a merge changeset flattens its first-parent delta. Revert uses a **zero-based** mainline parent; `0` means the first parent. Bisection returns a candidate; your automation executes tests and records good/bad outcomes.
 
 After a successful operation, update a ref with the resulting ID and its expected old value, or check out the new ID directly.
 
@@ -115,6 +123,8 @@ scn --json rpc - < request.json
 
 This command deserializes a typed `RpcRequest`; it is useful for automation and new integrations. See [protocol methods](protocol.md#control-methods) for the schema. Supply actual 64-character IDs for ID fields rather than a ref name unless the field explicitly accepts revisions as strings.
 
+For large file lists, use `list_files_page` with `commit`, `prefix`, `after`, and `limit`. Start with a null `after`, consume the `entries` map, and use the returned `next` visible path as the next exclusive cursor until `next` is null. This keeps each reply bounded and avoids leaking restricted filenames through pagination.
+
 ## Git migration
 
 The Git bridge operates directly on a trusted local storage backend. It does not use HTTP credentials and is an administrative migration tool.
@@ -125,7 +135,7 @@ scn --repo demo import-git /path/to/git/repository --data ./scion-data --rev mai
 scn --repo demo import-git /path/to/git/repository --data ./scion-data --no-refs
 ```
 
-By default the importer walks all reachable refs in parent-before-child order. It uses `git cat-file --batch` and first-parent NUL-delimited diffs, without checking out each revision. Durable mappings make repeated runs skip previously ingested commits. Imported branch refs become their branch names; tag refs use `tags/NAME`. Annotated tag data is retained separately while Scion refs resolve to changesets.
+By default the importer walks all reachable refs in parent-before-child order. It uses `git cat-file --batch` and first-parent NUL-delimited diffs, without checking out each revision. Durable mappings make repeated runs skip previously ingested commits. Imported references retain their canonical Git names, including `refs/heads/main` and `refs/tags/v1`. Branches also receive shortened aliases such as `main`, unless that alias would start with `refs/`. Tags use only their canonical names, so a tag `v1` cannot collide with a branch `tags/v1`. Raw annotated tag objects are retained by Git object ID with a mutable name pointer, allowing a later import to follow force-updated tags.
 
 The bridge preserves supported file contents, modes, ordered parents, author/committer metadata, and raw Git headers for auditing. Scion computes independent changeset IDs. Paths and commit metadata must be UTF-8 and pass Scion's repository-path rules. Submodule entries retain their referenced Git object ID; the importer does not recursively clone submodules.
 
@@ -136,7 +146,7 @@ scn --repo demo export-git main ./exported.git --data ./scion-data --ref refs/he
 git -C ./exported.git log refs/heads/main
 ```
 
-Export uses Git's `fast-import`. It preserves history structure, file modes, and content; it does not promise original Git commit IDs or signature validity because Scion and Git metadata identities differ. Use a dedicated destination repository and inspect the result before introducing it into another workflow.
+Export uses Git's `fast-import`. It preserves history structure, file modes, content, author/committer timezones, and distinct committer timestamps. SHA-256-origin or SHA-256 submodule history selects a SHA-256 Git destination; an existing destination with an incompatible object format is rejected before import begins. Export does not promise original Git commit IDs or signature validity because Scion and Git metadata identities differ. Use a dedicated destination repository and inspect the result before introducing it into another workflow.
 
 ## Cache snapshots
 

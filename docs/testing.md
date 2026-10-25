@@ -34,6 +34,19 @@ cargo +nightly fuzz run envelope -- -max_total_time=60 -max_len=65536
 
 CI runs short fuzz sessions on relevant pull requests and longer weekly sessions. A failing input is uploaded as an artifact. Reproduce it locally with `cargo +nightly fuzz run TARGET path/to/artifact`; reduce it with `cargo +nightly fuzz tmin TARGET path/to/artifact`, then add a focused regression test before fixing the implementation.
 
+### Initial sanitizer smoke
+
+On October 25, 2026, all three targets completed with AddressSanitizer and LeakSanitizer enabled, using a five-second fuzzing budget per target and a 65,536-byte input limit:
+
+| Target | Successful executions |
+|---|---:|
+| `paths` | 168,670 |
+| `canonical` | 298,292 |
+| `envelope` | 7,975 |
+| **Total** | **474,937** |
+
+All targets exited successfully without a reported invariant violation or sanitizer finding. These short smoke runs verify that the harnesses execute and exercise their oracles; they are not exhaustive fuzz campaigns or proof that every input is safe.
+
 ## Measuring performance
 
 Measure independent dimensions instead of reporting one aggregate source-control number:
@@ -49,3 +62,5 @@ Measure independent dimensions instead of reporting one aggregate source-control
 Use separate cold-cache and warm-cache runs. Record commit, target architecture, compiler version, CPU, memory, backend configuration, repository generator parameters, concurrency, and raw results. Report p50, p95, and p99 for service latency. Avoid extrapolating from a small local fixture to a production fleet.
 
 The performance ratios in Anthropic's article belong to its own infrastructure and workload. This project does not adopt those ratios as measured results.
+
+The repository's own [engine benchmark results](performance.md) include the command, workload sizes, sample counts, and limits of the measurements. Raw rows are emitted by `cargo bench -p scion-engine --bench scaling` for comparison against future changes.

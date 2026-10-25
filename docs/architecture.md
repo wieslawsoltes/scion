@@ -57,11 +57,11 @@ Graph queries have explicit traversal limits. These protect the service from unb
 
 ## Derived data
 
-The `DerivedData` trait defines a stable name, version, and deterministic derivation from a changeset and its ordered parent values. The generic evaluator walks parent dependencies iteratively, persists content-addressed results, and stores a versioned mapping per changeset. Applications choose eager preparation or lazy evaluation.
+The `DerivedData` trait defines a stable name, version, and deterministic derivation from a changeset and its ordered parent values. The generic evaluator walks parent dependencies iteratively, persists content-addressed results, and stores a versioned mapping per changeset. Applications choose eager preparation or lazy evaluation. Concurrent callers for the same repository/index/revision share a bounded in-flight computation; traversal and admission limits bound cold work.
 
 Racing derivations can calculate the same result; immutable insertion requires identical bytes for a repeated key. An index implementation that emits different results for the same version and inputs violates the contract. Application-specific indexes remain server-side and do not need a client protocol change.
 
-The built-in history index uses a persistent path trie whose leaves point to linked history records, including tombstones. A path-history query follows only that path's records after the index is prepared. Cached blame preserves unchanged-line attribution and can inherit attribution from explicit copy sources. Exact-content copy detection uses a persistent hash trie. Path search works over repository paths and selected prefixes.
+The built-in history index uses a persistent path trie whose leaves point to linked history records, including tombstones. A path-history query follows only that path's records after the index is prepared. Directory history combines descendant changes and retains deleted-directory history. Cached blame preserves unchanged-line attribution and can inherit attribution from explicit copy sources. Exact-content copy detection uses a persistent hash trie. Path search works over repository paths and selected prefixes.
 
 Cold lazy derivation can traverse historical dependencies. Its cost is distinct from a warm indexed query and should be measured separately.
 
@@ -71,7 +71,7 @@ Merges compare base, ours, and theirs. Non-overlapping text edits can merge auto
 
 Rebase replays a first-parent delta onto a selected revision, preserving author/message metadata and recording its source revision. Rebasing a merge changeset intentionally flattens that delta. The engine also provides a first-parent stack rebase API with an old-to-new mapping and a conflict result at the stopping point.
 
-Revert creates a new changeset that applies the inverse delta onto a specified revision. For merge commits, `mainline` selects a zero-based parent. Bisection returns a candidate from the good/bad interval; executing builds, remembering outcomes, and deciding whether a test is reliable belong to the calling automation.
+Revert creates a new changeset that applies the inverse delta onto a specified revision. For merge commits, `mainline` selects a zero-based parent. Bisection returns a candidate from the good/bad interval; executing builds, remembering outcomes, and deciding whether a test is reliable belong to the calling automation. Candidate balancing is exact for intervals up to 512 eligible commits and samples candidate scores for larger intervals.
 
 ## Storage backends
 
@@ -94,11 +94,15 @@ Working-copy state records revision, repository, endpoint configuration, sparse 
 
 The writable client supports explicit hydration, change monitoring, dirty-file checks, and repository-relative path validation. On Linux, the optional FUSE feature exposes a read-only revision as a filesystem that obtains file contents on read. These are separate workflows: explicit lazy hydration supports editable working copies; FUSE supplies transparent read access to an immutable revision.
 
+Checkout uses a staged transaction with a durable recovery journal and backup files. Installation does not overwrite an unexpected destination; local modifications are checked again after downloads. Reopening an interrupted transaction rolls it back, including an interrupted rollback, while preserving files modified outside the transaction. Windows and macOS materialization rejects case-equivalent and Unicode-equivalent path collisions. Change monitoring releases the working-copy lock between status reads.
+
 ## Authorization and cache reuse
 
 The authority checks bearer identity and repository/path policy for control operations. For object reads it validates a revision/path witness and issues a short-lived MAC-protected ticket. Tickets include object identity, repository, revision, path, kind, and expiry. The object endpoint does not expose a bare unauthenticated hash lookup.
 
 Shared caches validate authorization before serving a hit and only accept the expected upstream tier. They coalesce concurrent misses for one object and bound upstream concurrency. Cached bytes do not become authority: integrity checking and capability validation remain required independently.
+
+LRU bookkeeping takes logarithmic time in the number of cached objects. Disk operations and decompression run outside the global cache metadata mutex and outside async runtime worker threads. A circuit breaker limits repeated upstream failures; an open circuit never redirects traffic to a different tier. Periodic snapshots can warm replacement nodes without making cached objects authoritative.
 
 ## Embedding example
 

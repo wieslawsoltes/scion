@@ -1,7 +1,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use scion_types::{canonical, Changeset, ObjectId, ObjectKind, Tree};
+use scion_types::{Changeset, ObjectId, ObjectKind, Tree, canonical};
 
 fuzz_target!(|input: &[u8]| {
     if let Ok(changeset) = serde_json::from_slice::<Changeset>(input) {
@@ -17,6 +17,9 @@ fuzz_target!(|input: &[u8]| {
         let roundtrip: Tree = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(tree, roundtrip);
         assert_eq!(tree.validate().is_ok(), roundtrip.validate().is_ok());
-        assert_ne!(ObjectId::hash(ObjectKind::Tree, &bytes), ObjectId::hash(ObjectKind::Blob, &bytes));
+        assert_ne!(
+            ObjectId::hash(ObjectKind::Tree, &bytes),
+            ObjectId::hash(ObjectKind::Blob, &bytes)
+        );
     }
 });

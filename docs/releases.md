@@ -54,6 +54,8 @@ It then performs validation and builds native binary bundles for:
 
 Each bundle contains all four executables, licenses, user documentation, and `RELEASE.json` identifying the source commit, target, and compiler. Unix bundles preserve executable permissions. Windows bundles use ZIP. Archive timestamps are normalized to the source commit time; this does not imply that compiler outputs are bit-for-bit reproducible across machines.
 
+Release binaries are built with all workspace features, including PostgreSQL support and, on Linux, the read-only FUSE mount. Default source builds can choose a smaller feature set. FUSE still requires host filesystem support and appropriate mount permissions at runtime.
+
 The GitHub release contains the bundles, a source archive, all `.crate` archives, and `SHA256SUMS`. The release becomes visible only after all binary builds succeed and the assets have been uploaded. Release reruns can replace assets for the same tag; do not move an already published tag to another commit.
 
 To verify a downloaded file on Linux:

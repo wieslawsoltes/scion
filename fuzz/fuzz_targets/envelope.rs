@@ -11,7 +11,10 @@ fuzz_target!(|input: &[u8]| {
     // Every input exercises a valid compressed object and a corrupt object.
     let id = ObjectId::hash(ObjectKind::Blob, input);
     let encoded = encode_object(ObjectKind::Blob, input).unwrap();
-    assert_eq!(decode_object(ObjectKind::Blob, id, &encoded).unwrap(), input);
+    assert_eq!(
+        decode_object(ObjectKind::Blob, id, &encoded).unwrap(),
+        input
+    );
     assert!(decode_object(ObjectKind::Tree, id, &encoded).is_err());
     let mut incorrect_id = id;
     incorrect_id.0[0] ^= 1;
