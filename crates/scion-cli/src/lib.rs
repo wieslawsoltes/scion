@@ -1,4 +1,6 @@
 //! The `scn` thin command-line client.
+mod graph_snapshot;
+
 use clap::{Parser, Subcommand};
 use scion_client::{
     Client, ObjectCache, WorkingCopy, WorkingCopyState,
@@ -179,6 +181,11 @@ enum Commands {
         a: String,
         b: String,
     },
+    /// Create or query an explicit frozen graph file without contacting a server.
+    GraphSnapshot {
+        #[command(subcommand)]
+        command: graph_snapshot::Command,
+    },
     /// Ingest a Git repository into a local Scion storage backend without a checkout.
     ImportGit {
         source: PathBuf,
@@ -341,6 +348,19 @@ async fn invoke(args: &Args, client: &Client, request: RpcRequest) -> Result<()>
     output(args, client.rpc::<serde_json::Value>(request).await?)
 }
 
+/// Execute explicit local graph-snapshot commands without an async runtime.
+///
+/// `Some` means the command was handled, including a possible command error.
+/// `None` leaves execution to [`run`]. No service client or working-copy context
+/// is initialized here. The asynchronous runner also continues to support
+/// these commands for applications that already own a runtime.
+pub fn try_run_local(args: &Args) -> Option<Result<()>> {
+    match &args.command {
+        Commands::GraphSnapshot { command } => Some(graph_snapshot::run(args, command)),
+        _ => None,
+    }
+}
+
 pub async fn run(args: &Args) -> Result<()> {
     match &args.command {
         Commands::Init {
@@ -487,6 +507,7 @@ pub async fn run(args: &Args) -> Result<()> {
             }
             Ok(())
         }
+        Commands::GraphSnapshot { command } => graph_snapshot::run(args, command),
         Commands::ImportGit {
             source,
             data,

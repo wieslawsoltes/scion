@@ -111,7 +111,14 @@ is recorded. `--driver PATH` selects another build. A default run uses:
 
 Override individual dimensions with `--files`, `--commits`, `--branch-commits`,
 `--samples`, `--warmup`, `--fanout`, `--variants` and `--blob-bytes`.
-`--work-root PATH` selects the filesystem containing both repositories.
+`--work-root PATH` selects the filesystem containing both repositories. By
+default, fixtures use the operating system's temporary directory. Use a local
+filesystem with ample free space, outside directories managed by live file
+synchronization or backup tools that rewrite files in place. SQLite's database,
+WAL, and shared-memory files must remain under SQLite's coordination while the
+benchmark runs; copying those files independently is not a consistent backup.
+For example, `--work-root /tmp/scion-benchmarks` keeps live fixture databases
+separate from a synchronized source checkout. Create that directory first.
 `--keep-workdir` retains the fixture, identifiers and worker logs for investigation.
 The temporary fixture is removed otherwise. Output consists of a JSON report,
 a CSV containing every sample and a separate summary CSV.

@@ -5,6 +5,11 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap};
 use std::rc::Rc;
 
+mod snapshot;
+pub use snapshot::{
+    GraphSnapshot, GraphSnapshotMetadata, GraphSnapshotOptions, MAX_SNAPSHOT_NODES, SnapshotSource,
+};
+
 const MAX_VISITED: usize = 10_000_000;
 
 /// Immutable derived graph record; `jumps[k]` is the 2^k-th first parent.

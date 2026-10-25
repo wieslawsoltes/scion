@@ -1,6 +1,9 @@
 //! Durable comparison worker used by scripts/compare_git.py. It is an example,
 //! not a Cargo benchmark, so `cargo test --all-targets` cannot start a long run.
-use scion_engine::{CommitRefUpdate, Repository};
+use scion_engine::{
+    CommitRefUpdate, GraphSnapshotExportLimits, Repository, export_local_graph_snapshot,
+};
+use scion_graph::GraphSnapshot;
 use scion_store::{LocalStore, PreparedObject};
 use scion_types::{
     Changeset, FileChange, FileEntry, FileKind, ObjectId, ObjectKind, RepoPath, Result,
@@ -210,6 +213,34 @@ fn execute(repository: &Repository, request: Request) -> Result<Value> {
     }
 }
 
+enum Backend {
+    Repository(Repository),
+    Snapshot(GraphSnapshot),
+}
+
+impl Backend {
+    fn execute(&self, request: Request) -> Result<Value> {
+        match self {
+            Self::Repository(repository) => execute(repository, request),
+            Self::Snapshot(snapshot) => match request {
+                Request::Noop => Ok(json!(true)),
+                Request::Ancestry {
+                    ancestor,
+                    descendant,
+                } => Ok(json!(scion_graph::is_ancestor(
+                    snapshot, ancestor, descendant
+                )?)),
+                Request::MergeBases { left, right } => {
+                    Ok(json!(scion_graph::merge_bases(snapshot, left, right)?))
+                }
+                _ => Err(scion_types::Error::Invalid(
+                    "the explicit frozen graph snapshot only supports graph queries".into(),
+                )),
+            },
+        }
+    }
+}
+
 fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let arguments: Vec<_> = std::env::args().skip(1).collect();
     if arguments.as_slice() == ["--version"] {
@@ -218,26 +249,63 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     }
     let directory = arguments
         .first()
-        .ok_or("usage: comparison_driver STORE [--once] [--read-only]")?;
-    if arguments
-        .iter()
-        .skip(1)
-        .any(|argument| argument != "--once" && argument != "--read-only")
-    {
-        return Err("unknown comparison driver option".into());
+        .ok_or("usage: comparison_driver STORE [--once] [--read-only] [--graph-snapshot FILE --snapshot-identity ID]")?;
+    if arguments.len() == 3 && arguments[1] == "--prepare-graph-snapshot" {
+        let metadata = export_local_graph_snapshot(
+            directory,
+            "benchmark",
+            &arguments[2],
+            GraphSnapshotExportLimits::default(),
+        )?;
+        println!("{}", serde_json::to_string(&metadata)?);
+        return Ok(());
     }
-    let once = arguments.iter().any(|argument| argument == "--once");
-    let read_only = arguments.iter().any(|argument| argument == "--read-only");
-    let store = if read_only && once {
-        // One logical query keeps a consistent WAL view and reuses its read
-        // transaction. Resident workers retain live visibility between requests.
-        LocalStore::open_read_snapshot(directory)?
-    } else if read_only {
-        LocalStore::open_read_only(directory)?
+    let (mut once, mut read_only) = (false, false);
+    let (mut snapshot_path, mut snapshot_identity) = (None, None);
+    let mut options = arguments.iter().skip(1);
+    while let Some(option) = options.next() {
+        match option.as_str() {
+            "--once" => once = true,
+            "--read-only" => read_only = true,
+            "--graph-snapshot" if snapshot_path.is_none() => {
+                snapshot_path = Some(options.next().ok_or("missing snapshot path")?);
+            }
+            "--snapshot-identity" if snapshot_identity.is_none() => {
+                snapshot_identity = Some(
+                    options
+                        .next()
+                        .ok_or("missing snapshot identity")?
+                        .parse::<ObjectId>()?,
+                );
+            }
+            _ => return Err("unknown or repeated comparison driver option".into()),
+        }
+    }
+    let backend = if let (Some(path), Some(identity)) = (snapshot_path, snapshot_identity) {
+        if !once || !read_only {
+            return Err("a frozen graph snapshot requires --once --read-only".into());
+        }
+        // The prepared artifact supplies its own explicit frozen membership.
+        // Opening/validating it remains inside the coordinator's elapsed time;
+        // this branch intentionally does not open the live SQLite repository.
+        Backend::Snapshot(GraphSnapshot::open(path, "benchmark", identity)?)
     } else {
-        LocalStore::open(directory)?
+        if snapshot_path.is_some() || snapshot_identity.is_some() {
+            return Err(
+                "--graph-snapshot and --snapshot-identity must be supplied together".into(),
+            );
+        }
+        let store = if read_only && once {
+            // One logical query keeps a consistent WAL view and reuses its read
+            // transaction. Resident workers retain live visibility between requests.
+            LocalStore::open_read_snapshot(directory)?
+        } else if read_only {
+            LocalStore::open_read_only(directory)?
+        } else {
+            LocalStore::open(directory)?
+        };
+        Backend::Repository(Repository::new("benchmark", Arc::new(store))?)
     };
-    let repository = Repository::new("benchmark", Arc::new(store))?;
     let stdout = io::stdout();
     let mut output = stdout.lock();
     if !once {
@@ -254,7 +322,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         }
         let request: Request = serde_json::from_str(&line)?;
         let start = Instant::now();
-        let result = execute(&repository, request);
+        let result = backend.execute(request);
         let elapsed = start.elapsed().as_nanos();
         let response = match result {
             Ok(result) => Response::Success {

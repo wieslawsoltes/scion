@@ -1,8 +1,13 @@
 use clap::Parser;
-#[tokio::main]
-async fn main() {
+fn main() {
     let args = scion_cli::Args::parse();
-    if let Err(error) = scion_cli::run(&args).await {
+    let result = scion_cli::try_run_local(&args).unwrap_or_else(|| {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()?;
+        runtime.block_on(scion_cli::run(&args))
+    });
+    if let Err(error) = result {
         if args.json {
             eprintln!("{}", serde_json::json!({"error": error.to_string()}));
         } else {

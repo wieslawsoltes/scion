@@ -2885,6 +2885,7 @@ dependencies = [
  "scion-client",
  "scion-engine",
  "scion-git",
+ "scion-graph",
  "scion-protocol",
  "scion-store",
  "scion-types",
@@ -2925,8 +2926,11 @@ dependencies = [
 name = "scion-engine"
 version = "0.1.0"
 dependencies = [
+ "blake3",
  "diffy",
  "parking_lot",
+ "rusqlite",
+ "same-file",
  "scion-graph",
  "scion-store",
  "scion-types",
@@ -2952,8 +2956,10 @@ dependencies = [
 name = "scion-graph"
 version = "0.1.0"
 dependencies = [
+ "blake3",
  "scion-types",
  "serde",
+ "tempfile",
 ]
 
 [[package]]

@@ -13,6 +13,8 @@ readme = "README.md"
 [dependencies]
 scion-types.workspace = true
 serde.workspace = true
+blake3.workspace = true
+tempfile.workspace = true
 
 [lints]
 workspace = true

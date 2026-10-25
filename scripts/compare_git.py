@@ -49,6 +49,7 @@ def environment():
 
 
 ENV = environment()
+GRAPH_OPERATIONS = frozenset(("ancestry_positive", "ancestry_negative", "merge_base_ancestor", "merge_base_divergent"))
 
 
 def run(command, *, input=None, accepted=(0,), cwd=ROOT):
@@ -72,6 +73,47 @@ def file_path(index, fanout):
 
 def encoded(request):
     return json.dumps(request, separators=(",", ":")).encode() + b"\n"
+
+
+def sha256_file(path):
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def prepare_graph_snapshot(driver, directory, work):
+    """Prepare the public frozen-graph artifact, without changing the live store."""
+    descriptor, name = tempfile.mkstemp(prefix="scion-graph-", suffix=".snapshot", dir=work)
+    os.close(descriptor)
+    path = Path(name).resolve()
+    try:
+        command = [driver, directory, "--prepare-graph-snapshot", path]
+        completed, elapsed = run(command)
+        metadata = json.loads(completed.stdout)
+        identity = metadata["source"]["identity"]
+        if metadata["repository"] != "benchmark" or not isinstance(identity, str) or len(identity) != 64 or any(c not in "0123456789abcdef" for c in identity):
+            raise ValueError("invalid graph snapshot repository or identity")
+        if not isinstance(metadata["node_count"], int) or metadata["node_count"] < 1:
+            raise ValueError("benchmark graph snapshot must contain the published fixture")
+        if metadata["file_bytes"] != path.stat().st_size:
+            raise ValueError("graph snapshot size differs from its export metadata")
+        return {
+            "path": str(path), "sha256": sha256_file(path), "metadata": metadata,
+            "command": [str(part) for part in command], "preparation_wall_ns": elapsed,
+            "scope": "explicit frozen membership; verified changesets and rebuilt graph; no live-store fallback",
+        }
+    except BaseException:
+        path.unlink(missing_ok=True)
+        raise
+
+
+def query_command(executable, directory, implementation, operation, snapshot=None):
+    command = [executable, directory, "--once", "--read-only"]
+    if snapshot is not None and implementation == "scion" and operation in GRAPH_OPERATIONS:
+        command.extend(["--graph-snapshot", snapshot["path"], "--snapshot-identity", snapshot["metadata"]["source"]["identity"]])
+    return command
 
 
 class ScionWorker:
@@ -470,6 +512,7 @@ def main():
     parser.add_argument("--no-build", action="store_true")
     parser.add_argument("--offline", action="store_true")
     parser.add_argument("--static-crt", action="store_true", help="native x86_64/aarch64 GNU/Linux static CRT; verify the ELF even with --no-build")
+    parser.add_argument("--graph-snapshot", action="store_true", help="prepare and time the public frozen graph index for candidate graph queries; record preparation cost")
     parser.add_argument("--driver", type=Path, help="comparison executable (default: the selected Cargo build output)")
     parser.add_argument("--baseline-driver", type=Path, help="previous Scion executable; requires its published --baseline-report")
     parser.add_argument("--baseline-report", type=Path, help="clean-source report whose driver SHA-256 must match --baseline-driver")
@@ -556,6 +599,7 @@ def main():
         result["baseline"]["fixture_scope"] = reused["baseline_fixture_scope"] if reused is not None else "independent store with identical logical requests and verified identical Scion IDs"
         result["configuration"]["sample_order"] += "; baseline insertion rotates through positions 0, 1, 2 (all six permutations every six iterations)"
     rows = result["samples"]
+    snapshot = None
     scion = git = reader = baseline = None
     try:
         if reused is None:
@@ -644,6 +688,15 @@ def main():
         for command in [["git", "-C", git_dir, "repack", "-ad"], ["git", "-C", git_dir, "commit-graph", "write", "--reachable", "--changed-paths"]]:
             _, elapsed = run(command)
             result["setup"].append({"operation": "git_query_preparation", "command": [str(part) for part in command], "wall_ns": elapsed})
+        if args.graph_snapshot:
+            print("Preparing verified frozen Scion graph snapshot (setup excluded from query timings)", file=sys.stderr, flush=True)
+            snapshot = prepare_graph_snapshot(driver, scion_dir, work)
+            if any(output.resolve() == Path(snapshot["path"]) for output in report_outputs(args.output)):
+                raise ValueError("--output must not overwrite the prepared graph snapshot")
+            result["graph_snapshot"] = snapshot
+            result["setup"].append({"operation": "scion_graph_snapshot_preparation", "command": snapshot["command"], "wall_ns": snapshot["preparation_wall_ns"], "file_bytes": snapshot["metadata"]["file_bytes"]})
+            result["configuration"]["scion"]["graph_queries"] = "explicit frozen GraphSnapshot; repository/identity checked on each fresh open; complete file lifetime inside query wall time"
+            result["configuration"]["scion"]["read_queries"] = "fresh file/diff queries use read-only SQLite snapshots including committed WAL; resident requests use live read-only connections; graph queries use the separately prepared frozen artifact"
         if reused is None:
             (work / "fixture.json").write_text(json.dumps(fixture, indent=2) + "\n")
         result["fixture"] = fixture
@@ -664,7 +717,7 @@ def main():
                 for implementation in implementation_order(sample, baseline_info is not None):
                     if implementation != "git":
                         executable, directory = (driver, scion_dir) if implementation == "scion" else (args.baseline_driver, baseline_dir)
-                        completed, elapsed = run([executable, directory, "--once", "--read-only"], input=encoded(request))
+                        completed, elapsed = run(query_command(executable, directory, implementation, operation, snapshot), input=encoded(request))
                         response = json.loads(completed.stdout)
                         if not response["ok"]: raise RuntimeError(response["error"])
                         value = response["result"]
@@ -734,6 +787,10 @@ def main():
         result["summary"] = summarize(rows)
         if hashlib.sha256(driver.read_bytes()).hexdigest() != result["build"]["driver_sha256"]:
             raise RuntimeError("candidate executable changed during measurement")
+        if snapshot is not None:
+            if sha256_file(Path(snapshot["path"])) != snapshot["sha256"]:
+                raise RuntimeError("prepared graph snapshot changed during measurement")
+            result["verification"]["graph_snapshot"] = "artifact SHA-256 unchanged; complete verified publication snapshot; all graph answers match the same fixture and preserved baseline"
         lookup = {(row["operation"], row["scope"], row["implementation"]): row for row in result["summary"]}
         if baseline_info is not None:
             if hashlib.sha256(args.baseline_driver.read_bytes()).hexdigest() != baseline_info["driver_sha256"] or hashlib.sha256(args.baseline_report.read_bytes()).hexdigest() != baseline_info["source_report_sha256"]:

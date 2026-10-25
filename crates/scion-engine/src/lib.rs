@@ -6,12 +6,14 @@ use scion_types::*;
 use std::collections::BTreeMap;
 
 mod derived;
+mod graph_snapshot;
 mod history;
 mod merge;
 mod tree;
 mod tree_cache;
 mod virtual_base;
 pub use derived::{DerivedData, DerivedPolicy};
+pub use graph_snapshot::{GraphSnapshotExportLimits, export_local_graph_snapshot};
 pub use merge::RebaseResult;
 pub use tree_cache::TreeCacheStats;
 
