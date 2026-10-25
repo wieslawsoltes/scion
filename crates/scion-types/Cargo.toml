@@ -1,6 +1,7 @@
 [package]
 name = "scion-types"
 description = "Canonical immutable objects and portable paths for Scion source control"
+readme = "README.md"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

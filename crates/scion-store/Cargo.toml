@@ -1,6 +1,7 @@
 [package]
 name = "scion-store"
 description = "Compressed immutable objects, write-ahead logs and atomic refs for Scion"
+readme = "README.md"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

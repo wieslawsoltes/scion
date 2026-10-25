@@ -1,6 +1,7 @@
 [package]
 name = "scion-protocol"
 description = "Versioned RPC contracts and object capabilities for Scion clients and cache tiers"
+readme = "README.md"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

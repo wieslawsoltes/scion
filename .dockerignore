@@ -1,0 +1,10 @@
+.git
+target
+fuzz/target
+fuzz/artifacts
+dist
+artifacts
+scion-data
+.env
+**/__pycache__
+**/*.pyc

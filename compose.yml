@@ -1,0 +1,100 @@
+# Local evaluation topology. Generate SCION_TOKEN and SCION_CAPABILITY_KEY first.
+# The operator credential grants full access to the demo repository only.
+services:
+  setup:
+    image: scion:local
+    build: .
+    command: ["/bin/sh", "/usr/local/bin/scion-init-policy"]
+    environment:
+      SCION_TOKEN: ${SCION_TOKEN:?Set SCION_TOKEN to a random credential of at least 16 characters}
+    volumes: ["policy-data:/config"]
+    network_mode: none
+
+  server:
+    image: scion:local
+    command:
+      - scion-server
+      - --listen
+      - 0.0.0.0:7420
+      - --data
+      - /data
+      - --policy
+      - /config/policy.json
+      - --capability-key
+      - ${SCION_CAPABILITY_KEY:?Set SCION_CAPABILITY_KEY to 64 random hexadecimal characters}
+    ports: ["127.0.0.1:7420:7420"]
+    volumes: ["authority-data:/data", "policy-data:/config:ro"]
+    networks: [authority]
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:7420/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  cache:
+    image: scion:local
+    command:
+      - scion-cache
+      - --listen
+      - 0.0.0.0:7421
+      - --data
+      - /data
+      - --upstream
+      - http://server:7420
+      - --capability-key
+      - ${SCION_CAPABILITY_KEY:?Set SCION_CAPABILITY_KEY}
+      - --max-bytes
+      - "1073741824"
+    ports: ["127.0.0.1:7421:7421"]
+    volumes: ["cache-data:/data"]
+    networks: [authority, nodes]
+    depends_on:
+      server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:7421/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  daemon:
+    image: scion:local
+    command:
+      - scion-daemon
+      - --listen
+      - 0.0.0.0:7422
+      - --data
+      - /data
+      - --upstream
+      - http://cache:7421
+      - --capability-key
+      - ${SCION_CAPABILITY_KEY:?Set SCION_CAPABILITY_KEY}
+      - --max-bytes
+      - "536870912"
+    ports: ["127.0.0.1:7422:7422"]
+    volumes: ["daemon-data:/data"]
+    networks: [nodes]
+    depends_on:
+      cache:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:7422/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  policy-data:
+  authority-data:
+  cache-data:
+  daemon-data:
+
+networks:
+  authority:
+  nodes:

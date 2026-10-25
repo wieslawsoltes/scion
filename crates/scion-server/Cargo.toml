@@ -1,6 +1,7 @@
 [package]
 name = "scion-server"
 description = "Authoritative authenticated Scion SCM API service and embeddable router"
+readme = "README.md"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
