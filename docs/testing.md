@@ -11,25 +11,25 @@ cargo test --workspace --doc --all-features --locked
 
 Storage tests should use fresh temporary directories or isolated databases. A backend is conforming only when immutable insertion is idempotent, acknowledged data survives restart, reference updates compare the old value atomically, and change-log insertion deduplicates retries.
 
-Repository tests exercise DAG ancestry, tree updates, merges, rebases, path history, and line attribution. Client tests exercise dirty and untracked files, sparse selection, absent lazy files, status fingerprints and timestamp races, checkout recovery, and explicit file/directory replacements involving virtual entries. Portable overlay tests cover namespace transactions, writes/truncation/holes, rename/unlink identity, Windows lifetime pins, cache accounting, dirty-ledger reset, synchronization, sparse guards, and orphan recovery. Service tests verify authorization at both control and object endpoints, and admission remains reserved while response bodies or their data frames are retained by slow consumers.
+Repository tests exercise DAG ancestry, tree updates, merges, rebases, path history, and line attribution. Frozen graph tests exercise the independent DAG oracle, bounded/corrupt binary input, source identity and repository scope, atomic replacement with old readers, failure cleanup, concurrent reads, verified export, and local CLI execution without a service or runtime. Client tests exercise dirty and untracked files, sparse selection, absent lazy files, status fingerprints and timestamp races, checkout recovery, and explicit file/directory replacements involving virtual entries. Portable overlay tests cover namespace transactions, writes/truncation/holes, rename/unlink identity, Windows lifetime pins, cache accounting, dirty-ledger reset, synchronization, sparse guards, and orphan recovery. Service tests verify authorization at both control and object endpoints, and admission remains reserved while response bodies or their data frames are retained by slow consumers.
 
 Passing unit tests establishes the behavior those tests cover. It does not establish availability under region failures or throughput for an arbitrary production workload.
 
 ## Recorded integration evidence
 
 All six workflows below completed successfully for published commit
-[`3b3110c`](https://github.com/wieslawsoltes/scion/commit/3b3110cf4f9cbc286a64289917707342da8d11e2)
+[`e12add8`](https://github.com/wieslawsoltes/scion/commit/e12add828e88652d5f9e1fb5c943d3e34f443151)
 on October 25, 2026. This records eighteen completed jobs at that source revision;
 new commits must pass their own applicable checks before merge.
 
 | Gate | Completed run | What it establishes |
 |---|---|---|
-| Main CI, eleven jobs | [40223535451](https://github.com/wieslawsoltes/scion/actions/runs/40223535451) | Linux/macOS/Windows all-target/all-feature builds and tests; native Linux x64/ARM64 static-CRT builds, tests and linkage verification; Rust 1.88; formatting, Clippy and rustdoc; all thirteen crate archives; dependency checks; PostgreSQL and running three-tier containers |
-| Linux FUSE | [40223535437](https://github.com/wieslawsoltes/scion/actions/runs/40223535437) | Real kernel mount, lazy reads, create/write/append/holes/truncate, rename, symlinks/modes, fsync, mmap publication, two authority commits, open/unlink and `O_PATH` lifetimes, cleanup, and reopen |
-| Cloud storage | [40223535466](https://github.com/wieslawsoltes/scion/actions/runs/40223535466) | Actual S3/GCS/Azure SDK HTTP contracts and pinned official MinIO integration with conditional writes, integrity checks, concurrency, and metadata restart |
-| Spanner transactions | [40223535425](https://github.com/wieslawsoltes/scion/actions/runs/40223535425) | Official emulator 1.5.59 through the official Rust SDK: two clients, concurrent CAS/publication, committed cursor reads, immutable conflicts, rollback, and restart |
-| Fuzz, three jobs | [40223535495](https://github.com/wieslawsoltes/scion/actions/runs/40223535495) | Sanitizer execution of generated and seeded path, canonical-object, and envelope inputs |
-| Git comparison | [40223535401](https://github.com/wieslawsoltes/scion/actions/runs/40223535401) | Release comparison workers, equivalent query results, and retained raw timing data; no noisy shared-runner speed threshold |
+| Main CI, eleven jobs | [40224748061](https://github.com/wieslawsoltes/scion/actions/runs/40224748061) | Linux/macOS/Windows all-target/all-feature builds and tests; native Linux x64/ARM64 static-CRT builds, tests and linkage verification; Rust 1.88; formatting, Clippy and rustdoc; all thirteen crate archives; dependency checks; PostgreSQL and running three-tier containers |
+| Linux FUSE | [40224748105](https://github.com/wieslawsoltes/scion/actions/runs/40224748105) | Real kernel mount, lazy reads, create/write/append/holes/truncate, rename, symlinks/modes, fsync, mmap publication, two authority commits, open/unlink and `O_PATH` lifetimes, cleanup, and reopen |
+| Cloud storage | [40224748054](https://github.com/wieslawsoltes/scion/actions/runs/40224748054) | Actual S3/GCS/Azure SDK HTTP contracts and pinned official MinIO integration with conditional writes, integrity checks, concurrency, and metadata restart |
+| Spanner transactions | [40224748099](https://github.com/wieslawsoltes/scion/actions/runs/40224748099) | Official emulator 1.5.59 through the official Rust SDK: two clients, concurrent CAS/publication, committed cursor reads, immutable conflicts, rollback, and restart |
+| Fuzz, three jobs | [40224748041](https://github.com/wieslawsoltes/scion/actions/runs/40224748041) | Sanitizer execution of generated and seeded path, canonical-object, and envelope inputs |
+| Git comparison | [40224748042](https://github.com/wieslawsoltes/scion/actions/runs/40224748042) | Release comparison workers, equivalent query results, and retained raw timing data; no noisy shared-runner speed threshold |
 
 The Windows run includes the regression for multiple writable handles protected
 by separate lifetime-pin files. Linux FUSE success is an actual mount result,

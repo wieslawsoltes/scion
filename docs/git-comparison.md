@@ -4,13 +4,122 @@
 same generated repository. It checks every query result and saves individual
 samples, summary statistics, configurations, tool versions and source hashes.
 The comparison uses `LocalStore`, including SQLite and filesystem durability.
-The latest complete results are the [optimized three-way comparison](#optimized-three-way-comparison-25-october-2026).
+The latest complete results are the [frozen graph comparisons](#frozen-graph-comparisons-25-october-2026).
+The [non-snapshot three-way comparison](#optimized-three-way-comparison-25-october-2026)
+retains the ordinary SQLite graph path and its original observations.
 The [Git 2.56.0 version follow-up](#git-2560-follow-up-25-october-2026) retains the
 earlier default and 100,000-commit histories as an optimization record.
 
 These measurements describe the specified workload and machine. They do not
 establish a general performance advantage over Git, distributed server throughput,
 or behavior under cold caches, concurrent writers or real monorepo contents.
+
+## Frozen graph comparisons: 25 October 2026
+
+These complete three-way runs use the public frozen graph API for candidate
+ancestry and merge-base queries. The default profile uses clean source
+[`2b88497`](https://github.com/wieslawsoltes/scion/commit/2b88497a69af85aa4a941c00b3a21cdeb4356ee9);
+the large profile uses
+[`43146c2`](https://github.com/wieslawsoltes/scion/commit/43146c205c6bdd2fadfec99f3333761a8ec58677).
+The later commit fixes atomic replacement with an open reader on Windows; the
+measured queries and Linux fixture semantics are unchanged. Both use verified
+static-CRT GNU/Linux release builds, Git 2.56.0, the same preserved baseline
+executable, independent Scion stores, 100,000 paths, 31 samples, and three warmups.
+All correctness and source/binary provenance checks finished successfully.
+
+### Explicit preparation and scope
+
+`--graph-snapshot` calls `export_local_graph_snapshot` before timing, verifies
+every source changeset, and rebuilds a closed graph. Git retains its existing
+pack and commit-graph preparation. Candidate graph queries open that frozen
+artifact in a fresh process, without opening SQLite. Their timings include
+startup, header/identity checks, every graph lookup and checksum, response bytes,
+and shutdown. The baseline keeps its previous repository API; candidate file
+reads, diffs, writes, and resident workers keep the ordinary storage APIs.
+
+| Profile | Trunk / each arm | Included nodes | Artifact bytes | Export wall time |
+|---|---:|---:|---:|---:|
+| Default | 10,000 / 1,000 | 12,036 | 8,923,168 | 0.507 s |
+| Large | 100,000 / 10,000 | 120,036 | 96,467,328 | 6.320 s |
+
+Preparation time and additional storage are real costs, excluded from query
+latency just as Git preparation is. The artifact represents one explicitly
+selected membership view; new publications require a new export. It does not
+resolve live refs. See [frozen graph snapshots](graph-snapshots.md) for the public
+API, CLI, integrity checks, cache bounds, and replacement semantics.
+
+### Default profile: 10,000-commit trunk
+
+| Operation | Scion p50 / p95, µs | Baseline p50, µs | Git p50, µs | Baseline / Scion | Git / Scion |
+|---|---:|---:|---:|---:|---:|
+| Prepared durable commit | 1,044.256 / 1,400.253 | 2,028.201 | 2,744.893 | 1.942× | 2.629× |
+| Positive ancestry | 773.479 / 1,033.110 | 1,628.750 | 3,637.858 | 2.106× | 4.703× |
+| Negative ancestry | 799.307 / 952.289 | 1,979.270 | 3,510.663 | 2.476× | 4.392× |
+| Ancestor merge base | 750.233 / 910.215 | 1,625.065 | 3,087.524 | 2.166× | 4.115× |
+| Divergent merge base | 761.780 / 1,604.163 | 2,073.742 | 1,793.980 | 2.722× | 2.355× |
+| Fresh file read, 1 KiB | 1,246.042 / 1,503.361 | 2,329.858 | 1,416.765 | 1.870× | 1.137× |
+| Fresh one-file text diff | 1,263.498 / 1,710.664 | 3,275.277 | 1,758.136 | 2.592× | 1.391× |
+| Resident spread file read | 17.286 / 29.785 | 38.158 | 37.276 | 2.207× | 2.156× |
+
+Every functional median beats Git, and all four graph-query rows improve by at
+least 2× over the earlier Scion build. Six of eight functional rows reach 2×.
+Fresh file reads (1.870×) and prepared commits (1.942×) remain below that threshold
+in this run. The non-snapshot comparison below preserves their earlier results;
+these subsequent observations are retained rather than replaced with a preferred
+run.
+
+| Operation | Scion p50 / p95, µs | Baseline p50, µs | Git p50, µs | Baseline / Scion | Git / Scion |
+|---|---:|---:|---:|---:|---:|
+| Process startup control | 658.685 / 804.475 | 994.562 | 998.398 | 1.510× | 1.516× |
+| Repository-open control | 830.257 / 1,305.641 | 1,322.446 | 1,082.646 | 1.593× | 1.304× |
+| Resident no-op control | 19.650 / 145.290 | 20.241 | 20.891 | 1.030× | 1.063× |
+
+### Large profile: 100,000-commit trunk
+
+| Operation | Scion p50 / p95, µs | Baseline p50, µs | Git p50, µs | Baseline / Scion | Git / Scion |
+|---|---:|---:|---:|---:|---:|
+| Prepared durable commit | 967.706 / 1,263.390 | 2,200.750 | 2,913.522 | 2.274× | 3.011× |
+| Positive ancestry | 970.429 / 1,186.954 | 2,200.608 | 35,124.071 | 2.268× | 36.194× |
+| Negative ancestry | 970.199 / 1,277.921 | 2,808.472 | 38,889.853 | 2.895× | 40.084× |
+| Ancestor merge base | 898.230 / 1,043.789 | 2,053.747 | 32,357.663 | 2.286× | 36.024× |
+| Divergent merge base | 862.837 / 1,020.775 | 2,363.603 | 8,296.653 | 2.739× | 9.616× |
+| Fresh file read, 1 KiB | 1,189.358 / 1,562.148 | 2,318.851 | 1,445.924 | 1.950× | 1.216× |
+| Fresh one-file text diff | 1,359.774 / 1,832.835 | 3,477.107 | 1,930.002 | 2.557× | 1.419× |
+| Resident spread file read | 16.815 / 36.285 | 37.397 | 39.469 | 2.224× | 2.347× |
+
+Every functional median beats Git. Graph queries improve 2.268–2.895× over the
+earlier Scion and 9.616–40.084× over Git. Seven of eight functional rows reach 2×
+over the baseline; fresh file reads reach 1.950×. The no-op control favors Git in
+this run, and none of the three controls reaches 2× improvement.
+
+| Operation | Scion p50 / p95, µs | Baseline p50, µs | Git p50, µs | Baseline / Scion | Git / Scion |
+|---|---:|---:|---:|---:|---:|
+| Process startup control | 634.734 / 761.204 | 957.680 | 954.505 | 1.509× | 1.504× |
+| Repository-open control | 822.967 / 1,018.051 | 1,289.098 | 1,068.757 | 1.566× | 1.299× |
+| Resident no-op control | 19.670 / 96.465 | 14.632 | 14.622 | 0.744× | 0.743× |
+
+### Raw evidence
+
+| Profile | Complete JSON | Every sample | Full summary and tails |
+|---|---|---|---|
+| Default | [JSON](benchmarks/git-comparison-2026-10-25-snapshot-default.json) | [CSV](benchmarks/git-comparison-2026-10-25-snapshot-default.csv) | [Summary](benchmarks/git-comparison-2026-10-25-snapshot-default-summary.csv) |
+| Large | [JSON](benchmarks/git-comparison-2026-10-25-snapshot-large.json) | [CSV](benchmarks/git-comparison-2026-10-25-snapshot-large.csv) | [Summary](benchmarks/git-comparison-2026-10-25-snapshot-large-summary.csv) |
+
+```sh
+mkdir -p /tmp/scion-benchmarks
+PATH=/path/to/git-2.56.0/bin:$PATH CARGO_INCREMENTAL=0 \
+  python3 scripts/compare_git.py --static-crt --graph-snapshot --keep-workdir \
+  --work-root /tmp/scion-benchmarks \
+  --baseline-driver /path/to/preserved/comparison_driver \
+  --baseline-report docs/benchmarks/git-comparison-2026-10-25-git-2.56-full.json \
+  --output target/git-comparison/snapshot-default
+# Add --commits 100000 --branch-commits 10000 for the large profile.
+```
+
+A failed large-history attempt with externally copied live database files and
+exhausted workspace storage was discarded. Both successful runs above use
+isolated temporary fixture directories. Their raw reports contain the complete
+measurement evidence; no failed-run timings contribute to these tables.
 
 ## Optimized three-way comparison: 25 October 2026
 
@@ -262,6 +371,11 @@ and runs `git commit-graph write --reachable --changed-paths`. Git therefore has
 its native persisted graph acceleration available, while Scion uses the graph
 records it derives during commit creation.
 [Git commit-graph documentation](https://git-scm.com/docs/git-commit-graph).
+
+With `--graph-snapshot`, only the four candidate ancestry/merge-base rows use an
+explicit prebuilt `GraphSnapshot`. Export duration, file size, metadata, and
+SHA-256 are recorded separately, and the file hash is rechecked after measurement.
+The preserved baseline and all other rows retain their existing APIs.
 
 The measured operations are:
 
