@@ -21,6 +21,64 @@ It reports CSV rows containing operation, scale, sample count, p50 and p95 laten
 in microseconds. The source is
 [`crates/scion-engine/benches/scaling.rs`](../crates/scion-engine/benches/scaling.rs).
 
+## Paired comparison protocol
+
+`scripts/compare_scaling.py` compares prebuilt copies of the original full Rust
+workload. It pins the benchmark source hash, requires clean Git checkouts,
+checks executable hashes, validates all eleven operation/scale/sample-count
+rows, and alternates baseline/candidate order across five trials by default.
+It records complete output and source identities for every trial. Optional
+`--baseline-build-report` and `--candidate-build-report` inputs bind recorded
+build commands, flags and toolchains to those identities; without them, build
+provenance is explicitly unknown.
+
+```sh
+# Build in separate clean source trees and separate Cargo target directories:
+CARGO_TARGET_DIR=/tmp/scion-baseline-target \
+  cargo bench --locked -p scion-engine --bench scaling --no-run
+# Repeat in the candidate checkout with a different target directory, then:
+python3 scripts/compare_scaling.py \
+  --baseline-root /path/to/baseline --baseline-driver /path/to/baseline/scaling \
+  --candidate-root /path/to/candidate --candidate-driver /path/to/candidate/scaling \
+  --trials 5 --output target/scaling-comparison.json
+```
+
+Ratios divide the baseline median of per-trial p50 values by the candidate
+median of per-trial p50 values. Individual operation samples are not available
+from the original Rust harness and are not pooled or reconstructed. Each
+initial-commit row is one observation per trial. Both build-provenance records
+are embedded in the recorded run below.
+
+### Regression exposed by the first paired run
+
+Clean candidate `f48eb8496717d4010d12add81de306c95238f54f` was compared with clean
+pre-optimization source `6a11ff76052d10951e9f7d029f0313de7c78101d` in five
+alternating trials. Initial commits improved 5.759–6.520×, one-file commits
+2.275–2.907×, and ancestry 24.436–33.329×. However, the diff rows exposed a real
+cache interaction:
+
+| One-file diff scale | Baseline median of trial p50 | Candidate median of trial p50 | Baseline / candidate |
+|---|---:|---:|---:|
+| 1,000 files | 24.787 µs | 23.545 µs | 1.053× |
+| 10,000 files | 25.349 µs | 37.286 µs | 0.680× |
+| 100,000 files | 39.189 µs | 127.401 µs | 0.308× |
+
+Taking ownership of a cached tree evicted the old complete directory, while its
+revision-root proof remained cached. A subsequent diff reloaded the old directory
+instead of using its small changed-path information. The follow-up retains only
+affected original entries under the old immutable tree ID before mutation.
+Operation-count regressions require zero old-tree reads for affected-path
+inspection and forward/reverse adjacent diffs, while preserving held readers,
+failed-publication behavior and bounded retention. The Rust benchmark workload
+is unchanged.
+
+The [complete first paired report](benchmarks/scaling-2026-10-25-before-diff-fix.json)
+retains all measurements and both build identities. The same candidate's
+[first durable default-profile report](benchmarks/git-comparison-2026-10-25-resident-first-default.json)
+also remains available, including controls and rows below the 2× target. Later
+measurements must validate the fix before claiming the diff regression resolved
+in timing results.
+
 ## Observed results
 
 Run on October 25, 2026, in a shared Linux x86_64 development container using
