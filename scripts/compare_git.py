@@ -346,7 +346,9 @@ def main():
             dimensions, fixture, retained_work, reused = retained_fixture(args.reuse_report)
         except (OSError, ValueError, KeyError, TypeError) as error:
             parser.error(f"cannot reuse fixture: {error}")
-        if args.output.with_suffix(".json").resolve() in (args.reuse_report.resolve(), retained_work / "fixture.json"):
+        protected = {args.reuse_report.resolve(), (retained_work / "fixture.json").resolve()}
+        outputs = (args.output.with_suffix(".json"), args.output.with_suffix(".csv"), args.output.with_name(args.output.name + "-summary.csv"))
+        if any(output.resolve() in protected for output in outputs):
             parser.error("--output must not overwrite the source report or retained fixture marker")
         if args.samples is not None: dimensions["samples"] = args.samples
         if args.warmup is not None: dimensions["warmup"] = args.warmup

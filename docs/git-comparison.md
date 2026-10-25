@@ -4,8 +4,9 @@
 same generated repository. It checks every query result and saves individual
 samples, summary statistics, configurations, tool versions and source hashes.
 The comparison uses `LocalStore`, including SQLite and filesystem durability.
-The latest clean-source measurements are in [Streaming trees and read-only opening](#streaming-trees-and-read-only-opening-25-october-2026), including a separate
-100,000-commit history profile. Earlier runs remain below as an optimization record.
+The latest Git 2.56.0 results are in the [version follow-up](#git-2560-follow-up-25-october-2026),
+including a full default profile and every query on the 100,000-commit history.
+Earlier runs remain below as an optimization record.
 
 These measurements describe the specified workload and machine. They do not
 establish a general performance advantage over Git, distributed server throughput,
@@ -478,3 +479,140 @@ and faster durable prepared commits in both final runs. It does not establish a
 universal speed advantage, network/server throughput, cold-cache performance,
 large binary-file behavior or production fleet scale. Fresh-process file and tree
 work remains an area for further improvement.
+
+
+### Git 2.56.0 follow-up, 25 October 2026
+
+The earlier runs used the host's installed Git 2.51.1. To check version sensitivity,
+the full default profile and all larger-history queries were repeated against
+upstream [Git v2.56.0](https://github.com/git/git/tree/v2.56.0). Both were
+recorded from clean public Scion commit
+[`78f3b0d21e2539b6fb6197e08749860ab5db1385`](https://github.com/wieslawsoltes/scion/commit/78f3b0d21e2539b6fb6197e08749860ab5db1385).
+The Scion release executable's SHA-256 is identical to both preceding full runs:
+`ff6a44c736b135d4ec920f4d497a92fa3cac4a2936ff284a6c4abeb1ef6aa6c6`.
+The source and executable hashes match between the two new reports as well, and
+both reports record a clean tree with no source change during the build.
+
+#### Git build and reproduction
+
+Git was built from official tag `v2.56.0` (tag object
+`2478544319491bbd2a42cc57a83e3d2f4730a280`), source commit
+[`a018953688f1b10bddf91bff8747068f5f4746a4`](https://github.com/git/git/commit/a018953688f1b10bddf91bff8747068f5f4746a4).
+It used the Makefile's default C optimization (`-O2`) and default enabled Rust
+build with Rust 1.99.1. Optional Tcl/Tk, localization, Perl, Python, curl, Expat and
+OpenSSL integrations were disabled. These optional integrations are not used by
+any measured local command. The binaries and helpers were installed under
+`/tmp/scion-git-current`; the reports record the actual binary path, SHA-256 and
+compiled helper path rather than relying on a version label alone.
+
+Equivalent build commands, with a C/C++ toolchain, Rust, Make and zlib development
+files available, are:
+
+```sh
+git clone --depth 1 --branch v2.56.0 https://github.com/git/git.git /tmp/scion-git-source
+cd /tmp/scion-git-source
+make -j4 prefix=/tmp/scion-git-current \
+  NO_TCLTK=YesPlease NO_GETTEXT=YesPlease NO_PERL=YesPlease NO_PYTHON=YesPlease \
+  NO_CURL=YesPlease NO_EXPAT=YesPlease NO_OPENSSL=YesPlease
+make install prefix=/tmp/scion-git-current \
+  NO_TCLTK=YesPlease NO_GETTEXT=YesPlease NO_PERL=YesPlease NO_PYTHON=YesPlease \
+  NO_CURL=YesPlease NO_EXPAT=YesPlease NO_OPENSSL=YesPlease
+```
+
+The measured Git binary's SHA-256 is
+`652ab642ac26b3c5441dc5a73950bcfe252ff8c411f76ab2ba0e4a3cc4fd16be`.
+`git --version --build-options` reports Rust enabled, zlib 1.3, `SHA1_DC`,
+`SHA256_BLK`, the `files` reference format and default SHA-1 objects. The benchmark
+continues to use Git SHA-1 and Scion BLAKE3, as in all earlier runs. From a clean
+Scion checkout, the measured scopes can be reproduced with:
+
+```sh
+PATH=/tmp/scion-git-current/bin:$PATH CARGO_INCREMENTAL=0 \
+  python3 scripts/compare_git.py --keep-workdir \
+  --output target/git-comparison/git256-full
+
+# First generate and retain the larger fixture if it is not already available.
+PATH=/tmp/scion-git-current/bin:$PATH CARGO_INCREMENTAL=0 \
+  python3 scripts/compare_git.py --commits 100000 --branch-commits 10000 \
+  --keep-workdir --output target/git-comparison/large-fixture
+
+PATH=/tmp/scion-git-current/bin:$PATH CARGO_INCREMENTAL=0 \
+  python3 scripts/compare_git.py \
+  --reuse-report target/git-comparison/large-fixture.json --samples 31 --warmup 3 \
+  --output target/git-comparison/git256-large-queries
+```
+
+The recorded larger-history follow-up reused the already verified Git 2.51.1
+fixture. Its JSON records that original report's exact SHA-256 and unchanged
+fixture identifiers. Git 2.56.0 repacking and commit-graph preparation ran before
+all new query timings. Recreating the fixture with the commands above generates
+the same logical workload but does not reproduce the earlier run's physical cache
+state or exact timings.
+
+#### Full default profile against Git 2.56.0
+
+This is a new full run with 100,000 files, 10,000 trunk commits, 1,000 commits per
+arm, 31 samples and three warmups. Its generated fixture identifiers match the
+preceding default runs exactly. All 682 individual samples are retained.
+
+Raw data: [JSON report](benchmarks/git-comparison-2026-10-25-git-2.56-full.json),
+[all samples](benchmarks/git-comparison-2026-10-25-git-2.56-full.csv), and
+[summary CSV](benchmarks/git-comparison-2026-10-25-git-2.56-full-summary.csv).
+
+| Operation and scope | Scion p50 / p95 (ms) | Git 2.56.0 p50 / p95 (ms) | Ratio of medians |
+| --- | ---: | ---: | --- |
+| Prepared durable commit · resident | 2.279 / 3.114 | 2.879 / 3.833 | Scion 1.26× faster |
+| Positive ancestry · fresh process | 2.084 / 2.982 | 4.145 / 5.852 | Scion 1.99× faster |
+| Negative ancestry · fresh process | 2.461 / 3.075 | 4.036 / 6.662 | Scion 1.64× faster |
+| Ancestor merge base · fresh process | 1.846 / 2.650 | 3.329 / 4.496 | Scion 1.80× faster |
+| Divergent merge base · fresh process | 2.396 / 3.192 | 1.969 / 4.160 | Git 1.22× faster |
+| One-file text diff · fresh process | 3.626 / 4.558 | 1.856 / 2.098 | Git 1.95× faster |
+| File read, 1 KiB · fresh process | 2.533 / 3.452 | 1.574 / 2.515 | Git 1.61× faster |
+| File reads across warmed paths · resident | 0.039 / 0.050 | 0.042 / 0.075 | Scion 1.08× faster |
+| Repository-open control · fresh process | 1.621 / 2.742 | 1.180 / 1.529 | Git 1.37× faster |
+| Process-startup control · fresh process | 0.989 / 1.444 | 1.030 / 1.291 | Scion 1.04× faster |
+| No-op control · resident | 0.021 / 0.053 | 0.015 / 0.032 | Git 1.40× faster |
+
+The prepared durable commit median is 1.26× faster than Git 2.56.0, with lower
+p95 as well. The measured ancestry and ancestor merge-base cases are 1.64–1.99×
+faster. Git remains faster at the median for the short divergent-base query,
+fresh file reads and fresh text diffs. The resident read median favors Scion by
+about 8%; this modest difference is kept separate from the larger graph results.
+
+#### Larger-history queries against Git 2.56.0
+
+This run retains the 100,000-file, 100,000-trunk-commit, 10,000-commits-per-arm
+fixture and measures **every query/control row**, with 31 samples and three
+warmups. The report explicitly declares `mode: queries_only`; its 558 samples
+contain no new prepared-commit or resident writer no-op measurements. No earlier
+Git 2.51.1 commit timing is presented as a Git 2.56.0 result.
+
+Raw data: [JSON report](benchmarks/git-comparison-2026-10-25-git-2.56-large-queries.json),
+[all samples](benchmarks/git-comparison-2026-10-25-git-2.56-large-queries.csv), and
+[summary CSV](benchmarks/git-comparison-2026-10-25-git-2.56-large-queries-summary.csv).
+
+| Operation and scope | Scion p50 / p95 (ms) | Git 2.56.0 p50 / p95 (ms) | Ratio of medians |
+| --- | ---: | ---: | --- |
+| Positive ancestry · fresh process | 2.342 / 2.829 | 43.704 / 57.218 | Scion 18.66× faster |
+| Negative ancestry · fresh process | 3.017 / 3.479 | 42.148 / 51.351 | Scion 13.97× faster |
+| Ancestor merge base · fresh process | 2.307 / 2.741 | 30.971 / 36.698 | Scion 13.42× faster |
+| Divergent merge base · fresh process | 2.258 / 2.811 | 6.081 / 7.174 | Scion 2.69× faster |
+| One-file text diff · fresh process | 3.326 / 4.024 | 1.562 / 1.704 | Git 2.13× faster |
+| File read, 1 KiB · fresh process | 2.313 / 2.642 | 1.296 / 1.614 | Git 1.78× faster |
+| File reads across warmed paths · resident | 0.051 / 0.075 | 0.054 / 0.066 | Scion 1.06× faster |
+| Repository-open control · fresh process | 1.405 / 1.896 | 1.094 / 1.178 | Git 1.28× faster |
+| Process-startup control · fresh process | 0.898 / 1.025 | 0.843 / 1.058 | Git 1.06× faster |
+
+Positive ancestry is 18.66× faster than Git 2.56.0 at the median, negative ancestry
+13.97× faster, ancestor merge-base lookup 13.42× faster and the divergent
+merge-base query 2.69× faster. The corresponding p95 values also favor Scion.
+The version follow-up therefore retains the large graph-query advantage on this
+fixture. It also retains the losses: Git is 1.78× faster for fresh file reads and
+2.13× faster for fresh text diffs. Resident reads are close at the median, and
+Scion has the worse p95 in that row.
+
+These current-version results support the same scoped conclusion as the earlier
+runs: strong graph-query performance on the long linear histories and a smaller
+durable prepared-commit advantage, with material fresh-read and diff work still
+to improve. All versions, workloads, controls, raw samples and tail latencies
+remain published; they do not establish universal superiority over Git.

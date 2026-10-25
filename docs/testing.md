@@ -18,18 +18,18 @@ Passing unit tests establishes the behavior those tests cover. It does not estab
 ## Recorded integration evidence
 
 All six workflows below completed successfully for published commit
-[`c6ec7d1`](https://github.com/wieslawsoltes/scion/commit/c6ec7d161ffa9c981119f5308ff11e4b314f55a0)
+[`ed291527`](https://github.com/wieslawsoltes/scion/commit/ed2915277546ff6e37b94db31bfa00629a919653)
 on October 25, 2026. This records sixteen completed jobs at that source revision;
 new commits must pass their own applicable checks before merge.
 
 | Gate | Completed run | What it establishes |
 |---|---|---|
-| Main CI, nine jobs | [40192253386](https://github.com/wieslawsoltes/scion/actions/runs/40192253386) | Linux/macOS/Windows all-target/all-feature builds and tests; Rust 1.88; formatting, Clippy and rustdoc; all thirteen crate archives; dependency checks; PostgreSQL and running three-tier containers |
-| Linux FUSE | [40192253414](https://github.com/wieslawsoltes/scion/actions/runs/40192253414) | Real kernel mount, lazy reads, create/write/append/holes/truncate, rename, symlinks/modes, fsync, mmap publication, two authority commits, open/unlink and `O_PATH` lifetimes, cleanup, and reopen |
-| Cloud storage | [40192253393](https://github.com/wieslawsoltes/scion/actions/runs/40192253393) | Actual S3/GCS/Azure SDK HTTP contracts and pinned official MinIO integration with conditional writes, integrity checks, concurrency, and metadata restart |
-| Spanner transactions | [40192253470](https://github.com/wieslawsoltes/scion/actions/runs/40192253470) | Official emulator 1.5.59 through the official Rust SDK: two clients, concurrent CAS/publication, committed cursor reads, immutable conflicts, rollback, and restart |
-| Fuzz, three jobs | [40192253464](https://github.com/wieslawsoltes/scion/actions/runs/40192253464) | Sanitizer execution of generated and seeded path, canonical-object, and envelope inputs |
-| Git comparison | [40192253395](https://github.com/wieslawsoltes/scion/actions/runs/40192253395) | Release comparison workers, equivalent query results, and retained raw timing data; no noisy shared-runner speed threshold |
+| Main CI, nine jobs | [40208790055](https://github.com/wieslawsoltes/scion/actions/runs/40208790055) | Linux/macOS/Windows all-target/all-feature builds and tests; Rust 1.88; formatting, Clippy and rustdoc; all thirteen crate archives; dependency checks; PostgreSQL and running three-tier containers |
+| Linux FUSE | [40208790013](https://github.com/wieslawsoltes/scion/actions/runs/40208790013) | Real kernel mount, lazy reads, create/write/append/holes/truncate, rename, symlinks/modes, fsync, mmap publication, two authority commits, open/unlink and `O_PATH` lifetimes, cleanup, and reopen |
+| Cloud storage | [40208789873](https://github.com/wieslawsoltes/scion/actions/runs/40208789873) | Actual S3/GCS/Azure SDK HTTP contracts and pinned official MinIO integration with conditional writes, integrity checks, concurrency, and metadata restart |
+| Spanner transactions | [40208789919](https://github.com/wieslawsoltes/scion/actions/runs/40208789919) | Official emulator 1.5.59 through the official Rust SDK: two clients, concurrent CAS/publication, committed cursor reads, immutable conflicts, rollback, and restart |
+| Fuzz, three jobs | [40208789988](https://github.com/wieslawsoltes/scion/actions/runs/40208789988) | Sanitizer execution of generated and seeded path, canonical-object, and envelope inputs |
+| Git comparison | [40208789959](https://github.com/wieslawsoltes/scion/actions/runs/40208789959) | Release comparison workers, equivalent query results, and retained raw timing data; no noisy shared-runner speed threshold |
 
 The Windows run includes the regression for multiple writable handles protected
 by separate lifetime-pin files. Linux FUSE success is an actual mount result,
@@ -64,7 +64,7 @@ emulator contract and production service behavior. Process-exit/reopen tests
 exercise durable publication without relying on Rust destructors; they do not
 simulate physical power loss, filesystem damage, or a regional outage.
 
-The storage suite also checks that the linked bundled SQLite includes the upstream [WAL-reset corruption fix](https://sqlite.org/releaselog/3_51_3.html). The dependency update and subsequent changes require checks at their new commit; the recorded CI snapshot above does not certify later source changes.
+The storage suite also checks that the linked bundled SQLite includes the upstream [WAL-reset corruption fix](https://sqlite.org/releaselog/3_51_3.html). The recorded CI snapshot includes the SQLite dependency update and its regression tests; later commits must pass their own applicable checks.
 
 ## Fuzzing
 
