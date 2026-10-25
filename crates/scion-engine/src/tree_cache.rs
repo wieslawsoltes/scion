@@ -5,7 +5,7 @@ use std::{
     sync::Arc,
 };
 
-/// Accounting for retained trees, selected entries, and validated revision roots.
+/// Accounting for retained trees, entries, revision roots and verified small blobs.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct TreeCacheStats {
     pub entries: usize,
@@ -31,6 +31,7 @@ struct State {
 enum Key {
     Tree(ObjectId),
     Root(ObjectId),
+    Blob(ObjectId),
 }
 struct Entry {
     value: Value,
@@ -40,6 +41,7 @@ struct Entry {
 enum Value {
     Tree(Arc<Tree>),
     Root(ObjectId),
+    Blob(Arc<Vec<u8>>),
     /// Cold point lookups retain only selected entries. Missing names are cached
     /// as well; the immutable object's full payload was validated before insert.
     Lookups(BTreeMap<String, Option<TreeEntry>>),
@@ -93,7 +95,7 @@ impl TreeCache {
             let value = match &entry.value {
                 Value::Tree(tree) => Some(tree.entries.get(name).cloned()),
                 Value::Lookups(entries) => entries.get(name).cloned(),
-                Value::Root(_) => None,
+                Value::Root(_) | Value::Blob(_) => None,
             }?;
             let old = std::mem::replace(&mut entry.stamp, stamp);
             Some((old, value))
@@ -120,7 +122,7 @@ impl TreeCache {
             .entries
             .get(&id)
             .is_some_and(|entry| match &entry.value {
-                Value::Tree(_) | Value::Root(_) => true,
+                Value::Tree(_) | Value::Root(_) | Value::Blob(_) => true,
                 Value::Lookups(entries) => entries.contains_key(name),
             })
         {
@@ -203,6 +205,39 @@ impl TreeCache {
             return;
         }
         self.insert_value(&mut state, id, Value::Root(root), BYTES);
+    }
+    pub(crate) fn blob(&self, object: ObjectId) -> Option<Arc<Vec<u8>>> {
+        let id = Key::Blob(object);
+        let mut state = self.state.lock();
+        let stamp = Self::tick(&mut state);
+        if let Some(entry) = state.entries.get_mut(&id)
+            && let Value::Blob(bytes) = &entry.value
+        {
+            let old = std::mem::replace(&mut entry.stamp, stamp);
+            let bytes = bytes.clone();
+            state.lru.remove(&(old, id));
+            state.lru.insert((stamp, id));
+            state.hits = state.hits.saturating_add(1);
+            Some(bytes)
+        } else {
+            state.misses = state.misses.saturating_add(1);
+            None
+        }
+    }
+    /// Retain only successfully verified blob reads. The actual allocation,
+    /// including spare Vec capacity, participates in the shared cache budget.
+    pub(crate) fn insert_blob(&self, object: ObjectId, value: Arc<Vec<u8>>) {
+        const MAX_BLOB_BYTES: usize = 64 * 1024;
+        let bytes = value.capacity().saturating_add(256);
+        if value.len() > MAX_BLOB_BYTES || bytes > self.capacity {
+            return;
+        }
+        let id = Key::Blob(object);
+        let mut state = self.state.lock();
+        if state.entries.contains_key(&id) {
+            return;
+        }
+        self.insert_value(&mut state, id, Value::Blob(value), bytes);
     }
     fn insert_value(&self, state: &mut State, id: Key, value: Value, bytes: usize) {
         while state.bytes.saturating_add(bytes) > self.capacity || state.entries.len() >= 4096 {
@@ -311,5 +346,60 @@ mod tests {
         let disabled = TreeCache::new(0);
         disabled.insert_root(id, root);
         assert_eq!(disabled.root(id), None);
+    }
+
+    #[test]
+    fn blobs_share_tree_and_root_budget_and_survive_eviction_for_active_readers() {
+        let cache = TreeCache::new(1024);
+        let id = ObjectId::hash(ObjectKind::Blob, b"content");
+        let root = ObjectId::hash(ObjectKind::Tree, b"root");
+        let bytes = Arc::new(vec![7; 256]);
+        cache.insert(id, Arc::new(Tree::default()));
+        cache.insert_blob(id, bytes.clone());
+        assert!(cache.get(id).is_some());
+        let held = cache.blob(id).unwrap();
+        assert_eq!(cache.stats().estimated_bytes, 1024);
+        // The root competes with both object kinds and evicts the older tree.
+        cache.insert_root(id, root);
+        assert!(cache.get(id).is_none());
+        assert_eq!(cache.blob(id).as_deref(), Some(bytes.as_ref()));
+        assert_eq!(cache.root(id), Some(root));
+        let other = ObjectId::hash(ObjectKind::Blob, b"other");
+        cache.insert_blob(other, Arc::new(vec![8; 256]));
+        assert!(cache.blob(id).is_none());
+        assert!(cache.stats().estimated_bytes <= 1024);
+        cache.clear();
+        assert_eq!(held.as_slice(), &[7; 256]);
+        assert_eq!(cache.stats().entries, 0);
+        assert_eq!(cache.stats().estimated_bytes, 0);
+    }
+
+    #[test]
+    fn blob_retention_bounds_actual_length_allocation_and_entry_count() {
+        const CAPACITY: usize = 8 * 1024 * 1024;
+        let cache = TreeCache::new(CAPACITY);
+        let id = ObjectId::hash(ObjectKind::Blob, b"limit");
+        cache.insert_blob(id, Arc::new(vec![0; 64 * 1024 + 1]));
+        assert!(cache.blob(id).is_none());
+        let mut oversized_allocation = Vec::with_capacity(CAPACITY + 1);
+        oversized_allocation.push(0);
+        cache.insert_blob(id, Arc::new(oversized_allocation));
+        assert!(cache.blob(id).is_none());
+        cache.insert_blob(id, Arc::new(vec![0; 64 * 1024]));
+        assert_eq!(cache.blob(id).unwrap().len(), 64 * 1024);
+        assert_eq!(cache.stats().estimated_bytes, 64 * 1024 + 256);
+        cache.clear();
+        for number in 0u32..4097 {
+            let id = ObjectId::hash(ObjectKind::Blob, &number.to_le_bytes());
+            cache.insert_blob(id, Arc::new(Vec::new()));
+        }
+        assert_eq!(cache.stats().entries, 4096);
+        assert!(cache.stats().estimated_bytes <= CAPACITY);
+        let first = ObjectId::hash(ObjectKind::Blob, &0u32.to_le_bytes());
+        assert!(cache.blob(first).is_none());
+        let disabled = TreeCache::new(0);
+        disabled.insert_blob(id, Arc::new(Vec::new()));
+        assert!(disabled.blob(id).is_none());
+        assert_eq!(disabled.stats().entries, 0);
     }
 }

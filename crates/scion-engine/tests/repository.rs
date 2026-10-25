@@ -326,6 +326,7 @@ struct CountingStore {
     small_probes: AtomicUsize,
     small_bytes: AtomicUsize,
     fail_tree_writes: AtomicBool,
+    corrupt_blob_reads: AtomicBool,
 }
 impl Storage for CountingStore {
     fn put_object(&self, k: ObjectKind, b: &[u8]) -> Result<ObjectId> {
@@ -343,6 +344,11 @@ impl Storage for CountingStore {
         }
         if k == ObjectKind::Blob {
             self.blob_reads.fetch_add(1, Ordering::Relaxed);
+            if self.corrupt_blob_reads.load(Ordering::Relaxed) {
+                let mut encoded = self.inner.get_encoded(k, id)?;
+                encoded[0] ^= 1;
+                return scion_store::decode_object(k, id, &encoded);
+            }
         }
         self.inner.get_object(k, id)
     }
@@ -389,6 +395,161 @@ impl Storage for CountingStore {
     fn scan_records(&self, n: &str, p: &str, l: usize) -> Result<Vec<(String, Vec<u8>)>> {
         self.inner.scan_records(n, p, l)
     }
+}
+
+#[test]
+fn verified_blob_reads_are_shared_by_clones_and_patches_until_cleared() {
+    let store = Arc::new(CountingStore::default());
+    let repo = Repository::new("test", store.clone()).unwrap();
+    let before = commit(&repo, &[], &[("file", Some(b"before\n"))], "before");
+    let after = commit(&repo, &[before], &[("file", Some(b"after\n"))], "after");
+    repo.clear_tree_cache();
+    store.blob_reads.store(0, Ordering::Relaxed);
+    let clone = repo.clone();
+    let mut owned = repo.read_file(after, &path("file")).unwrap();
+    owned.fill(b'!');
+    assert_eq!(clone.read_file(after, &path("file")).unwrap(), b"after\n");
+    assert_eq!(store.blob_reads.load(Ordering::Relaxed), 1);
+    let expected = repo.diff(before, after).unwrap();
+    assert!(expected[0].patch.as_ref().unwrap().contains("+after"));
+    assert_eq!(store.blob_reads.load(Ordering::Relaxed), 2);
+    assert_eq!(clone.diff(before, after).unwrap(), expected);
+    assert_eq!(store.blob_reads.load(Ordering::Relaxed), 2);
+    assert!(repo.tree_cache_stats().estimated_bytes <= 8 * 1024 * 1024);
+    clone.clear_tree_cache();
+    assert_eq!(repo.tree_cache_stats().entries, 0);
+    assert_eq!(repo.read_file(after, &path("file")).unwrap(), b"after\n");
+    assert_eq!(store.blob_reads.load(Ordering::Relaxed), 3);
+}
+
+#[test]
+fn large_blobs_and_disabled_caches_repeat_verified_storage_reads() {
+    for (capacity, bytes) in [
+        (0, vec![b'x'; 32]),
+        (8 * 1024 * 1024, vec![b'y'; 64 * 1024 + 1]),
+    ] {
+        let store = Arc::new(CountingStore::default());
+        let repo = Repository::new("test", store.clone())
+            .unwrap()
+            .with_tree_cache_capacity(capacity);
+        let revision = commit(&repo, &[], &[("file", Some(&bytes))], "uncached");
+        repo.clear_tree_cache();
+        store.blob_reads.store(0, Ordering::Relaxed);
+        for _ in 0..2 {
+            assert_eq!(repo.read_file(revision, &path("file")).unwrap(), bytes);
+        }
+        assert_eq!(store.blob_reads.load(Ordering::Relaxed), 2);
+        assert!(repo.tree_cache_stats().estimated_bytes <= capacity);
+        if capacity == 0 {
+            assert_eq!(repo.tree_cache_stats().entries, 0);
+        }
+    }
+}
+
+#[test]
+fn corrupt_blob_reads_are_not_cached_and_direct_validation_bypasses_warm_cache() {
+    let store = Arc::new(CountingStore::default());
+    let repo = Repository::new("test", store.clone()).unwrap();
+    let revision = commit(&repo, &[], &[("file", Some(b"verified\n"))], "original");
+    let file = repo.file(revision, &path("file")).unwrap().unwrap();
+    repo.clear_tree_cache();
+    store.blob_reads.store(0, Ordering::Relaxed);
+    store.corrupt_blob_reads.store(true, Ordering::Relaxed);
+    assert!(matches!(
+        repo.read_file(revision, &path("file")),
+        Err(Error::Corrupt(_))
+    ));
+    store.corrupt_blob_reads.store(false, Ordering::Relaxed);
+    assert_eq!(
+        repo.read_file(revision, &path("file")).unwrap(),
+        b"verified\n"
+    );
+    assert_eq!(store.blob_reads.load(Ordering::Relaxed), 2);
+    store.corrupt_blob_reads.store(true, Ordering::Relaxed);
+    assert_eq!(
+        repo.read_file(revision, &path("file")).unwrap(),
+        b"verified\n"
+    );
+    assert_eq!(store.blob_reads.load(Ordering::Relaxed), 2);
+    assert!(matches!(
+        repo.store().get_object(ObjectKind::Blob, file.id),
+        Err(Error::Corrupt(_))
+    ));
+    let mut request = repo.get_changeset(revision).unwrap();
+    request.parents = vec![revision];
+    request.message = "must validate storage".into();
+    assert!(matches!(
+        repo.create_commit(request),
+        Err(Error::Corrupt(_))
+    ));
+    assert_eq!(store.blob_reads.load(Ordering::Relaxed), 4);
+    repo.clear_tree_cache();
+    assert!(matches!(
+        repo.read_file(revision, &path("file")),
+        Err(Error::Corrupt(_))
+    ));
+    store.corrupt_blob_reads.store(false, Ordering::Relaxed);
+    assert_eq!(
+        repo.read_file(revision, &path("file")).unwrap(),
+        b"verified\n"
+    );
+    assert_eq!(store.blob_reads.load(Ordering::Relaxed), 6);
+}
+
+#[test]
+fn warm_blob_cache_does_not_authorize_foreign_revisions_or_missing_paths() {
+    let store = Arc::new(CountingStore::default());
+    let a = Repository::new("a", store.clone()).unwrap();
+    let b = Repository::new("b", store.clone()).unwrap();
+    let foreign = commit(&a, &[], &[("dir/file", Some(b"shared bytes"))], "a");
+    let own = commit(&b, &[], &[("dir/file", Some(b"shared bytes"))], "b");
+    store.blob_reads.store(0, Ordering::Relaxed);
+    assert_eq!(
+        b.read_file(own, &path("dir/file")).unwrap(),
+        b"shared bytes"
+    );
+    assert_eq!(store.blob_reads.load(Ordering::Relaxed), 1);
+    for (revision, requested) in [(foreign, "dir/file"), (own, "missing"), (own, "dir")] {
+        assert!(matches!(
+            b.read_file(revision, &path(requested)),
+            Err(Error::NotFound(_))
+        ));
+    }
+    assert_eq!(store.blob_reads.load(Ordering::Relaxed), 1);
+    assert_eq!(
+        b.read_file(own, &path("dir/file")).unwrap(),
+        b"shared bytes"
+    );
+}
+
+#[test]
+fn warm_blob_cache_keeps_immutable_revisions_and_observes_new_reference_values() {
+    let store = Arc::new(CountingStore::default());
+    let writer = Repository::new("test", store.clone()).unwrap();
+    let reader = Repository::new("test", store.clone()).unwrap();
+    let first = commit(&writer, &[], &[("file", Some(b"first"))], "first");
+    assert!(writer.update_ref("main", None, Some(first)).unwrap());
+    store.blob_reads.store(0, Ordering::Relaxed);
+    let resolved = reader.resolve_ref("main").unwrap().unwrap();
+    assert_eq!(reader.read_file(resolved, &path("file")).unwrap(), b"first");
+    let second = commit(&writer, &[first], &[("file", Some(b"second"))], "second");
+    assert!(
+        writer
+            .update_ref("main", Some(first), Some(second))
+            .unwrap()
+    );
+    // Commit validation above is intentionally uncached; count only reader I/O.
+    store.blob_reads.store(0, Ordering::Relaxed);
+    let resolved = reader.resolve_ref("main").unwrap().unwrap();
+    assert_eq!(resolved, second);
+    assert_eq!(
+        reader.read_file(resolved, &path("file")).unwrap(),
+        b"second"
+    );
+    assert_eq!(reader.read_file(first, &path("file")).unwrap(), b"first");
+    assert_eq!(store.blob_reads.load(Ordering::Relaxed), 1);
+    assert!(writer.update_ref("main", Some(second), None).unwrap());
+    assert_eq!(reader.resolve_ref("main").unwrap(), None);
 }
 
 #[test]

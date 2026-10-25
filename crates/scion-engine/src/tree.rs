@@ -302,7 +302,7 @@ impl Repository {
         let file = self
             .file(revision, path)?
             .ok_or_else(|| Error::NotFound(path.to_string()))?;
-        self.store().get_object(ObjectKind::Blob, file.id)
+        self.read_blob(file.id).map(Arc::unwrap_or_clone)
     }
 
     pub fn list_files(
@@ -614,11 +614,11 @@ impl Repository {
             return Ok(None);
         }
         let old = before
-            .map(|e| self.store().get_object(ObjectKind::Blob, e.id))
+            .map(|e| self.read_blob(e.id))
             .transpose()?
             .unwrap_or_default();
         let new = after
-            .map(|e| self.store().get_object(ObjectKind::Blob, e.id))
+            .map(|e| self.read_blob(e.id))
             .transpose()?
             .unwrap_or_default();
         if old.contains(&0) || new.contains(&0) {

@@ -64,15 +64,17 @@ impl Repository {
     pub fn store(&self) -> &SharedStore {
         &self.store
     }
-    /// Configure retention of immutable trees, selected directory entries, and
-    /// membership-validated revision roots; zero disables it. The default is
-    /// 8 MiB of conservative accounting, shared by clones of this repository.
+    /// Configure retention of immutable trees, selected directory entries,
+    /// membership-validated revision roots and verified blobs of at most 64 KiB;
+    /// zero disables it. All values share 8 MiB of conservative accounting by
+    /// default, shared by clones of this repository.
     pub fn with_tree_cache_capacity(mut self, bytes: usize) -> Self {
         self.trees = std::sync::Arc::new(tree_cache::TreeCache::new(bytes));
         self
     }
-    /// Discard retained trees, point lookups and validated revision roots.
-    /// Existing readers retain their immutable tree snapshots.
+    /// Discard retained trees, point lookups, validated roots and verified blobs.
+    /// Existing readers retain their immutable snapshots. Cache misses verify
+    /// stored content again; hits return the previously verified bytes.
     pub fn clear_tree_cache(&self) {
         self.trees.clear();
     }
@@ -85,6 +87,18 @@ impl Repository {
 
     pub fn put_blob(&self, bytes: &[u8]) -> Result<ObjectId> {
         self.store.put_object(ObjectKind::Blob, bytes)
+    }
+
+    /// Read after the caller has resolved a repository member and allowed path.
+    /// Storage verifies content on misses; cached immutable bytes need no repeat
+    /// I/O or decoding. Commit validation uses Storage directly, as should audits.
+    fn read_blob(&self, id: ObjectId) -> Result<std::sync::Arc<Vec<u8>>> {
+        if let Some(bytes) = self.trees.blob(id) {
+            return Ok(bytes);
+        }
+        let bytes = std::sync::Arc::new(self.store.get_object(ObjectKind::Blob, id)?);
+        self.trees.insert_blob(id, bytes.clone());
+        Ok(bytes)
     }
 
     /// Create a durable immutable commit without moving any reference.
