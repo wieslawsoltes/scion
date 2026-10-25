@@ -29,13 +29,20 @@ impl Repository {
 
     // Editing can reuse a fully cached allocation when no reader holds it.
     // A miss loads a verified owned tree without retaining an unchanged copy;
-    // failed edits may evict the old cache entry but never change stored data.
-    fn tree_for_update(&self, id: ObjectId) -> Result<Tree> {
-        if let Some(tree) = self.trees.take_tree(id) {
-            return Ok(Arc::unwrap_or_clone(tree));
+    // Retain only affected before-values under the old immutable tree ID so
+    // inspecting an edit does not reload the complete parent directories.
+    fn tree_for_update(&self, id: ObjectId, delta: &DeltaNode<'_>) -> Result<Tree> {
+        let tree = if let Some(tree) = self.trees.take_tree(id) {
+            Arc::unwrap_or_clone(tree)
+        } else {
+            let tree = Tree::from_json(&self.store().get_object(ObjectKind::Tree, id)?)?;
+            tree.validate()?;
+            tree
+        };
+        for name in delta.children.keys() {
+            self.trees
+                .insert_entry(id, name, tree.entries.get(*name).cloned());
         }
-        let tree = Tree::from_json(&self.store().get_object(ObjectKind::Tree, id)?)?;
-        tree.validate()?;
         Ok(tree)
     }
 
@@ -173,7 +180,7 @@ impl Repository {
             node.change = Some(change);
         }
         let mut root = match base {
-            Some(id) => self.tree_for_update(id)?,
+            Some(id) => self.tree_for_update(id, &delta)?,
             None => Tree::default(),
         };
         for (name, change) in &delta.children {
@@ -217,7 +224,7 @@ impl Repository {
             };
         }
         let mut directory = match old {
-            Some(TreeEntry::Directory { id }) => self.tree_for_update(id)?,
+            Some(TreeEntry::Directory { id }) => self.tree_for_update(id, delta)?,
             Some(TreeEntry::File { .. }) => {
                 return Err(Error::Conflict(format!("file blocks directory {path}")));
             }

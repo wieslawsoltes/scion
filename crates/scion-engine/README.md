@@ -49,10 +49,13 @@ validation during commit creation still access storage directly.
 
 Edits can take ownership of a fully cached parent tree to reuse its map and name
 allocations. If another reader holds an `Arc<Tree>`, the edit clones it before
-changing anything; the reader's snapshot remains immutable. The old tree's cache
-entry is evicted even if an edit later fails. Revisiting that older tree may
-therefore require a verified storage read. Partial directory lookups remain
-usable for their original immutable tree. New tree values are cached only after
+changing anything; the reader's snapshot remains immutable. Before changing the
+owned tree, the edit retains only affected direct names and their original values
+or absence in the bounded point cache. Inspecting changed paths in the parent or
+diffing the edit can reuse these verified before-values without reloading whole
+directories. Other names and complete old trees may require a verified storage
+read. Failed edits can leave these valid old lookups cached, but never change
+stored parent data. New tree values are cached only after
 their storage write succeeds; values retained in a publication batch wait for
 that publication to succeed. Stored parent trees and content IDs never change.
 New trees use `Tree::canonical_bytes()` with the established canonical bytes.

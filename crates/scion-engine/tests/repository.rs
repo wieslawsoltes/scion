@@ -639,6 +639,85 @@ fn concurrent_branch_edits_of_one_cached_parent_keep_both_results_and_parent() {
 }
 
 #[test]
+fn edited_parent_paths_reuse_verified_before_values_for_forward_and_reverse_diffs() {
+    for cold in [false, true] {
+        let store = Arc::new(CountingStore::default());
+        let repo = Repository::new("test", store.clone()).unwrap();
+        let parent = commit(
+            &repo,
+            &[],
+            &[
+                ("dir/edit", Some(b"old edit")),
+                ("dir/delete", Some(b"deleted value")),
+                ("dir/stable", Some(b"stable")),
+                ("dir/nest/edit", Some(b"old nested edit")),
+                ("flat", Some(b"file becomes directory")),
+                ("replace/child", Some(b"directory becomes file")),
+                ("unaffected/file", Some(b"unaffected")),
+            ],
+            "parent",
+        );
+        let originals = repo.list_files(parent, &path("")).unwrap();
+        if cold {
+            repo.clear_tree_cache();
+        }
+        // The second branch starts from partial before-lookups left by the
+        // first edit. It must still load complete trees to preserve siblings.
+        for branch in ["first branch", "second branch"] {
+            let changes = [
+                ("dir/edit", Some(b"new edit".as_slice())),
+                ("dir/delete", None),
+                ("dir/new", Some(b"added".as_slice())),
+                ("dir/nest/edit", Some(b"new nested edit".as_slice())),
+                ("dir/nest/missing", None),
+                ("flat", None),
+                ("flat/child", Some(b"nested addition".as_slice())),
+                ("replace", Some(b"replacement file".as_slice())),
+                ("replace/child", None),
+            ];
+            let edited = commit(&repo, &[parent], &changes, branch);
+            store.tree_reads.store(0, Ordering::Relaxed);
+            for (name, _) in &changes {
+                let name = path(name);
+                assert_eq!(
+                    repo.file(parent, &name).unwrap(),
+                    originals.get(&name).cloned()
+                );
+            }
+            assert!(matches!(
+                repo.entry(parent, &path("replace")).unwrap(),
+                Some(TreeEntry::Directory { .. })
+            ));
+            let forward = repo.diff(parent, edited).unwrap();
+            let reverse = repo.diff(edited, parent).unwrap();
+            assert_eq!(forward.len(), 8);
+            assert_eq!(reverse.len(), forward.len());
+            for (forward, reverse) in forward.iter().zip(&reverse) {
+                assert_eq!(forward.path, reverse.path);
+                assert_eq!(forward.before, reverse.after);
+                assert_eq!(forward.after, reverse.before);
+            }
+            assert_eq!(
+                store.tree_reads.load(Ordering::Relaxed),
+                0,
+                "old affected paths must not reload their directories; cold={cold}, {branch}"
+            );
+            assert!(repo.tree_cache_stats().estimated_bytes <= 8 * 1024 * 1024);
+        }
+        // A retained partial map says nothing about names outside the edit.
+        // Those names still resolve through verified storage, then can promote
+        // the original complete tree into the same bounded cache.
+        store.tree_reads.store(0, Ordering::Relaxed);
+        assert_eq!(
+            repo.read_file(parent, &path("dir/stable")).unwrap(),
+            b"stable"
+        );
+        assert_eq!(store.tree_reads.load(Ordering::Relaxed), 1);
+        assert_eq!(repo.list_files(parent, &path("")).unwrap(), originals);
+    }
+}
+
+#[test]
 fn edits_from_partial_or_disabled_caches_load_complete_verified_parent_trees() {
     for capacity in [0, 4096] {
         let repo = repo().with_tree_cache_capacity(capacity);
@@ -739,6 +818,13 @@ fn failed_edits_and_publication_leave_evicted_parent_data_unchanged() {
             repo.store().get_object(ObjectKind::Tree, root).unwrap(),
             original
         );
+        store.tree_reads.store(0, Ordering::Relaxed);
+        let direct_name = changed_path.split('/').next().unwrap();
+        assert_eq!(
+            repo.entry(parent, &path(direct_name)).unwrap(),
+            Some(Tree::from_json(&original).unwrap().entries[direct_name].clone())
+        );
+        assert_eq!(store.tree_reads.load(Ordering::Relaxed), 0);
         assert_eq!(repo.list_files(parent, &path("")).unwrap(), original_files);
         assert_eq!(repo.read_file(parent, &path("flat")).unwrap(), b"parent");
         assert!(repo.tree_cache_stats().estimated_bytes <= 8 * 1024 * 1024);
@@ -818,6 +904,14 @@ fn one_file_commit_does_not_read_or_rewrite_unrelated_subtrees() {
     );
     assert_eq!(store.tree_reads.load(Ordering::Relaxed), 2);
     assert_eq!(store.tree_writes.load(Ordering::Relaxed), 2);
+    store.tree_reads.store(0, Ordering::Relaxed);
+    assert_eq!(repo.read_file(root, &path("dir500/f")).unwrap(), b"same");
+    let warm_diff = repo.diff(root, edited).unwrap();
+    assert_eq!(warm_diff.len(), 1);
+    assert_eq!(warm_diff[0].path, path("dir500/f"));
+    // Editing reused owned maps, but retained just this old path's two direct
+    // entries. The immediate diff never rereads either wide parent directory.
+    assert_eq!(store.tree_reads.load(Ordering::Relaxed), 0);
     repo.clear_tree_cache();
     store.tree_reads.store(0, Ordering::Relaxed);
     let diff = repo.diff(root, edited).unwrap();
