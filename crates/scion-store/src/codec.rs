@@ -1,6 +1,12 @@
 use scion_types::{Error, ObjectId, ObjectKind, Result};
 use std::{cell::RefCell, io::Read};
 
+mod metadata_cache;
+use metadata_cache::MetadataCache;
+#[cfg(test)]
+#[path = "codec/metadata_integration_tests.rs"]
+mod metadata_tests;
+
 const MAGIC: &[u8; 8] = b"SCNOBJ01";
 pub(crate) const HEADER: usize = 8 + 1 + 8 + 32;
 /// Per-object decompression ceiling, checked before allocating payload memory.
@@ -15,10 +21,11 @@ const BULK_LIMIT: usize = 1024 * 1024;
 struct Codecs {
     blob_encoder: Option<zstd::bulk::Compressor<'static>>,
     metadata_encoder: Option<zstd::bulk::Compressor<'static>>,
+    metadata_cache: MetadataCache,
     decoder: Option<zstd::bulk::Decompressor<'static>>,
 }
 thread_local! {
-    static CODECS: RefCell<Codecs> = const { RefCell::new(Codecs { blob_encoder: None, metadata_encoder: None, decoder: None }) };
+    static CODECS: RefCell<Codecs> = const { RefCell::new(Codecs { blob_encoder: None, metadata_encoder: None, metadata_cache: MetadataCache::new(), decoder: None }) };
 }
 
 fn tag(kind: ObjectKind) -> u8 {
@@ -37,7 +44,9 @@ fn compression_level(kind: ObjectKind) -> i32 {
     }
 }
 
-/// Encode the same compressed representation used on disk and over the wire.
+/// Encode the versioned compressed representation used on disk and over the wire.
+/// Metadata may reuse independent Zstd frames from earlier encodes on this
+/// thread. Compressed bytes can differ while decoded content and IDs stay fixed.
 pub fn encode_object(kind: ObjectKind, bytes: &[u8]) -> Result<Vec<u8>> {
     if bytes.len() > MAX_OBJECT_SIZE {
         return Err(Error::Limit("object exceeds 256 MiB".into()));
@@ -56,26 +65,27 @@ fn encode_with_id(kind: ObjectKind, id: ObjectId, bytes: &[u8]) -> Result<Vec<u8
     let mut encoded = if bytes.len() <= BULK_LIMIT {
         CODECS.with(|codecs| -> Result<Vec<u8>> {
             let mut codecs = codecs.borrow_mut();
-            let encoder = if kind == ObjectKind::Blob {
-                &mut codecs.blob_encoder
-            } else {
-                &mut codecs.metadata_encoder
-            };
-            if encoder.is_none() {
-                *encoder = Some(zstd::bulk::Compressor::new(compression_level(kind))?);
+            if kind == ObjectKind::Blob {
+                if codecs.blob_encoder.is_none() {
+                    codecs.blob_encoder = Some(zstd::bulk::Compressor::new(3)?);
+                }
+                return Ok(prepend_header(compress_payload(
+                    codecs.blob_encoder.as_mut().expect("initialized encoder"),
+                    bytes,
+                )?));
             }
-            let mut encoded =
-                Vec::with_capacity(HEADER + zstd::zstd_safe::compress_bound(bytes.len()));
-            encoder
-                .as_mut()
-                .expect("initialized encoder")
-                .compress_to_buffer(bytes, &mut encoded)?;
-            // Reserve the header in the same allocation and move only compressed
-            // bytes; zero-initializing a worst-case output buffer is unnecessary.
-            let length = encoded.len();
-            encoded.resize(length + HEADER, 0);
-            encoded.copy_within(..length, HEADER);
-            Ok(encoded)
+            let Codecs {
+                metadata_encoder,
+                metadata_cache,
+                ..
+            } = &mut *codecs;
+            if metadata_encoder.is_none() {
+                *metadata_encoder = Some(zstd::bulk::Compressor::new(1)?);
+            }
+            let encoder = metadata_encoder.as_mut().expect("initialized encoder");
+            // Pass the existing context directly: callbacks never re-enter the
+            // thread-local RefCell or any public codec method.
+            Ok(metadata_cache.encode(bytes, |part| compress_payload(encoder, part))?)
         })?
     } else {
         let mut encoded = Vec::with_capacity(HEADER + BULK_LIMIT);
@@ -88,6 +98,23 @@ fn encode_with_id(kind: ObjectKind, id: ObjectId, bytes: &[u8]) -> Result<Vec<u8
     encoded[9..17].copy_from_slice(&(bytes.len() as u64).to_le_bytes());
     encoded[17..49].copy_from_slice(&id.0);
     Ok(encoded)
+}
+
+fn compress_payload(
+    encoder: &mut zstd::bulk::Compressor<'_>,
+    bytes: &[u8],
+) -> std::io::Result<Vec<u8>> {
+    let mut encoded = Vec::with_capacity(HEADER + zstd::zstd_safe::compress_bound(bytes.len()));
+    encoder.compress_to_buffer(bytes, &mut encoded)?;
+    Ok(encoded)
+}
+
+fn prepend_header(mut encoded: Vec<u8>) -> Vec<u8> {
+    // Move only compressed bytes; do not zero a worst-case output buffer.
+    let length = encoded.len();
+    encoded.resize(length + HEADER, 0);
+    encoded.copy_within(..length, HEADER);
+    encoded
 }
 
 /// Validate an envelope prefix without allocating or decoding its payload.
@@ -235,6 +262,10 @@ mod tests {
             .collect();
         let blob = zstd::bulk::compress(&data, 3).unwrap();
         let metadata = zstd::bulk::compress(&data, 1).unwrap();
+        let framed_metadata: Vec<_> = data
+            .chunks(metadata_cache::CHUNK_BYTES)
+            .flat_map(|part| zstd::bulk::compress(part, 1).unwrap())
+            .collect();
         assert_ne!(blob, metadata, "fixture must distinguish encoder levels");
         for kind in [
             ObjectKind::Tree,
@@ -247,14 +278,15 @@ mod tests {
         ] {
             let object = crate::PreparedObject::new(kind, data.clone()).unwrap();
             let encoded = object.encode().unwrap();
-            assert_eq!(
-                &encoded[HEADER..],
-                if kind == ObjectKind::Blob {
-                    &blob
-                } else {
-                    &metadata
-                }
-            );
+            let payload = &encoded[HEADER..];
+            if kind == ObjectKind::Blob {
+                assert!(payload == blob, "blob context must retain level 3");
+            } else {
+                assert!(
+                    payload == metadata || payload == framed_metadata,
+                    "metadata must use level 1 for both whole and independent frames"
+                );
+            }
         }
     }
 
