@@ -36,6 +36,19 @@ impl Storage for MemoryStore {
     fn get_object(&self, kind: ObjectKind, id: ObjectId) -> Result<Vec<u8>> {
         decode_object(kind, id, &self.get_encoded(kind, id)?)
     }
+    fn try_get_small_object(
+        &self,
+        kind: ObjectKind,
+        id: ObjectId,
+        max_decoded_bytes: usize,
+    ) -> Result<Option<Vec<u8>>> {
+        let state = self.state.read();
+        let encoded = state
+            .objects
+            .get(&(kind, id))
+            .ok_or_else(|| Error::NotFound(format!("{kind:?}/{id}")))?;
+        crate::codec::decode_small_object(kind, id, encoded, max_decoded_bytes)
+    }
     fn get_encoded(&self, kind: ObjectKind, id: ObjectId) -> Result<Vec<u8>> {
         self.state
             .read()

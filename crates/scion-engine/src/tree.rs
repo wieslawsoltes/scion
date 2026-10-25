@@ -7,6 +7,8 @@ use std::sync::Arc;
 // Bound transient raw-tree retention independently of repository size. Beyond
 // this budget trees are persisted immediately; membership remains unpublished.
 const PREPARED_TREE_BYTES: usize = 32 * 1024 * 1024;
+// An optional recent-edit shortcut must never decode an entire initial import.
+const SMALL_CHANGESET_BYTES: usize = 8 * 1024;
 
 pub(crate) struct PreparedTree {
     pub root: ObjectId,
@@ -47,8 +49,12 @@ impl Repository {
     }
 
     pub fn root_tree(&self, revision: ObjectId) -> Result<ObjectId> {
+        self.root_tree_for_lookup(revision).map(|(root, _)| root)
+    }
+
+    fn root_tree_for_lookup(&self, revision: ObjectId) -> Result<(ObjectId, bool)> {
         if let Some(root) = self.trees.root(revision) {
-            return Ok(root);
+            return Ok((root, false));
         }
         let key = revision.to_string();
         let [member, tree] = self.store().get_record_pair(
@@ -64,13 +70,34 @@ impl Repository {
         if let Some(bytes) = tree {
             let root = serde_json::from_slice(&bytes)?;
             self.trees.insert_root(revision, root);
-            return Ok(root);
+            return Ok((root, true));
         }
         // The general derived evaluator reconstructs evicted/rebuildable tree indexes.
         let object = self.derive(revision, &crate::derived::TreeIndex)?;
         let root = serde_json::from_slice(&self.store().get_object(ObjectKind::Derived, object)?)?;
         self.trees.insert_root(revision, root);
-        Ok(root)
+        Ok((root, true))
+    }
+
+    /// Call after validating membership. Storage may decline this optimization;
+    /// oversized changesets are rejected before allocating their decoded data.
+    fn small_changeset(&self, revision: ObjectId) -> Result<Option<Changeset>> {
+        let Some(bytes) = self.store().try_get_small_object(
+            ObjectKind::Changeset,
+            revision,
+            SMALL_CHANGESET_BYTES,
+        )?
+        else {
+            return Ok(None);
+        };
+        if bytes.len() > SMALL_CHANGESET_BYTES {
+            return Err(Error::Corrupt(
+                "storage exceeded the bounded changeset read limit".into(),
+            ));
+        }
+        let changeset: Changeset = serde_json::from_slice(&bytes)?;
+        changeset.validate()?;
+        Ok(Some(changeset))
     }
 
     pub(crate) fn apply_tree(
@@ -256,7 +283,17 @@ impl Repository {
     }
 
     pub fn file(&self, revision: ObjectId, path: &RepoPath) -> Result<Option<FileEntry>> {
-        Ok(match self.entry(revision, path)? {
+        let (root, cold) = self.root_tree_for_lookup(revision)?;
+        // Exact first-parent puts/deletes directly describe the revision's file
+        // value, even when a deleted file became a directory. Only file lookup
+        // uses this shortcut; entry() still resolves directory identities.
+        if cold
+            && let Some(changeset) = self.small_changeset(revision)?
+            && let Some(change) = changeset.changes.get(path)
+        {
+            return Ok(change.entry().cloned());
+        }
+        Ok(match self.entry_at_root(root, path)? {
             Some(TreeEntry::File { entry }) => Some(entry),
             _ => None,
         })
@@ -435,15 +472,26 @@ impl Repository {
         reverse: bool,
         allowed: &impl Fn(&RepoPath) -> bool,
     ) -> Result<Vec<FileDiff>> {
-        let root = self.root_tree(parent)?;
+        let (root, cold) = self.root_tree_for_lookup(parent)?;
+        let previous_delta = if cold && !changeset.changes.is_empty() {
+            self.small_changeset(parent)?
+        } else {
+            None
+        };
         let mut output = Vec::with_capacity(changeset.changes.len().min(1024));
         for (path, change) in &changeset.changes {
             if !allowed(path) {
                 continue;
             }
-            let before = match self.entry_at_root(root, path)? {
-                Some(TreeEntry::File { entry }) => Some(entry),
-                _ => None,
+            let before = match previous_delta
+                .as_ref()
+                .and_then(|delta| delta.changes.get(path))
+            {
+                Some(change) => change.entry().cloned(),
+                None => match self.entry_at_root(root, path)? {
+                    Some(TreeEntry::File { entry }) => Some(entry),
+                    _ => None,
+                },
             };
             let after = change.entry().cloned();
             if before == after {

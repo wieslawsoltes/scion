@@ -323,6 +323,8 @@ struct CountingStore {
     tree_writes: AtomicUsize,
     blob_reads: AtomicUsize,
     record_reads: AtomicUsize,
+    small_probes: AtomicUsize,
+    small_bytes: AtomicUsize,
     fail_tree_writes: AtomicBool,
 }
 impl Storage for CountingStore {
@@ -346,6 +348,18 @@ impl Storage for CountingStore {
     }
     fn get_encoded(&self, k: ObjectKind, id: ObjectId) -> Result<Vec<u8>> {
         self.inner.get_encoded(k, id)
+    }
+    fn try_get_small_object(
+        &self,
+        kind: ObjectKind,
+        id: ObjectId,
+        limit: usize,
+    ) -> Result<Option<Vec<u8>>> {
+        self.small_probes.fetch_add(1, Ordering::Relaxed);
+        let bytes = self.inner.try_get_small_object(kind, id, limit)?;
+        self.small_bytes
+            .fetch_add(bytes.as_ref().map_or(0, Vec::len), Ordering::Relaxed);
+        Ok(bytes)
     }
     fn put_encoded(&self, k: ObjectKind, id: ObjectId, b: &[u8]) -> Result<()> {
         self.inner.put_encoded(k, id, b)
@@ -492,6 +506,8 @@ fn distinct_cold_point_reads_promote_a_wide_directory_once() {
     let revision = repo.create_commit(request).unwrap().id().unwrap();
     repo.clear_tree_cache();
     store.tree_reads.store(0, Ordering::Relaxed);
+    store.small_probes.store(0, Ordering::Relaxed);
+    store.small_bytes.store(0, Ordering::Relaxed);
     for index in 0..256 {
         assert_eq!(
             repo.read_file(revision, &path(&format!("file{index:04}")))
@@ -505,7 +521,124 @@ fn distinct_cold_point_reads_promote_a_wide_directory_once() {
     }
     assert!(repo.file(revision, &path("absent")).unwrap().is_none());
     assert_eq!(store.tree_reads.load(Ordering::Relaxed), 2);
+    // The oversized initial-import delta is probed once and never decoded.
+    assert_eq!(store.small_probes.load(Ordering::Relaxed), 1);
+    assert_eq!(store.small_bytes.load(Ordering::Relaxed), 0);
     assert!(repo.tree_cache_stats().estimated_bytes <= 8 * 1024 * 1024);
+}
+
+#[test]
+fn bounded_recent_deltas_avoid_trees_without_reprobing_unchanged_files() {
+    let store = Arc::new(CountingStore::default());
+    let repo = Repository::new("test", store.clone()).unwrap();
+    let file = entry(&repo, b"original\n");
+    let request = Changeset {
+        parents: vec![],
+        author: "author".into(),
+        committer: None,
+        timestamp_ms: 0,
+        message: "import".into(),
+        metadata: BTreeMap::new(),
+        changes: (0..256)
+            .map(|index| {
+                (
+                    path(&format!("file{index:04}")),
+                    FileChange::put(file.clone()),
+                )
+            })
+            .collect(),
+    };
+    let initial = repo.create_commit(request).unwrap().id().unwrap();
+    let first = commit(
+        &repo,
+        &[initial],
+        &[("file0000", Some(b"first edit\n"))],
+        "first",
+    );
+    let second = commit(
+        &repo,
+        &[first],
+        &[("file0000", Some(b"second edit\n"))],
+        "second",
+    );
+    repo.clear_tree_cache();
+    store.tree_reads.store(0, Ordering::Relaxed);
+    store.small_probes.store(0, Ordering::Relaxed);
+    store.small_bytes.store(0, Ordering::Relaxed);
+    assert_eq!(
+        repo.read_file(second, &path("file0000")).unwrap(),
+        b"second edit\n"
+    );
+    assert_eq!(store.tree_reads.load(Ordering::Relaxed), 0);
+    assert_eq!(store.small_probes.load(Ordering::Relaxed), 1);
+    assert!((1..=8192).contains(&store.small_bytes.load(Ordering::Relaxed)));
+    let foreign = Repository::new("foreign", store.clone()).unwrap();
+    assert!(matches!(
+        foreign.read_file(second, &path("file0000")),
+        Err(Error::NotFound(_))
+    ));
+    assert_eq!(store.small_probes.load(Ordering::Relaxed), 1);
+
+    repo.clear_tree_cache();
+    store.tree_reads.store(0, Ordering::Relaxed);
+    store.small_probes.store(0, Ordering::Relaxed);
+    let diff = repo.diff(first, second).unwrap();
+    assert_eq!(diff.len(), 1);
+    assert_eq!(diff[0].path, path("file0000"));
+    assert!(diff[0].patch.as_ref().unwrap().contains("+second edit"));
+    assert_eq!(store.tree_reads.load(Ordering::Relaxed), 0);
+    assert_eq!(store.small_probes.load(Ordering::Relaxed), 1);
+
+    repo.clear_tree_cache();
+    store.tree_reads.store(0, Ordering::Relaxed);
+    store.small_probes.store(0, Ordering::Relaxed);
+    for index in 1..256 {
+        assert_eq!(
+            repo.read_file(second, &path(&format!("file{index:04}")))
+                .unwrap(),
+            b"original\n"
+        );
+    }
+    assert_eq!(store.small_probes.load(Ordering::Relaxed), 1);
+    assert_eq!(store.tree_reads.load(Ordering::Relaxed), 2);
+
+    // A large commit message also declines the shortcut, even for one edit.
+    let oversized = commit(
+        &repo,
+        &[second],
+        &[("file0000", Some(b"large metadata\n"))],
+        &"m".repeat(9000),
+    );
+    repo.clear_tree_cache();
+    store.small_bytes.store(0, Ordering::Relaxed);
+    assert_eq!(
+        repo.read_file(oversized, &path("file0000")).unwrap(),
+        b"large metadata\n"
+    );
+    assert_eq!(store.small_bytes.load(Ordering::Relaxed), 0);
+}
+
+#[test]
+fn bounded_recent_delta_still_validates_the_published_changeset() {
+    let store = Arc::new(MemoryStore::new());
+    let repo = Repository::new("test", store.clone()).unwrap();
+    let valid = commit(&repo, &[], &[("file", Some(b"content"))], "valid");
+    let root = repo.root_tree(valid).unwrap();
+    let mut invalid = repo.get_changeset(valid).unwrap();
+    invalid.author.clear();
+    for bytes in [b"{broken JSON".to_vec(), canonical(&invalid).unwrap()] {
+        let id = store.put_object(ObjectKind::Changeset, &bytes).unwrap();
+        store
+            .put_record(
+                "repo/test/derived/tree/1",
+                &id.to_string(),
+                &canonical(&root).unwrap(),
+            )
+            .unwrap();
+        store.append_log("test", id).unwrap();
+        repo.clear_tree_cache();
+        assert!(repo.file(id, &path("file")).is_err());
+    }
 }
 
 #[test]
@@ -693,6 +826,41 @@ fn first_parent_diffs_match_full_tree_comparison_in_both_directions() {
     ]);
     let mode = repo.create_commit(mode).unwrap().id().unwrap();
     let unchanged = commit(&repo, &[mode], &[], "metadata only");
+    let mut copy = repo.get_changeset(unchanged).unwrap();
+    copy.parents = vec![unchanged];
+    copy.message = "explicit copy".into();
+    copy.changes = BTreeMap::from([(
+        path("copied"),
+        FileChange::Put {
+            entry: repo.file(mode, &path("dir")).unwrap().unwrap(),
+            copy_from: Some(CopySource {
+                changeset: mode,
+                path: path("dir"),
+            }),
+        },
+    )]);
+    let copied = repo.create_commit(copy).unwrap().id().unwrap();
+    for revision in [initial, replaced, mode, unchanged, copied] {
+        for name in [
+            "file",
+            "file/child",
+            "dir",
+            "dir/a",
+            "binary",
+            "empty",
+            "copied",
+            "absent",
+            "",
+        ] {
+            repo.clear_tree_cache();
+            let expected = match repo.entry(revision, &path(name)).unwrap() {
+                Some(TreeEntry::File { entry }) => Some(entry),
+                _ => None,
+            };
+            repo.clear_tree_cache();
+            assert_eq!(repo.file(revision, &path(name)).unwrap(), expected);
+        }
+    }
 
     let independent = |revision, message: &str| {
         repo.create_commit(Changeset {
@@ -713,9 +881,14 @@ fn first_parent_diffs_match_full_tree_comparison_in_both_directions() {
         .id()
         .unwrap()
     };
-    for (index, (before, after)) in [(initial, replaced), (replaced, mode), (mode, unchanged)]
-        .into_iter()
-        .enumerate()
+    for (index, (before, after)) in [
+        (initial, replaced),
+        (replaced, mode),
+        (mode, unchanged),
+        (unchanged, copied),
+    ]
+    .into_iter()
+    .enumerate()
     {
         let a = independent(before, &format!("before {index}"));
         let b = independent(after, &format!("after {index}"));

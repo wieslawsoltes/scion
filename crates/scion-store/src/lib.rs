@@ -138,6 +138,26 @@ pub fn validate_publication_cas(
 pub trait Storage: Send + Sync {
     fn put_object(&self, kind: ObjectKind, bytes: &[u8]) -> Result<ObjectId>;
     fn get_object(&self, kind: ObjectKind, id: ObjectId) -> Result<Vec<u8>>;
+    /// Speculatively read a small immutable object with bounded encoded payload
+    /// materialization and decompression. `Some` contains fully verified content no larger than
+    /// `max_decoded_bytes`. `None` means oversized/unsupported and does not prove
+    /// that an object exists or that its payload is valid; use `get_object` for
+    /// the ordinary result. The default returns `None` without performing I/O.
+    ///
+    /// Optimized backends validate the envelope prefix before an oversized
+    /// result, return errors for missing objects or malformed inspected data,
+    /// and also bound encoded input copied into the decoder. Database engines may
+    /// still inspect index/overflow pages while finding a record. A valid unusually large compressed or
+    /// skippable-frame representation may therefore return `None` even when its
+    /// decoded contents fit. Object/hash checks are never bypassed for `Some`.
+    fn try_get_small_object(
+        &self,
+        _kind: ObjectKind,
+        _id: ObjectId,
+        _max_decoded_bytes: usize,
+    ) -> Result<Option<Vec<u8>>> {
+        Ok(None)
+    }
     fn get_encoded(&self, kind: ObjectKind, id: ObjectId) -> Result<Vec<u8>>;
     fn put_encoded(&self, kind: ObjectKind, id: ObjectId, bytes: &[u8]) -> Result<()>;
     fn get_record(&self, namespace: &str, key: &str) -> Result<Option<Vec<u8>>>;

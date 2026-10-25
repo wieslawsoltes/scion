@@ -2,7 +2,7 @@ use scion_types::{Error, ObjectId, ObjectKind, Result};
 use std::{cell::RefCell, io::Read};
 
 const MAGIC: &[u8; 8] = b"SCNOBJ01";
-const HEADER: usize = 8 + 1 + 8 + 32;
+pub(crate) const HEADER: usize = 8 + 1 + 8 + 32;
 /// Per-object decompression ceiling, checked before allocating payload memory.
 pub const MAX_OBJECT_SIZE: usize = 256 * 1024 * 1024;
 
@@ -68,25 +68,60 @@ pub fn encode_object(kind: ObjectKind, bytes: &[u8]) -> Result<Vec<u8>> {
     Ok(encoded)
 }
 
-/// Validate version, domain, expected ID, decompression bounds and content hash.
-pub fn decode_object(kind: ObjectKind, id: ObjectId, encoded: &[u8]) -> Result<Vec<u8>> {
-    if encoded.len() <= HEADER
-        || &encoded[..8] != MAGIC
-        || encoded[8] != tag(kind)
-        || encoded[17..49] != id.0
+/// Validate an envelope prefix without allocating or decoding its payload.
+/// `encoded_length` is the complete representation length, not prefix length.
+pub(crate) fn object_size(
+    kind: ObjectKind,
+    id: ObjectId,
+    prefix: &[u8],
+    encoded_length: u64,
+) -> Result<u64> {
+    if prefix.len() < HEADER
+        || encoded_length <= HEADER as u64
+        || &prefix[..8] != MAGIC
+        || prefix[8] != tag(kind)
+        || prefix[17..49] != id.0
     {
         return Err(Error::Corrupt("invalid immutable object envelope".into()));
     }
     let size = u64::from_le_bytes(
-        encoded[9..17]
+        prefix[9..17]
             .try_into()
             .map_err(|_| Error::Corrupt("short object header".into()))?,
     );
-    if size > MAX_OBJECT_SIZE as u64 || encoded.len() > MAX_OBJECT_SIZE + 1_048_576 {
+    if size > MAX_OBJECT_SIZE as u64 || encoded_length > (MAX_OBJECT_SIZE + 1_048_576) as u64 {
         return Err(Error::Limit(
             "encoded or decoded object exceeds size limit".into(),
         ));
     }
+    Ok(size)
+}
+
+// Bound both input and output for speculative small-object reads. Valid unusual
+// representations (for example huge skippable frames) fall back to normal reads.
+pub(crate) fn small_object_encoded_limit(max_decoded_bytes: usize) -> usize {
+    (HEADER + zstd::zstd_safe::compress_bound(max_decoded_bytes.min(MAX_OBJECT_SIZE)))
+        .min(MAX_OBJECT_SIZE + 1_048_576)
+}
+
+pub(crate) fn decode_small_object(
+    kind: ObjectKind,
+    id: ObjectId,
+    encoded: &[u8],
+    max_decoded_bytes: usize,
+) -> Result<Option<Vec<u8>>> {
+    let size = object_size(kind, id, encoded, encoded.len() as u64)?;
+    if size > max_decoded_bytes as u64
+        || encoded.len() > small_object_encoded_limit(max_decoded_bytes)
+    {
+        return Ok(None);
+    }
+    Ok(Some(decode_object(kind, id, encoded)?))
+}
+
+/// Validate version, domain, expected ID, decompression bounds and content hash.
+pub fn decode_object(kind: ObjectKind, id: ObjectId, encoded: &[u8]) -> Result<Vec<u8>> {
+    let size = object_size(kind, id, encoded, encoded.len() as u64)?;
     let decoded = if size <= BULK_LIMIT as u64 {
         CODECS.with(|codecs| -> Result<Vec<u8>> {
             let mut codecs = codecs.borrow_mut();

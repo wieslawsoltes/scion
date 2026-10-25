@@ -86,6 +86,29 @@ frames and valid skippable frames remain readable; emitted frames remain readabl
 by the previous streaming decoder. Compression bytes can differ while content
 identities remain identical.
 
+## Bounded small-object probes
+
+`Storage::try_get_small_object(kind, id, max_decoded_bytes)` lets query engines
+inspect a small changeset delta without materializing or decompressing a large
+initial import. `Some(bytes)` always contains the complete, size-checked and
+hash-verified object. `None` means that the optimization is unsupported or the
+representation exceeds a bound; it does not certify existence or payload validity.
+Call `get_object` when the ordinary full result is required.
+
+The default implementation performs no I/O and returns `None`, preserving custom
+backends. LocalStore and MemoryStore inspect the envelope's kind, ID, declared
+size and global size limits before returning an oversized result. Missing objects
+and malformed inspected data return errors. ShardedStore delegates to the selected
+object shard. A bounded encoded payload is selected in SQLite; loose objects are
+read through a fixed header and capped file read. Database engines can still read
+index/overflow pages while finding a record, but an oversized value is not copied
+into the decoder. Legacy loose objects remain supported.
+
+The encoded-input bound uses Zstd's worst-case single-frame compression bound for
+the requested decoded limit. A legal representation with very large skippable
+frames can therefore return `None` despite having small decoded content. Normal
+`get_object` behavior and all existing envelope/hash checks remain unchanged.
+
 ## Local I/O options
 
 `LocalStore::open` and `open_read_only` both use `LocalStoreOptions::default()`:

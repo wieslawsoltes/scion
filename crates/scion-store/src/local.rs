@@ -1,3 +1,4 @@
+use crate::codec::{HEADER, decode_small_object, object_size, small_object_encoded_limit};
 use crate::{
     ImmutableRecord, PreparedObject, PublicationResult, RecordCas, Storage, decode_object,
     encode_object, validate_publication, validate_publication_cas,
@@ -10,7 +11,7 @@ use scion_types::{Error, LogEntry, ObjectId, ObjectKind, Result};
 use std::collections::HashSet;
 use std::{
     fs,
-    io::Write,
+    io::{Read, Write},
     path::{Path, PathBuf},
     sync::atomic::{AtomicBool, Ordering},
     time::Duration,
@@ -183,14 +184,20 @@ impl LocalStore {
             .join(&hex[..2])
             .join(&hex[2..])
     }
-    fn inline_encoded(&self, kind: ObjectKind, id: ObjectId) -> Result<Option<Vec<u8>>> {
-        let db = self.database()?;
+    fn has_inline_table(&self, db: &Connection) -> Result<bool> {
         if !self.has_inline_objects.load(Ordering::Relaxed) {
-            if !has_inline_table(&db)? {
-                return Ok(None);
+            if !has_inline_table(db)? {
+                return Ok(false);
             }
             // A writer can upgrade a legacy store after this reader opens.
             self.has_inline_objects.store(true, Ordering::Relaxed);
+        }
+        Ok(true)
+    }
+    fn inline_encoded(&self, kind: ObjectKind, id: ObjectId) -> Result<Option<Vec<u8>>> {
+        let db = self.database()?;
+        if !self.has_inline_table(&db)? {
+            return Ok(None);
         }
         db.prepare_cached("SELECT encoded FROM inline_objects WHERE kind=?1 AND id=?2")
             .map_err(db_error)?
@@ -369,6 +376,65 @@ impl Storage for LocalStore {
     }
     fn get_object(&self, kind: ObjectKind, id: ObjectId) -> Result<Vec<u8>> {
         decode_object(kind, id, &self.get_encoded(kind, id)?)
+    }
+    fn try_get_small_object(
+        &self,
+        kind: ObjectKind,
+        id: ObjectId,
+        max_decoded_bytes: usize,
+    ) -> Result<Option<Vec<u8>>> {
+        let encoded_limit = small_object_encoded_limit(max_decoded_bytes);
+        let inline: Option<(i64, Vec<u8>)> = {
+            let db = self.database()?;
+            if self.has_inline_table(&db)? {
+                db.prepare_cached("SELECT length(encoded), CASE WHEN length(encoded)<=?3 THEN encoded ELSE substr(encoded,1,49) END FROM inline_objects WHERE kind=?1 AND id=?2")
+                    .map_err(db_error)?
+                    .query_row(params![kind.as_str(), id.0.as_slice(), encoded_limit as i64], |row| Ok((row.get(0)?, row.get(1)?)))
+                    .optional().map_err(db_error)?
+            } else {
+                None
+            }
+        };
+        if let Some((encoded_length, encoded)) = inline {
+            let size = object_size(kind, id, &encoded, encoded_length as u64)?;
+            if size > max_decoded_bytes as u64 || encoded_length as u64 > encoded_limit as u64 {
+                return Ok(None);
+            }
+            return decode_small_object(kind, id, &encoded, max_decoded_bytes);
+        }
+
+        let mut file = match fs::File::open(self.path(kind, id)) {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Err(Error::NotFound(format!("{kind:?}/{id}")));
+            }
+            Err(error) => return Err(error.into()),
+        };
+        let encoded_length = file.metadata()?.len();
+        let mut header = [0u8; HEADER];
+        if let Err(error) = file.read_exact(&mut header) {
+            return Err(if error.kind() == std::io::ErrorKind::UnexpectedEof {
+                Error::Corrupt("short immutable object envelope".into())
+            } else {
+                error.into()
+            });
+        }
+        let size = object_size(kind, id, &header, encoded_length)?;
+        if size > max_decoded_bytes as u64 || encoded_length > encoded_limit as u64 {
+            return Ok(None);
+        }
+        let mut encoded = Vec::with_capacity(encoded_length as usize + 1);
+        encoded.extend_from_slice(&header);
+        // Read at most the observed length plus one byte, detecting truncation
+        // or growth without allowing concurrent file changes to defeat the cap.
+        file.take(encoded_length - HEADER as u64 + 1)
+            .read_to_end(&mut encoded)?;
+        if encoded.len() as u64 != encoded_length {
+            return Err(Error::Corrupt(
+                "immutable object changed during bounded read".into(),
+            ));
+        }
+        decode_small_object(kind, id, &encoded, max_decoded_bytes)
     }
     fn get_encoded(&self, kind: ObjectKind, id: ObjectId) -> Result<Vec<u8>> {
         if let Some(encoded) = self.inline_encoded(kind, id)? {

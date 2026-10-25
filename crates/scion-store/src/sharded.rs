@@ -30,6 +30,15 @@ impl Storage for ShardedStore {
     fn get_object(&self, k: ObjectKind, id: ObjectId) -> Result<Vec<u8>> {
         self.shard(id).get_object(k, id)
     }
+    fn try_get_small_object(
+        &self,
+        kind: ObjectKind,
+        id: ObjectId,
+        max_decoded_bytes: usize,
+    ) -> Result<Option<Vec<u8>>> {
+        self.shard(id)
+            .try_get_small_object(kind, id, max_decoded_bytes)
+    }
     fn get_encoded(&self, k: ObjectKind, id: ObjectId) -> Result<Vec<u8>> {
         self.shard(id).get_encoded(k, id)
     }
