@@ -47,8 +47,9 @@ struct DecodedEntry(TreeEntry);
 
 impl<'de> Deserialize<'de> for DecodedEntry {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        // The internally tagged enum accepts objects only, even though a
-        // derived struct also accepts positional JSON arrays.
+        // The legacy internally tagged enum also supports positional arrays.
+        // Their shape differs from this helper struct, so use the original
+        // decoder for them and keep this fast path restricted to objects.
         struct EntryVisitor;
         impl<'de> de::Visitor<'de> for EntryVisitor {
             type Value = CanonicalEntry;

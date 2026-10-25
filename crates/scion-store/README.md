@@ -61,6 +61,10 @@ concurrent commits through the live WAL; this does not use SQLite's immutable
 mode. SQLite can maintain WAL reader coordination sidecars, so the API is not a
 promise that no filesystem coordination files are touched.
 
+High-level repository queries can lazily derive missing indexes. Such queries
+still need a writable backend when their required derived data is absent; opening
+the underlying store read-only does not disable that derivation contract.
+
 Existing file-only schemas remain readable without migration. If a writer later
 upgrades the store, an open reader detects and reads the new inline object table.
 The workspace bundles SQLite 3.51.3, including the upstream

@@ -63,6 +63,8 @@ fn streaming_tree_decoder_matches_derived_for_field_orders_and_noncanonical_shap
     for entry in [
         "null".to_owned(),
         "[]".to_owned(),
+        format!("[\"file\",{file}]"),
+        format!("[\"directory\",{id}]"),
         format!("[\"file\",{file},null]"),
         format!("[\"directory\",null,{id}]"),
         format!("{{\"type\":\"file\",\"entry\":{file}}}"),
