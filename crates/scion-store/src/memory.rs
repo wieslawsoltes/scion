@@ -1,4 +1,4 @@
-use crate::{Storage, decode_object, encode_object};
+use crate::{ImmutableRecord, Storage, decode_object, encode_object, validate_publication};
 use parking_lot::RwLock;
 use scion_types::{Error, LogEntry, ObjectId, ObjectKind, Result};
 use std::collections::BTreeMap;
@@ -94,7 +94,34 @@ impl Storage for MemoryStore {
         Ok(true)
     }
     fn append_log(&self, repo: &str, id: ObjectId) -> Result<u64> {
+        self.publish_commit(repo, id, &[])
+    }
+    fn publish_commit(&self, repo: &str, id: ObjectId, records: &[ImmutableRecord]) -> Result<u64> {
+        validate_publication(repo, id, records)?;
         let mut state = self.state.write();
+        let membership = (format!("repo/{repo}/changesets"), id.to_string());
+        for (key, value) in records
+            .iter()
+            .map(|r| ((r.namespace.clone(), r.key.clone()), r.value.as_slice()))
+            .chain(std::iter::once((membership.clone(), b"1".as_slice())))
+        {
+            if state
+                .records
+                .get(&key)
+                .is_some_and(|existing| existing != value)
+            {
+                return Err(Error::Conflict(format!(
+                    "immutable metadata collision: {}/{}",
+                    key.0, key.1
+                )));
+            }
+        }
+        for record in records {
+            state
+                .records
+                .entry((record.namespace.clone(), record.key.clone()))
+                .or_insert_with(|| record.value.clone());
+        }
         let log_key = (repo.to_owned(), id);
         let seq = if let Some(sequence) = state.log_sequences.get(&log_key) {
             *sequence
@@ -105,10 +132,7 @@ impl Storage for MemoryStore {
             state.log_sequences.insert(log_key, sequence);
             sequence
         };
-        state.records.insert(
-            (format!("repo/{repo}/changesets"), id.to_string()),
-            b"1".to_vec(),
-        );
+        state.records.insert(membership, b"1".to_vec());
         Ok(seq)
     }
     fn read_log(&self, repo: &str, after: u64, limit: usize) -> Result<Vec<LogEntry>> {

@@ -1,6 +1,6 @@
 use crate::Repository;
 use scion_types::*;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 #[derive(Default)]
 struct DeltaNode<'a> {
@@ -35,6 +35,11 @@ impl Repository {
         base: Option<ObjectId>,
         changes: &BTreeMap<RepoPath, FileChange>,
     ) -> Result<ObjectId> {
+        if changes.is_empty()
+            && let Some(root) = base
+        {
+            return Ok(root);
+        }
         let mut delta = DeltaNode::default();
         for (path, change) in changes {
             let mut node = &mut delta;
@@ -303,17 +308,14 @@ impl Repository {
             if before == after {
                 continue;
             }
-            let mut names = BTreeSet::new();
-            let mut old_dir = match &before {
+            let old_dir = match &before {
                 Some(TreeEntry::Directory { id }) => self.tree(*id)?.entries,
                 _ => BTreeMap::new(),
             };
-            let mut new_dir = match &after {
+            let new_dir = match &after {
                 Some(TreeEntry::Directory { id }) => self.tree(*id)?.entries,
                 _ => BTreeMap::new(),
             };
-            names.extend(old_dir.keys().cloned());
-            names.extend(new_dir.keys().cloned());
             let old_file = match before {
                 Some(TreeEntry::File { entry }) => Some(entry),
                 _ => None,
@@ -325,12 +327,33 @@ impl Repository {
             if old_file.is_some() || new_file.is_some() {
                 changes.insert(path.clone(), (old_file, new_file));
             }
-            for name in names {
-                pending.push((
-                    path.join(&name)?,
-                    old_dir.remove(&name),
-                    new_dir.remove(&name),
-                ));
+            // Merge already-sorted maps in linear time. Equal entries require no
+            // cloned name, full path allocation, tree read or traversal frame.
+            let mut old = old_dir.into_iter().peekable();
+            let mut new = new_dir.into_iter().peekable();
+            loop {
+                let entry = match (old.peek(), new.peek()) {
+                    (Some((a, _)), Some((b, _))) => match a.cmp(b) {
+                        std::cmp::Ordering::Less => {
+                            old.next().map(|(name, entry)| (name, Some(entry), None))
+                        }
+                        std::cmp::Ordering::Greater => {
+                            new.next().map(|(name, entry)| (name, None, Some(entry)))
+                        }
+                        std::cmp::Ordering::Equal => old
+                            .next()
+                            .zip(new.next())
+                            .map(|((name, before), (_, after))| (name, Some(before), Some(after))),
+                    },
+                    (Some(_), None) => old.next().map(|(name, entry)| (name, Some(entry), None)),
+                    (None, Some(_)) => new.next().map(|(name, entry)| (name, None, Some(entry))),
+                    (None, None) => break,
+                };
+                if let Some((name, before, after)) = entry
+                    && before != after
+                {
+                    pending.push((path.join(&name)?, before, after));
+                }
             }
         }
         changes

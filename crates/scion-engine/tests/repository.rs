@@ -378,7 +378,7 @@ fn one_file_commit_does_not_read_or_rewrite_unrelated_subtrees() {
     let root = repo.create_commit(initial).unwrap().id().unwrap();
     store.tree_reads.store(0, Ordering::Relaxed);
     store.tree_writes.store(0, Ordering::Relaxed);
-    let _ = commit(
+    let edited = commit(
         &repo,
         &[root],
         &[("dir500/f", Some(b"changed"))],
@@ -386,6 +386,21 @@ fn one_file_commit_does_not_read_or_rewrite_unrelated_subtrees() {
     );
     assert_eq!(store.tree_reads.load(Ordering::Relaxed), 2);
     assert_eq!(store.tree_writes.load(Ordering::Relaxed), 2);
+    store.tree_reads.store(0, Ordering::Relaxed);
+    let diff = repo.diff(root, edited).unwrap();
+    assert_eq!(diff.len(), 1);
+    assert_eq!(diff[0].path, path("dir500/f"));
+    assert_eq!(store.tree_reads.load(Ordering::Relaxed), 4);
+
+    store.tree_reads.store(0, Ordering::Relaxed);
+    store.tree_writes.store(0, Ordering::Relaxed);
+    let empty = commit(&repo, &[edited], &[], "metadata only");
+    assert_eq!(
+        repo.root_tree(empty).unwrap(),
+        repo.root_tree(edited).unwrap()
+    );
+    assert_eq!(store.tree_reads.load(Ordering::Relaxed), 0);
+    assert_eq!(store.tree_writes.load(Ordering::Relaxed), 0);
 }
 
 #[test]

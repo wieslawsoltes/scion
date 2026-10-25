@@ -1,7 +1,7 @@
 use crate::Repository;
 use scion_types::*;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 /// Result of replaying a first-parent stack; completed rewrites remain immutable
 /// when a later changeset conflicts, enabling explicit continuation by callers.
@@ -13,8 +13,16 @@ pub struct RebaseResult {
 }
 
 impl Repository {
-    /// Three-way merge. All maximal merge bases are considered; ambiguous
-    /// criss-cross bases are reported instead of silently selecting a base.
+    /// Three-way merge, recursively synthesizing a virtual tree when the DAG has
+    /// multiple maximal merge bases. Synthesis uses a canonical operand order and
+    /// never publishes synthetic commits. Conflicting virtual bases return
+    /// structured conflicts instead of silently selecting a base or resolution.
+    /// Their reasons start with `virtual merge base: `; the conflict entries refer
+    /// to virtual-base operands, which may differ from the two requested tips.
+    /// Ambiguity is reported even if both requested tips chose the same resolution.
+    /// Synthesis is limited to 64 recursive levels, 256 heads per subproblem,
+    /// 4096 uncached subproblems/graph queries and 100000 cached graph records;
+    /// exceeding a budget returns [`Error::Limit`] without publishing a commit.
     pub fn merge(
         &self,
         ours: ObjectId,
@@ -32,26 +40,13 @@ impl Repository {
             });
         }
         let bases = self.merge_bases(ours, theirs)?;
-        let base_root = match bases.as_slice() {
-            [] => self
-                .store()
-                .put_object(ObjectKind::Tree, &canonical(&Tree::default())?)?,
-            [base] => self.root_tree(*base)?,
-            _ => {
-                // Identical base trees are semantically unambiguous even with several DAG bases.
-                let roots = bases
-                    .iter()
-                    .map(|id| self.root_tree(*id))
-                    .collect::<Result<BTreeSet<_>>>()?;
-                if roots.len() == 1 {
-                    *roots
-                        .first()
-                        .ok_or_else(|| Error::Corrupt("missing base tree".into()))?
-                } else {
-                    return Ok(MergeResult { changeset: None,conflicts: vec![MergeConflict {
-                        path: RepoPath::root(),reason: "multiple merge bases have different trees; resolve a virtual base explicitly".into(),base: None,ours: None,theirs: None,
-                    }] });
-                }
+        let base_root = match crate::virtual_base::Resolver::new(self).resolve(&bases)? {
+            crate::virtual_base::Outcome::Tree(root) => root,
+            crate::virtual_base::Outcome::Conflicts(conflicts) => {
+                return Ok(MergeResult {
+                    changeset: None,
+                    conflicts,
+                });
             }
         };
         let (changes, conflicts) =
@@ -228,7 +223,7 @@ impl Repository {
         }
     }
 
-    fn merge_trees(
+    pub(crate) fn merge_trees(
         &self,
         base: ObjectId,
         ours: ObjectId,

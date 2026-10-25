@@ -1,7 +1,7 @@
 //! Server-side source control independent of transport, runtime and working copy.
 //! Changesets are immutable first-parent file deltas; refs are separate CAS rows.
 use scion_graph::{GraphAccess, GraphNode};
-use scion_store::SharedStore;
+use scion_store::{ImmutableRecord, SharedStore};
 use scion_types::*;
 use std::collections::BTreeMap;
 
@@ -9,6 +9,7 @@ mod derived;
 mod history;
 mod merge;
 mod tree;
+mod virtual_base;
 pub use derived::{DerivedData, DerivedPolicy};
 pub use merge::RebaseResult;
 
@@ -87,18 +88,24 @@ impl Repository {
         let graph = scion_graph::build_node(self, &request.parents)?;
         let bytes = canonical(&request)?;
         let id = self.store.put_object(ObjectKind::Changeset, &bytes)?;
-        self.store.put_record(
-            &self.namespace("derived/tree/1"),
-            &id.to_string(),
-            &canonical(&root)?,
+        // One metadata transaction persists indexes, membership and the log. The
+        // immutable content above is durable before this visibility boundary.
+        self.store.publish_commit(
+            &self.name,
+            id,
+            &[
+                ImmutableRecord {
+                    namespace: self.namespace("derived/tree/1"),
+                    key: id.to_string(),
+                    value: canonical(&root)?,
+                },
+                ImmutableRecord {
+                    namespace: self.namespace("graph"),
+                    key: id.to_string(),
+                    value: canonical(&graph)?,
+                },
+            ],
         )?;
-        self.store.put_record(
-            &self.namespace("graph"),
-            &id.to_string(),
-            &canonical(&graph)?,
-        )?;
-        // Backend transaction atomically creates membership and appends a deduplicated log record.
-        self.store.append_log(&self.name, id)?;
         Ok(request)
     }
 

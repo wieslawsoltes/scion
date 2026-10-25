@@ -1,4 +1,4 @@
-use crate::{Storage, decode_object, encode_object};
+use crate::{ImmutableRecord, Storage, decode_object, encode_object, validate_publication};
 use parking_lot::Mutex;
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use scion_types::{Error, LogEntry, ObjectId, ObjectKind, Result};
@@ -162,21 +162,24 @@ impl Storage for LocalStore {
         Ok(true)
     }
     fn append_log(&self, repo: &str, id: ObjectId) -> Result<u64> {
+        self.publish_commit(repo, id, &[])
+    }
+    fn publish_commit(&self, repo: &str, id: ObjectId, records: &[ImmutableRecord]) -> Result<u64> {
+        validate_publication(repo, id, records)?;
         let mut db = self.db.lock();
         let tx = db
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(db_error)?;
+        for record in records {
+            insert_immutable(&tx, &record.namespace, &record.key, &record.value)?;
+        }
         let id = id.to_string();
         tx.execute(
             "INSERT INTO changeset_log(repo,id) VALUES (?1,?2) ON CONFLICT DO NOTHING",
             params![repo, id],
         )
         .map_err(db_error)?;
-        tx.execute(
-            "INSERT INTO records(namespace,key,value) VALUES (?1,?2,?3) ON CONFLICT DO NOTHING",
-            params![format!("repo/{repo}/changesets"), id, b"1".as_slice()],
-        )
-        .map_err(db_error)?;
+        insert_immutable(&tx, &format!("repo/{repo}/changesets"), &id, b"1")?;
         let seq: i64 = tx
             .query_row(
                 "SELECT sequence FROM changeset_log WHERE repo=?1 AND id=?2",
@@ -227,6 +230,35 @@ impl Storage for LocalStore {
         }
         Ok(result)
     }
+}
+
+fn insert_immutable(
+    tx: &rusqlite::Transaction<'_>,
+    namespace: &str,
+    key: &str,
+    value: &[u8],
+) -> Result<()> {
+    let inserted = tx
+        .execute(
+            "INSERT INTO records(namespace,key,value) VALUES (?1,?2,?3) ON CONFLICT DO NOTHING",
+            params![namespace, key, value],
+        )
+        .map_err(db_error)?;
+    if inserted == 0 {
+        let previous: Vec<u8> = tx
+            .query_row(
+                "SELECT value FROM records WHERE namespace=?1 AND key=?2",
+                params![namespace, key],
+                |row| row.get(0),
+            )
+            .map_err(db_error)?;
+        if previous != value {
+            return Err(Error::Conflict(format!(
+                "immutable metadata collision: {namespace}/{key}"
+            )));
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

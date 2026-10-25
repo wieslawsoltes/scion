@@ -16,6 +16,43 @@ mod pg;
 #[cfg(feature = "postgres")]
 pub use pg::PostgresStore;
 
+/// An immutable metadata entry prepared before a changeset is published.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ImmutableRecord {
+    pub namespace: String,
+    pub key: String,
+    pub value: Vec<u8>,
+}
+
+pub(crate) fn validate_publication(
+    repo: &str,
+    id: ObjectId,
+    records: &[ImmutableRecord],
+) -> Result<()> {
+    let namespace = format!("repo/{repo}/changesets");
+    let key = id.to_string();
+    let mut seen = std::collections::BTreeMap::new();
+    seen.insert((namespace.as_str(), key.as_str()), b"1".as_slice());
+    for record in records {
+        if record.namespace == namespace && record.key == key {
+            return Err(scion_types::Error::Invalid(
+                "changeset membership is managed by publication, not caller-supplied records"
+                    .into(),
+            ));
+        }
+        if seen
+            .insert((&record.namespace, &record.key), record.value.as_slice())
+            .is_some_and(|previous| previous != record.value)
+        {
+            return Err(scion_types::Error::Conflict(format!(
+                "inconsistent publication metadata: {}/{}",
+                record.namespace, record.key
+            )));
+        }
+    }
+    Ok(())
+}
+
 /// Storage backend. Immutable writes must be idempotent, refs must use atomic CAS,
 /// and append_log must durably deduplicate IDs per repository.
 pub trait Storage: Send + Sync {
@@ -36,6 +73,18 @@ pub trait Storage: Send + Sync {
     /// Atomically append/deduplicate the changeset and publish membership at
     /// `repo/{repo}/changesets`, with key `id.to_string()` and value `b"1"`.
     fn append_log(&self, repo: &str, id: ObjectId) -> Result<u64>;
+    /// Publish prepared immutable metadata and the changeset's membership/log.
+    /// Built-in backends commit the complete batch atomically with one durability
+    /// barrier. The fallback persists records first and publishes membership last,
+    /// preserving visibility safety for third-party implementations.
+    /// Caller-supplied records must not include this changeset's membership key.
+    fn publish_commit(&self, repo: &str, id: ObjectId, records: &[ImmutableRecord]) -> Result<u64> {
+        validate_publication(repo, id, records)?;
+        for record in records {
+            self.put_record(&record.namespace, &record.key, &record.value)?;
+        }
+        self.append_log(repo, id)
+    }
     fn read_log(&self, repo: &str, after: u64, limit: usize) -> Result<Vec<LogEntry>>;
     fn scan_records(
         &self,

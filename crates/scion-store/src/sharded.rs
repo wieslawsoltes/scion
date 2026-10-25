@@ -1,4 +1,4 @@
-use crate::{SharedStore, Storage};
+use crate::{ImmutableRecord, SharedStore, Storage};
 use scion_types::{Error, LogEntry, ObjectId, ObjectKind, Result};
 
 /// Independently scale immutable object storage and authoritative metadata.
@@ -53,6 +53,9 @@ impl Storage for ShardedStore {
     }
     fn append_log(&self, r: &str, id: ObjectId) -> Result<u64> {
         self.metadata.append_log(r, id)
+    }
+    fn publish_commit(&self, r: &str, id: ObjectId, records: &[ImmutableRecord]) -> Result<u64> {
+        self.metadata.publish_commit(r, id, records)
     }
     fn read_log(&self, r: &str, a: u64, l: usize) -> Result<Vec<LogEntry>> {
         self.metadata.read_log(r, a, l)

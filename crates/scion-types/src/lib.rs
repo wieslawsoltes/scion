@@ -41,12 +41,49 @@ pub struct ObjectId(pub [u8; 32]);
 impl ObjectId {
     /// Compute a domain-separated, versioned object ID.
     pub fn hash(kind: ObjectKind, bytes: &[u8]) -> Self {
+        let mut h = Self::hasher(kind);
+        h.update(bytes);
+        Self(*h.finalize().as_bytes())
+    }
+
+    /// Hash a stream with constant memory using the same domain and format as
+    /// [`Self::hash`]. Returns the content ID and number of bytes read. Interrupted
+    /// reads are retried; all other I/O errors prevent a partial result.
+    pub fn hash_reader(kind: ObjectKind, mut reader: impl std::io::Read) -> Result<(Self, u64)> {
+        let mut h = Self::hasher(kind);
+        let mut buffer = [0; 64 * 1024];
+        let mut length = 0u64;
+        loop {
+            match reader.read(&mut buffer) {
+                Ok(0) => return Ok((Self(*h.finalize().as_bytes()), length)),
+                Ok(count) => {
+                    length = length
+                        .checked_add(count as u64)
+                        .ok_or_else(|| Error::Limit("stream length exceeds u64".into()))?;
+                    h.update(&buffer[..count]);
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(error) => return Err(error.into()),
+            }
+        }
+    }
+
+    fn hasher(kind: ObjectKind) -> blake3::Hasher {
         let mut h = blake3::Hasher::new();
         h.update(b"scion\0v1\0");
         h.update(kind.as_str().as_bytes());
         h.update(b"\0");
-        h.update(bytes);
-        Self(*h.finalize().as_bytes())
+        h
+    }
+
+    fn hex(self) -> [u8; 64] {
+        const DIGITS: &[u8; 16] = b"0123456789abcdef";
+        let mut encoded = [0; 64];
+        for (value, pair) in self.0.iter().zip(encoded.as_chunks_mut::<2>().0) {
+            pair[0] = DIGITS[(value >> 4) as usize];
+            pair[1] = DIGITS[(value & 15) as usize];
+        }
+        encoded
     }
 
     /// Short display form; never used for lookup or authorization.
@@ -57,10 +94,7 @@ impl ObjectId {
 
 impl fmt::Display for ObjectId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for b in self.0 {
-            write!(f, "{b:02x}")?;
-        }
-        Ok(())
+        f.write_str(std::str::from_utf8(&self.hex()).expect("hex digits are UTF-8"))
     }
 }
 impl fmt::Debug for ObjectId {
@@ -71,15 +105,27 @@ impl fmt::Debug for ObjectId {
 impl FromStr for ObjectId {
     type Err = Error;
     fn from_str(s: &str) -> Result<Self> {
-        if s.len() != 64 || !s.bytes().all(|b| b.is_ascii_hexdigit()) {
+        if s.len() != 64 {
             return Err(Error::Invalid(
                 "object ID must contain 64 hex digits".into(),
             ));
         }
         let mut bytes = [0; 32];
-        for (i, b) in bytes.iter_mut().enumerate() {
-            *b = u8::from_str_radix(&s[i * 2..i * 2 + 2], 16)
-                .map_err(|e| Error::Invalid(e.to_string()))?;
+        fn nibble(value: u8) -> Option<u8> {
+            match value {
+                b'0'..=b'9' => Some(value - b'0'),
+                b'a'..=b'f' => Some(value - b'a' + 10),
+                b'A'..=b'F' => Some(value - b'A' + 10),
+                _ => None,
+            }
+        }
+        for (byte, pair) in bytes.iter_mut().zip(s.as_bytes().as_chunks::<2>().0) {
+            let (Some(high), Some(low)) = (nibble(pair[0]), nibble(pair[1])) else {
+                return Err(Error::Invalid(
+                    "object ID must contain 64 hex digits".into(),
+                ));
+            };
+            *byte = high << 4 | low;
         }
         Ok(Self(bytes))
     }
@@ -89,14 +135,25 @@ impl Serialize for ObjectId {
         &self,
         serializer: S,
     ) -> std::result::Result<S::Ok, S::Error> {
-        serializer.serialize_str(&self.to_string())
+        serializer.serialize_str(std::str::from_utf8(&self.hex()).expect("hex digits are UTF-8"))
     }
 }
 impl<'de> Deserialize<'de> for ObjectId {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> std::result::Result<Self, D::Error> {
-        String::deserialize(d)?
-            .parse()
-            .map_err(serde::de::Error::custom)
+        struct IdVisitor;
+        impl serde::de::Visitor<'_> for IdVisitor {
+            type Value = ObjectId;
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("an object ID containing 64 hexadecimal digits")
+            }
+            fn visit_str<E: serde::de::Error>(
+                self,
+                value: &str,
+            ) -> std::result::Result<ObjectId, E> {
+                value.parse().map_err(E::custom)
+            }
+        }
+        d.deserialize_str(IdVisitor)
     }
 }
 
@@ -421,6 +478,50 @@ pub struct MergeResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn streaming_hash_matches_canonical_bytes_and_propagates_read_errors() {
+        struct InterruptedOnce<'a> {
+            bytes: &'a [u8],
+            interrupted: bool,
+        }
+        impl std::io::Read for InterruptedOnce<'_> {
+            fn read(&mut self, output: &mut [u8]) -> std::io::Result<usize> {
+                if !self.interrupted {
+                    self.interrupted = true;
+                    return Err(std::io::ErrorKind::Interrupted.into());
+                }
+                std::io::Read::read(&mut self.bytes, output)
+            }
+        }
+        for kind in [
+            ObjectKind::Blob,
+            ObjectKind::Tree,
+            ObjectKind::Changeset,
+            ObjectKind::Derived,
+        ] {
+            for length in [0, 1, 65_537, 131_091] {
+                let data: Vec<u8> = (0..length).map(|n| (n % 251) as u8).collect();
+                let stream = InterruptedOnce {
+                    bytes: &data,
+                    interrupted: false,
+                };
+                assert_eq!(
+                    ObjectId::hash_reader(kind, stream).unwrap(),
+                    (ObjectId::hash(kind, &data), length as u64)
+                );
+            }
+        }
+        struct Failed;
+        impl std::io::Read for Failed {
+            fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+                Err(std::io::ErrorKind::PermissionDenied.into())
+            }
+        }
+        assert!(matches!(
+            ObjectId::hash_reader(ObjectKind::Blob, Failed),
+            Err(Error::Io(_))
+        ));
+    }
     #[test]
     fn identifiers_are_domain_separated_and_roundtrip() {
         let id = ObjectId::hash(ObjectKind::Blob, b"hello");

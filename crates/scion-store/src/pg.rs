@@ -1,4 +1,4 @@
-use crate::{Storage, decode_object, encode_object};
+use crate::{ImmutableRecord, Storage, decode_object, encode_object, validate_publication};
 use parking_lot::Mutex;
 use postgres::{Client, Config};
 use scion_types::{Error, LogEntry, ObjectId, ObjectKind, Result};
@@ -158,6 +158,10 @@ impl Storage for PostgresStore {
         Ok(count == 1)
     }
     fn append_log(&self, r: &str, id: ObjectId) -> Result<u64> {
+        self.publish_commit(r, id, &[])
+    }
+    fn publish_commit(&self, r: &str, id: ObjectId, records: &[ImmutableRecord]) -> Result<u64> {
+        validate_publication(r, id, records)?;
         let mut c = self.client()?;
         let mut tx = c.transaction().map_err(pg_error)?;
         // Writers share this lock and proceed concurrently. A log reader takes
@@ -168,13 +172,18 @@ impl Storage for PostgresStore {
             &[&Self::log_lock(r)],
         )
         .map_err(pg_error)?;
+        let mut ordered: Vec<_> = records.iter().collect();
+        ordered.sort_by_key(|record| (&record.namespace, &record.key));
+        for record in ordered {
+            insert_immutable(&mut tx, &record.namespace, &record.key, &record.value)?;
+        }
         let id = id.to_string();
         tx.execute(
             "INSERT INTO scion_log(repo,id) VALUES ($1,$2) ON CONFLICT DO NOTHING",
             &[&r, &id],
         )
         .map_err(pg_error)?;
-        tx.execute("INSERT INTO scion_records(namespace,key,value) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING",&[&format!("repo/{r}/changesets"),&id,&b"1".as_slice()]).map_err(pg_error)?;
+        insert_immutable(&mut tx, &format!("repo/{r}/changesets"), &id, b"1")?;
         let seq: i64 = tx
             .query_one(
                 "SELECT sequence FROM scion_log WHERE repo=$1 AND id=$2",
@@ -211,4 +220,31 @@ impl Storage for PostgresStore {
             .take_while(|(k, _)| k.starts_with(p))
             .collect())
     }
+}
+
+fn insert_immutable(
+    tx: &mut postgres::Transaction<'_>,
+    namespace: &str,
+    key: &str,
+    value: &[u8],
+) -> Result<()> {
+    let inserted = tx.execute(
+        "INSERT INTO scion_records(namespace,key,value) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING",
+        &[&namespace, &key, &value],
+    ).map_err(pg_error)?;
+    if inserted == 0 {
+        let previous: Vec<u8> = tx
+            .query_one(
+                "SELECT value FROM scion_records WHERE namespace=$1 AND key=$2",
+                &[&namespace, &key],
+            )
+            .map_err(pg_error)?
+            .get(0);
+        if previous != value {
+            return Err(Error::Conflict(format!(
+                "immutable metadata collision: {namespace}/{key}"
+            )));
+        }
+    }
+    Ok(())
 }
