@@ -224,9 +224,12 @@ impl Backend {
             Self::Repository(repository) => execute(repository, request),
             Self::Snapshot(snapshot) => match request {
                 Request::Noop => Ok(json!(true)),
-                Request::Ancestry { ancestor, descendant } => {
-                    Ok(json!(scion_graph::is_ancestor(snapshot, ancestor, descendant)?))
-                }
+                Request::Ancestry {
+                    ancestor,
+                    descendant,
+                } => Ok(json!(scion_graph::is_ancestor(
+                    snapshot, ancestor, descendant
+                )?)),
                 Request::MergeBases { left, right } => {
                     Ok(json!(scion_graph::merge_bases(snapshot, left, right)?))
                 }
@@ -268,7 +271,12 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 snapshot_path = Some(options.next().ok_or("missing snapshot path")?);
             }
             "--snapshot-identity" if snapshot_identity.is_none() => {
-                snapshot_identity = Some(options.next().ok_or("missing snapshot identity")?.parse::<ObjectId>()?);
+                snapshot_identity = Some(
+                    options
+                        .next()
+                        .ok_or("missing snapshot identity")?
+                        .parse::<ObjectId>()?,
+                );
             }
             _ => return Err("unknown or repeated comparison driver option".into()),
         }
@@ -283,7 +291,9 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         Backend::Snapshot(GraphSnapshot::open(path, "benchmark", identity)?)
     } else {
         if snapshot_path.is_some() || snapshot_identity.is_some() {
-            return Err("--graph-snapshot and --snapshot-identity must be supplied together".into());
+            return Err(
+                "--graph-snapshot and --snapshot-identity must be supplied together".into(),
+            );
         }
         let store = if read_only && once {
             // One logical query keeps a consistent WAL view and reuses its read

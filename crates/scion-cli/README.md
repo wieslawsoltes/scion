@@ -72,6 +72,12 @@ The authority supplies commit and reference semantics. Overlay commit preserves 
 
 `Args` implements `clap::Parser`, and `run(&Args)` is the asynchronous reusable entry point used by the small `scn` binary. Applications requiring structured results should use `scion-client` directly; the command runner intentionally writes the CLI's formatted output.
 
+Synchronous hosts can first call `try_run_local(&Args)`: `Some(result)` handles an
+explicit graph-snapshot command, while `None` leaves execution to `run`.
+The `scn` binary uses this dispatch before constructing Tokio, so local frozen
+graph queries start no runtime worker threads. The asynchronous `run` entry
+point continues to support the same local commands.
+
 See the workspace [command reference](https://github.com/wieslawsoltes/scion/blob/main/docs/commands.md), [getting started guide](https://github.com/wieslawsoltes/scion#quick-start), and operational documentation.
 
 Licensed under MIT OR Apache-2.0.

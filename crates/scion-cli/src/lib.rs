@@ -348,6 +348,19 @@ async fn invoke(args: &Args, client: &Client, request: RpcRequest) -> Result<()>
     output(args, client.rpc::<serde_json::Value>(request).await?)
 }
 
+/// Execute explicit local graph-snapshot commands without an async runtime.
+///
+/// `Some` means the command was handled, including a possible command error.
+/// `None` leaves execution to [`run`]. No service client or working-copy context
+/// is initialized here. The asynchronous runner also continues to support
+/// these commands for applications that already own a runtime.
+pub fn try_run_local(args: &Args) -> Option<Result<()>> {
+    match &args.command {
+        Commands::GraphSnapshot { command } => Some(graph_snapshot::run(args, command)),
+        _ => None,
+    }
+}
+
 pub async fn run(args: &Args) -> Result<()> {
     match &args.command {
         Commands::Init {

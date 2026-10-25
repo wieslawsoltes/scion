@@ -28,6 +28,9 @@ fn scn(directory: &Path, arguments: &[&str]) -> Output {
         .env_remove("SCION_OBJECTS")
         .env_remove("SCION_TOKEN")
         .env("SCION_SERVER", "http://127.0.0.1:1")
+        // Tokio rejects this worker count if a multithread runtime is built.
+        // Local graph commands must work without consulting runtime settings.
+        .env("TOKIO_WORKER_THREADS", "0")
         .args(arguments)
         .output()
         .unwrap()
