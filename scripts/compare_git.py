@@ -49,6 +49,7 @@ def environment():
 
 
 ENV = environment()
+GRAPH_OPERATIONS = frozenset(("ancestry_positive", "ancestry_negative", "merge_base_ancestor", "merge_base_divergent"))
 
 
 def run(command, *, input=None, accepted=(0,), cwd=ROOT):
@@ -72,6 +73,47 @@ def file_path(index, fanout):
 
 def encoded(request):
     return json.dumps(request, separators=(",", ":")).encode() + b"\n"
+
+
+def sha256_file(path):
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def prepare_graph_snapshot(driver, directory, work):
+    """Prepare the public frozen-graph artifact, without changing the live store."""
+    descriptor, name = tempfile.mkstemp(prefix="scion-graph-", suffix=".snapshot", dir=work)
+    os.close(descriptor)
+    path = Path(name).resolve()
+    try:
+        command = [driver, directory, "--prepare-graph-snapshot", path]
+        completed, elapsed = run(command)
+        metadata = json.loads(completed.stdout)
+        identity = metadata["source"]["identity"]
+        if metadata["repository"] != "benchmark" or not isinstance(identity, str) or len(identity) != 64 or any(c not in "0123456789abcdef" for c in identity):
+            raise ValueError("invalid graph snapshot repository or identity")
+        if not isinstance(metadata["node_count"], int) or metadata["node_count"] < 1:
+            raise ValueError("benchmark graph snapshot must contain the published fixture")
+        if metadata["file_bytes"] != path.stat().st_size:
+            raise ValueError("graph snapshot size differs from its export metadata")
+        return {
+            "path": str(path), "sha256": sha256_file(path), "metadata": metadata,
+            "command": [str(part) for part in command], "preparation_wall_ns": elapsed,
+            "scope": "explicit frozen membership; verified changesets and rebuilt graph; no live-store fallback",
+        }
+    except BaseException:
+        path.unlink(missing_ok=True)
+        raise
+
+
+def query_command(executable, directory, implementation, operation, snapshot=None):
+    command = [executable, directory, "--once", "--read-only"]
+    if snapshot is not None and implementation == "scion" and operation in GRAPH_OPERATIONS:
+        command.extend(["--graph-snapshot", snapshot["path"], "--snapshot-identity", snapshot["metadata"]["source"]["identity"]])
+    return command
 
 
 class ScionWorker:
@@ -256,7 +298,84 @@ def host_metadata(workdir):
     }
 
 
-def retained_fixture(report_path):
+def validate_baseline_build(source, build):
+    """Validate the clean-source evidence shared by original and replay reports."""
+    commit = source["commit"]
+    if not isinstance(commit, str) or len(commit) not in (40, 64) or any(c not in "0123456789abcdef" for c in commit):
+        raise ValueError("baseline report has an invalid source commit")
+    if source["dirty"] is not False or source["status"] != "" or build["source_changed_during_build"] is not False:
+        raise ValueError("baseline report must identify unchanged, clean source")
+    hashes = source["source_sha256"]
+    if not isinstance(hashes, dict) or not hashes or any(not isinstance(path, str) or not isinstance(digest, str) or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest) for path, digest in hashes.items()):
+        raise ValueError("baseline report has invalid source hashes")
+    expected = build["driver_sha256"]
+    if not isinstance(expected, str) or len(expected) != 64 or any(c not in "0123456789abcdef" for c in expected):
+        raise ValueError("baseline report has an invalid executable hash")
+    return expected
+
+
+def retained_baseline(report, work, baseline_info):
+    """Preserve the source run's physical stores instead of changing its baseline."""
+    candidate = work / "scion"
+    stored = report.get("baseline")
+    if stored is None:
+        previous_reuse = report.get("reuse", {})
+        if not isinstance(previous_reuse, dict):
+            raise ValueError("source report has invalid fixture reuse provenance")
+        stored = previous_reuse.get("baseline_fixture_provenance")
+    fixture = report["fixture"]
+    shared = {
+        "store_layout": "shared_retained_store",
+        "baseline_store_directory": str(candidate),
+        "baseline_fixture_scope": "same retained Scion fixture, read-only",
+    }
+    if stored is None:
+        if "scion_baseline" in fixture:
+            raise ValueError("retained baseline fixture is missing its source baseline provenance")
+        return shared
+    if stored["implementation"] != "scion_baseline":
+        raise ValueError("source report has an invalid baseline implementation")
+    for key in ("driver", "source_report"):
+        if not isinstance(stored[key], str) or not stored[key]:
+            raise ValueError(f"source baseline has an invalid provenance path: {key}")
+    if validate_baseline_build(stored["source"], stored["build"]) != stored["driver_sha256"]:
+        raise ValueError("source baseline executable hash differs from its build provenance")
+    report_hash = stored["source_report_sha256"]
+    if not isinstance(report_hash, str) or len(report_hash) != 64 or any(c not in "0123456789abcdef" for c in report_hash):
+        raise ValueError("source baseline has an invalid provenance report hash")
+    directory = Path(stored["store_directory"]).resolve()
+    if directory == candidate.resolve():
+        if "scion_baseline" in fixture or report.get("mode") != "queries_only":
+            raise ValueError("source report aliases an independent baseline fixture to the candidate store")
+        return shared
+    expected = work / "scion-baseline"
+    if directory != expected.resolve():
+        raise ValueError("source baseline store must be the retained work/scion-baseline directory")
+    if fixture.get("scion_baseline") != fixture["scion"]:
+        raise ValueError("retained baseline fixture IDs differ from the candidate fixture")
+    if not expected.is_dir() or not (expected / "metadata.sqlite3").is_file():
+        raise ValueError("independent baseline fixture was not retained; expected work/scion-baseline/metadata.sqlite3")
+    if (expected / "metadata.sqlite3").samefile(candidate / "metadata.sqlite3"):
+        raise ValueError("independent baseline metadata aliases the candidate database")
+    if baseline_info is not None:
+        for key in ("driver_sha256", "source_report_sha256", "source", "build", "reported_host"):
+            if stored[key] != baseline_info[key]:
+                raise ValueError(f"retained baseline provenance differs from the supplied baseline: {key}")
+    return {
+        "store_layout": "independent_retained_stores",
+        "baseline_store_directory": str(expected),
+        "baseline_fixture_scope": "independent retained candidate and baseline stores, read-only; verified identical Scion IDs",
+        "original_baseline_driver_sha256": stored["driver_sha256"],
+        "original_baseline_report_sha256": report_hash,
+        "original_baseline_source_commit": stored["source"]["commit"],
+        # A candidate/Git-only replay does not have a measured `baseline`
+        # section. Preserve its original fixture evidence so another replay
+        # can still select and verify the independently retained baseline.
+        "baseline_fixture_provenance": stored.copy(),
+    }
+
+
+def retained_fixture(report_path, baseline_info=None):
     """Load only a retained fixture that matches its report's exact marker."""
     raw = report_path.read_bytes()
     report = json.loads(raw)
@@ -291,6 +410,7 @@ def retained_fixture(report_path):
         "original_driver_sha256": report["build"]["driver_sha256"],
         "scope": "queries only; no prepared commits or resident writer no-ops are measured",
     }
+    provenance.update(retained_baseline(report, work, baseline_info))
     return dimensions.copy(), fixture, work, provenance
 
 
@@ -301,17 +421,7 @@ def baseline_metadata(driver, report_path):
     if report["schema"] != 1:
         raise ValueError("unsupported baseline-report schema")
     source, build = report["source"], report["build"]
-    commit = source["commit"]
-    if not isinstance(commit, str) or len(commit) not in (40, 64) or any(c not in "0123456789abcdef" for c in commit):
-        raise ValueError("baseline report has an invalid source commit")
-    if source["dirty"] is not False or source["status"] != "" or build["source_changed_during_build"] is not False:
-        raise ValueError("baseline report must identify unchanged, clean source")
-    hashes = source["source_sha256"]
-    if not isinstance(hashes, dict) or not hashes or any(not isinstance(path, str) or not isinstance(digest, str) or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest) for path, digest in hashes.items()):
-        raise ValueError("baseline report has invalid source hashes")
-    expected = build["driver_sha256"]
-    if not isinstance(expected, str) or len(expected) != 64 or any(c not in "0123456789abcdef" for c in expected):
-        raise ValueError("baseline report has an invalid executable hash")
+    expected = validate_baseline_build(source, build)
     actual = hashlib.sha256(driver.read_bytes()).hexdigest()
     if actual != expected:
         raise ValueError(f"baseline executable SHA-256 differs from its report: {actual} != {expected}")
@@ -402,6 +512,7 @@ def main():
     parser.add_argument("--no-build", action="store_true")
     parser.add_argument("--offline", action="store_true")
     parser.add_argument("--static-crt", action="store_true", help="native x86_64/aarch64 GNU/Linux static CRT; verify the ELF even with --no-build")
+    parser.add_argument("--graph-snapshot", action="store_true", help="prepare and time the public frozen graph index for candidate graph queries; record preparation cost")
     parser.add_argument("--driver", type=Path, help="comparison executable (default: the selected Cargo build output)")
     parser.add_argument("--baseline-driver", type=Path, help="previous Scion executable; requires its published --baseline-report")
     parser.add_argument("--baseline-report", type=Path, help="clean-source report whose driver SHA-256 must match --baseline-driver")
@@ -429,10 +540,13 @@ def main():
         if args.quick or args.work_root is not None or any(value is not None for value in (args.files, args.commits, args.branch_commits, args.fanout, args.blob_bytes, args.variants)):
             parser.error("--reuse-report keeps fixture dimensions; only --samples and --warmup may override them")
         try:
-            dimensions, fixture, retained_work, reused = retained_fixture(args.reuse_report)
+            dimensions, fixture, retained_work, reused = retained_fixture(args.reuse_report, baseline_info)
         except (OSError, ValueError, KeyError, TypeError) as error:
             parser.error(f"cannot reuse fixture: {error}")
         protected.update((args.reuse_report.resolve(), (retained_work / "fixture.json").resolve()))
+        if "baseline_fixture_provenance" in reused:
+            preserved = reused["baseline_fixture_provenance"]
+            protected.update(Path(preserved[key]).resolve() for key in ("driver", "source_report"))
         if args.samples is not None: dimensions["samples"] = args.samples
         if args.warmup is not None: dimensions["warmup"] = args.warmup
     else:
@@ -470,7 +584,7 @@ def main():
         parser.error("baseline executable changed while building the candidate")
     work = retained_work if reused is not None else Path(tempfile.mkdtemp(prefix="scion-git-comparison-", dir=args.work_root))
     git_dir, scion_dir = work / "git", work / "scion"
-    baseline_dir = scion_dir if reused is not None else work / "scion-baseline"
+    baseline_dir = Path(reused["baseline_store_directory"]) if reused is not None else work / "scion-baseline"
     result = {
         "schema": 1, "mode": "queries_only" if reused is not None else "full", "dimensions": dimensions, "host": host_metadata(work), "source": source_after,
         "build": {"command": build, "performed": not args.no_build, "incremental": False, "source_changed_during_build": source_before["source_sha256"] != source_after["source_sha256"], "driver": str(driver), "driver_sha256": hashlib.sha256(driver.read_bytes()).hexdigest(), "target": build_target, "static_crt_requested": args.static_crt, "rustflags": rustflags(build_environment), "rustflags_provenance": "build environment used by this invocation" if not args.no_build else "requested build environment; original flags cannot be recovered from the executable", "linkage": linkage},
@@ -482,9 +596,10 @@ def main():
     if baseline_info is not None:
         result["baseline"] = baseline_info
         result["baseline"]["store_directory"] = str(baseline_dir)
-        result["baseline"]["fixture_scope"] = "same retained Scion fixture, read-only" if reused is not None else "independent store with identical logical requests and verified identical Scion IDs"
+        result["baseline"]["fixture_scope"] = reused["baseline_fixture_scope"] if reused is not None else "independent store with identical logical requests and verified identical Scion IDs"
         result["configuration"]["sample_order"] += "; baseline insertion rotates through positions 0, 1, 2 (all six permutations every six iterations)"
     rows = result["samples"]
+    snapshot = None
     scion = git = reader = baseline = None
     try:
         if reused is None:
@@ -573,6 +688,15 @@ def main():
         for command in [["git", "-C", git_dir, "repack", "-ad"], ["git", "-C", git_dir, "commit-graph", "write", "--reachable", "--changed-paths"]]:
             _, elapsed = run(command)
             result["setup"].append({"operation": "git_query_preparation", "command": [str(part) for part in command], "wall_ns": elapsed})
+        if args.graph_snapshot:
+            print("Preparing verified frozen Scion graph snapshot (setup excluded from query timings)", file=sys.stderr, flush=True)
+            snapshot = prepare_graph_snapshot(driver, scion_dir, work)
+            if any(output.resolve() == Path(snapshot["path"]) for output in report_outputs(args.output)):
+                raise ValueError("--output must not overwrite the prepared graph snapshot")
+            result["graph_snapshot"] = snapshot
+            result["setup"].append({"operation": "scion_graph_snapshot_preparation", "command": snapshot["command"], "wall_ns": snapshot["preparation_wall_ns"], "file_bytes": snapshot["metadata"]["file_bytes"]})
+            result["configuration"]["scion"]["graph_queries"] = "explicit frozen GraphSnapshot; repository/identity checked on each fresh open; complete file lifetime inside query wall time"
+            result["configuration"]["scion"]["read_queries"] = "fresh file/diff queries use read-only SQLite snapshots including committed WAL; resident requests use live read-only connections; graph queries use the separately prepared frozen artifact"
         if reused is None:
             (work / "fixture.json").write_text(json.dumps(fixture, indent=2) + "\n")
         result["fixture"] = fixture
@@ -593,7 +717,7 @@ def main():
                 for implementation in implementation_order(sample, baseline_info is not None):
                     if implementation != "git":
                         executable, directory = (driver, scion_dir) if implementation == "scion" else (args.baseline_driver, baseline_dir)
-                        completed, elapsed = run([executable, directory, "--once", "--read-only"], input=encoded(request))
+                        completed, elapsed = run(query_command(executable, directory, implementation, operation, snapshot), input=encoded(request))
                         response = json.loads(completed.stdout)
                         if not response["ok"]: raise RuntimeError(response["error"])
                         value = response["result"]
@@ -663,6 +787,10 @@ def main():
         result["summary"] = summarize(rows)
         if hashlib.sha256(driver.read_bytes()).hexdigest() != result["build"]["driver_sha256"]:
             raise RuntimeError("candidate executable changed during measurement")
+        if snapshot is not None:
+            if sha256_file(Path(snapshot["path"])) != snapshot["sha256"]:
+                raise RuntimeError("prepared graph snapshot changed during measurement")
+            result["verification"]["graph_snapshot"] = "artifact SHA-256 unchanged; complete verified publication snapshot; all graph answers match the same fixture and preserved baseline"
         lookup = {(row["operation"], row["scope"], row["implementation"]): row for row in result["summary"]}
         if baseline_info is not None:
             if hashlib.sha256(args.baseline_driver.read_bytes()).hexdigest() != baseline_info["driver_sha256"] or hashlib.sha256(args.baseline_report.read_bytes()).hexdigest() != baseline_info["source_report_sha256"]:

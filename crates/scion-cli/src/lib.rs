@@ -1,4 +1,6 @@
 //! The `scn` thin command-line client.
+mod graph_snapshot;
+
 use clap::{Parser, Subcommand};
 use scion_client::{
     Client, ObjectCache, WorkingCopy, WorkingCopyState,
@@ -178,6 +180,11 @@ enum Commands {
     MergeBase {
         a: String,
         b: String,
+    },
+    /// Create or query an explicit frozen graph file without contacting a server.
+    GraphSnapshot {
+        #[command(subcommand)]
+        command: graph_snapshot::Command,
     },
     /// Ingest a Git repository into a local Scion storage backend without a checkout.
     ImportGit {
@@ -487,6 +494,7 @@ pub async fn run(args: &Args) -> Result<()> {
             }
             Ok(())
         }
+        Commands::GraphSnapshot { command } => graph_snapshot::run(args, command),
         Commands::ImportGit {
             source,
             data,

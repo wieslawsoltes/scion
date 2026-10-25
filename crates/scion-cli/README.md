@@ -25,6 +25,32 @@ scn commit --path work --author 'Ada <ada@example.test>' -m 'Update source' --re
 
 The CLI also exposes history, blame, content search, diffs, merge, single-commit and stack rebase, revert, references, bisect, Git import/export, cache snapshots, and typed JSON RPC. Run `scn --help` and each subcommand's `--help` for the complete arguments.
 
+## Frozen graph files
+
+An explicit graph snapshot supports local ancestry queries without a service or
+an open source-store connection. Create the artifact outside the source store:
+
+```sh
+scn --repo example graph-snapshot create example.scng --data scion-data
+scn --json graph-snapshot info example.scng
+scn --repo example graph-snapshot ancestor example.scng FULL_ANCESTOR_ID FULL_DESCENDANT_ID
+scn --repo example graph-snapshot merge-base example.scng FULL_LEFT_ID FULL_RIGHT_ID
+scn --repo example graph-snapshot nth-parent example.scng FULL_REVISION_ID 10
+```
+
+Creation verifies changeset contents, repository membership and parent closure
+from one consistent read-only view, including committed WAL data. `--max-commits`
+can set a limit below the hard maximum of ten million publications. Queries
+require an explicit repository and complete object IDs; they operate only on the
+selected file. A later publication is absent until the artifact is recreated.
+There is no live-store lookup or fallback. Add `--identity ID` to a query to pin
+the frozen source identity reported by `info`.
+
+Recreating the same output atomically replaces the complete artifact. Existing
+readers retain their old view. A verification failure leaves the previous file
+intact. Outputs inside the source store, symlink destinations and aliases of
+source files are rejected. The destination directory must already exist.
+
 ## Writable virtual worktrees
 
 ```sh
