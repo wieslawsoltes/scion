@@ -34,7 +34,8 @@ keeps content in object shards and publishes metadata through its authority.
 `LocalStore` stores encoded objects of at most 256 KiB in SQLite. A usual commit's
 changed trees, changeset, graph/tree indexes, membership and log share one
 `synchronous=FULL` WAL transaction. A standalone `put_object` still acknowledges
-durable content independently. Ref compare-and-swap is a separate transaction.
+durable content independently. Standalone ref compare-and-swap is a separate
+atomic SQL statement and durability boundary.
 Encoded batches use at most 16 MiB of buffering; overflow chunks are durably
 written before the final publication. Larger objects keep their synced loose-file
 representation. Failed publication can leave unreachable objects, but it cannot
@@ -51,11 +52,85 @@ acknowledged. A corrupt duplicate in the final publication transaction rolls bac
 that transaction's objects, records, membership, and log. Alternate valid
 compression of the same content remains accepted.
 
+### Prepared content with an optional reference update
+
+`Storage::publish_commit_with_objects_and_cas` accepts the same prepared objects
+and immutable metadata, plus an optional `RecordCas`. `PublicationResult` returns
+the deduplicated log sequence and `cas_applied: Option<bool>`. A stale expected
+reference value returns `Some(false)` while retaining the published immutable
+commit; the caller can retry a separate ref update. The bundled CAS namespace
+must be exactly `repo/{repo}/refs`, and its key must satisfy the existing reference
+name contract. It cannot target older membership/graph/derived records, another
+repository's refs, or an immutable entry included in the same publication batch.
+The standalone low-level `compare_and_swap` retains its generic namespace API.
+
+`LocalStore` includes the optional CAS in the final FULL-synchronous transaction,
+so typical small-object commits can durably publish uploaded blobs, changed trees,
+changeset, indexes, membership/log and a successful reference update with one
+barrier. SQL errors roll back that final transaction. The portable default first
+publishes the complete durable commit and then applies CAS; an error between
+these operations can leave the commit published. Every backend preserves the
+rule that a visible reference never precedes its durable commit. Independently
+acknowledged `put_object` and `publish_commit_with_objects` calls keep their
+existing durability and reference-independence contracts.
+
+## Codec reuse
+
+Objects up to 1 MiB use thread-local Zstd compression/decompression contexts,
+avoiding fresh streaming buffers and context allocation per object. There is no
+global codec lock. Larger objects use incremental streaming so an untrusted large
+size header cannot trigger an eager full-size allocation, and large compressor
+workspaces are not retained by threads. Content hashes, envelope version, size
+limits and integrity validation are unchanged. Old streaming frames, concatenated
+frames and valid skippable frames remain readable; emitted frames remain readable
+by the previous streaming decoder. Compression bytes can differ while content
+identities remain identical.
+
+## Local I/O options
+
+`LocalStore::open` and `open_read_only` both use `LocalStoreOptions::default()`:
+up to 256 MiB of the main database may be memory-mapped, and the last connection
+leaves its WAL/coordination files in place instead of checkpointing and deleting
+them at shutdown. Ordinary WAL auto-checkpointing and FULL synchronization of
+acknowledged writes remain enabled. This avoids copying mapped database pages
+through SQLite's page buffers and repeated sidecar teardown for short queries.
+Mapping configuration is deferred until the first database operation, and errors
+are returned before that operation proceeds. SQLite may reduce or disable mapping
+when the platform or VFS cannot provide it.
+
+Both behaviors are configurable through `open_with_options` and
+`open_read_only_with_options`:
+
+```rust
+use scion_store::{LocalStore, LocalStoreOptions};
+let store = LocalStore::open_with_options("scion-data", LocalStoreOptions {
+    mmap_size: 0,              // Use ordinary SQLite reads instead of mappings.
+    checkpoint_on_close: true, // Restore SQLite's last-connection cleanup policy.
+})?;
+# Ok::<(), scion_types::Error>(())
+```
+
+Mapped readers still observe concurrent WAL commits and use normal SQLite locking;
+this is not immutable or exclusive mode. As described in [SQLite's mmap guide](https://www.sqlite.org/mmap.html),
+an underlying mapped I/O failure can cause a process signal instead of a returned
+I/O error, and Windows mappings can delay truncation during VACUUM. Set
+`mmap_size: 0` for deployments that require the ordinary read/error path.
+
+WAL files can remain after every connection closes. Back up the complete store
+with a consistent SQLite backup or quiesced filesystem snapshot, including any
+live WAL and the loose-object directory; a database-file-only copy can omit
+acknowledged commits. `checkpoint_on_close: true` restores final checkpoint and
+cleanup when a writable connection is the last open connection. No write durability
+setting is weakened by either option.
+
 ## Read-only access
 
 `LocalStore::open_read_only(path)` opens an existing store without creating its
 directories, migrating its schema, or changing journal settings. Object, record,
-log, and prefix reads reuse prepared statements. All mutation methods reject
+log, and prefix reads reuse prepared statements. `get_record_pair` can read a
+membership guard and derived record in one query; the local implementation uses
+one live-WAL snapshot. The optional inline-object table is probed lazily on first
+object access, so metadata-only clients avoid that schema query. All mutation methods reject
 writes, including idempotent writes and loose-object insertion. Readers observe
 concurrent commits through the live WAL; this does not use SQLite's immutable
 mode. SQLite can maintain WAL reader coordination sidecars, so the API is not a

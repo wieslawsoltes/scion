@@ -124,6 +124,17 @@ impl Storage for PostgresStore {
             .map_err(pg_error)?
             .map(|r| r.get(0)))
     }
+    fn get_record_pair(
+        &self,
+        first: (&str, &str),
+        second: (&str, &str),
+    ) -> Result<[Option<Vec<u8>>; 2]> {
+        let row = self.client()?.query_one(
+            "SELECT (SELECT value FROM scion_records WHERE namespace=$1 AND key=$2), (SELECT value FROM scion_records WHERE namespace=$3 AND key=$4)",
+            &[&first.0, &first.1, &second.0, &second.1],
+        ).map_err(pg_error)?;
+        Ok([row.get(0), row.get(1)])
+    }
     fn put_record(&self, n: &str, k: &str, v: &[u8]) -> Result<()> {
         let mut c = self.client()?;
         c.execute("INSERT INTO scion_records(namespace,key,value) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING",&[&n,&k,&v]).map_err(pg_error)?;

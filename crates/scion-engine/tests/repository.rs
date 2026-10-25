@@ -79,6 +79,22 @@ fn repository_membership_prevents_cross_repository_reads_and_parent_injection() 
     let mut injected = a.get_changeset(id).unwrap();
     injected.parents.push(id);
     assert!(b.create_commit(injected).is_err());
+    let key = id.to_string();
+    for suffix in ["graph", "derived/tree/1"] {
+        let bytes = a
+            .store()
+            .get_record(&format!("repo/a/{suffix}"), &key)
+            .unwrap()
+            .unwrap();
+        b.store()
+            .put_record(&format!("repo/b/{suffix}"), &key, &bytes)
+            .unwrap();
+    }
+    assert!(matches!(
+        scion_graph::GraphAccess::node(&b, id),
+        Err(Error::NotFound(_))
+    ));
+    assert!(matches!(b.root_tree(id), Err(Error::NotFound(_))));
 }
 
 #[test]
@@ -435,7 +451,9 @@ fn one_file_commit_does_not_read_or_rewrite_unrelated_subtrees() {
     let diff = repo.diff(root, edited).unwrap();
     assert_eq!(diff.len(), 1);
     assert_eq!(diff[0].path, path("dir500/f"));
-    assert_eq!(store.tree_reads.load(Ordering::Relaxed), 4);
+    // Exact first-parent deltas need only the two parent directories. The target
+    // entries come directly from its immutable changeset.
+    assert_eq!(store.tree_reads.load(Ordering::Relaxed), 2);
 
     store.tree_reads.store(0, Ordering::Relaxed);
     store.tree_writes.store(0, Ordering::Relaxed);
@@ -446,6 +464,46 @@ fn one_file_commit_does_not_read_or_rewrite_unrelated_subtrees() {
     );
     assert_eq!(store.tree_reads.load(Ordering::Relaxed), 0);
     assert_eq!(store.tree_writes.load(Ordering::Relaxed), 0);
+}
+
+#[test]
+fn distinct_cold_point_reads_promote_a_wide_directory_once() {
+    let store = Arc::new(CountingStore::default());
+    let repo = Repository::new("test", store.clone()).unwrap();
+    let file = entry(&repo, b"content");
+    let request = Changeset {
+        parents: vec![],
+        author: "author".into(),
+        committer: None,
+        timestamp_ms: 0,
+        message: "wide directory".into(),
+        metadata: BTreeMap::new(),
+        changes: (0..256)
+            .map(|index| {
+                (
+                    path(&format!("file{index:04}")),
+                    FileChange::put(file.clone()),
+                )
+            })
+            .collect(),
+    };
+    let revision = repo.create_commit(request).unwrap().id().unwrap();
+    repo.clear_tree_cache();
+    store.tree_reads.store(0, Ordering::Relaxed);
+    for index in 0..256 {
+        assert_eq!(
+            repo.read_file(revision, &path(&format!("file{index:04}")))
+                .unwrap(),
+            b"content"
+        );
+        assert_eq!(
+            store.tree_reads.load(Ordering::Relaxed),
+            if index == 0 { 1 } else { 2 }
+        );
+    }
+    assert!(repo.file(revision, &path("absent")).unwrap().is_none());
+    assert_eq!(store.tree_reads.load(Ordering::Relaxed), 2);
+    assert!(repo.tree_cache_stats().estimated_bytes <= 8 * 1024 * 1024);
 }
 
 #[test]
@@ -541,6 +599,93 @@ fn filtered_diff_never_reads_denied_file_contents() {
             .is_empty()
     );
     assert_eq!(store.blob_reads.load(Ordering::Relaxed), 0);
+    assert!(repo.diff_filtered(b, a, |_| false).unwrap().is_empty());
+    assert_eq!(store.blob_reads.load(Ordering::Relaxed), 0);
+}
+
+#[test]
+fn first_parent_diffs_match_full_tree_comparison_in_both_directions() {
+    let repo = repo();
+    let initial = commit(
+        &repo,
+        &[],
+        &[
+            ("file", Some(b"text\n")),
+            ("dir/a", Some(b"nested\n")),
+            ("binary", Some(b"a\0b")),
+        ],
+        "root",
+    );
+    let replaced = commit(
+        &repo,
+        &[initial],
+        &[
+            ("file", None),
+            ("file/child", Some(b"new child\n")),
+            ("dir/a", None),
+            ("dir", Some(b"now a file\n")),
+            ("binary", Some(b"new\0bytes")),
+            ("absent", None),
+        ],
+        "replace",
+    );
+    let mut mode = repo.get_changeset(replaced).unwrap();
+    let file = repo.file(replaced, &path("dir")).unwrap().unwrap();
+    mode.parents = vec![replaced];
+    mode.message = "mode and empty file".into();
+    mode.changes = BTreeMap::from([
+        (
+            path("dir"),
+            FileChange::put(FileEntry {
+                kind: FileKind::Executable,
+                ..file
+            }),
+        ),
+        (path("empty"), FileChange::put(entry(&repo, b""))),
+    ]);
+    let mode = repo.create_commit(mode).unwrap().id().unwrap();
+    let unchanged = commit(&repo, &[mode], &[], "metadata only");
+
+    let independent = |revision, message: &str| {
+        repo.create_commit(Changeset {
+            parents: vec![],
+            author: "oracle".into(),
+            committer: None,
+            timestamp_ms: 0,
+            message: message.into(),
+            metadata: BTreeMap::new(),
+            changes: repo
+                .list_files(revision, &RepoPath::root())
+                .unwrap()
+                .into_iter()
+                .map(|(path, entry)| (path, FileChange::put(entry)))
+                .collect(),
+        })
+        .unwrap()
+        .id()
+        .unwrap()
+    };
+    for (index, (before, after)) in [(initial, replaced), (replaced, mode), (mode, unchanged)]
+        .into_iter()
+        .enumerate()
+    {
+        let a = independent(before, &format!("before {index}"));
+        let b = independent(after, &format!("after {index}"));
+        for (before, after, a, b) in [(before, after, a, b), (after, before, b, a)] {
+            repo.clear_tree_cache();
+            let expected = repo.diff(a, b).unwrap();
+            repo.clear_tree_cache();
+            assert_eq!(repo.diff(before, after).unwrap(), expected);
+            assert_eq!(
+                repo.diff_filtered(before, after, |p| p.as_str() != "binary")
+                    .unwrap(),
+                expected
+                    .into_iter()
+                    .filter(|d| d.path.as_str() != "binary")
+                    .collect::<Vec<_>>()
+            );
+        }
+    }
 }
 
 #[test]

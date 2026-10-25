@@ -83,6 +83,15 @@ fn shared_backend_concurrent_publication_cas_and_reopen() {
             reopened.get_object(ObjectKind::Blob, id).unwrap(),
             i.to_le_bytes()
         );
+        assert_eq!(
+            reopened
+                .get_record_pair(
+                    (&format!("repo/{repo}/changesets"), &id.to_string()),
+                    (&ns, "absent"),
+                )
+                .unwrap(),
+            [Some(b"1".to_vec()), None],
+        );
     }
     let old = reopened.get_record(&ns, "main").unwrap().unwrap();
     assert!(

@@ -61,6 +61,23 @@ impl Storage for MemoryStore {
             .get(&(ns.into(), key.into()))
             .cloned())
     }
+    fn get_record_pair(
+        &self,
+        first: (&str, &str),
+        second: (&str, &str),
+    ) -> Result<[Option<Vec<u8>>; 2]> {
+        let state = self.state.read();
+        Ok([
+            state
+                .records
+                .get(&(first.0.into(), first.1.into()))
+                .cloned(),
+            state
+                .records
+                .get(&(second.0.into(), second.1.into()))
+                .cloned(),
+        ])
+    }
     fn put_record(&self, ns: &str, key: &str, value: &[u8]) -> Result<()> {
         let mut state = self.state.write();
         let entry = state

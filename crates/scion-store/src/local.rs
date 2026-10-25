@@ -1,8 +1,11 @@
 use crate::{
-    ImmutableRecord, PreparedObject, Storage, decode_object, encode_object, validate_publication,
+    ImmutableRecord, PreparedObject, PublicationResult, RecordCas, Storage, decode_object,
+    encode_object, validate_publication, validate_publication_cas,
 };
-use parking_lot::Mutex;
-use rusqlite::{Connection, OpenFlags, OptionalExtension, TransactionBehavior, params};
+use parking_lot::{Mutex, MutexGuard};
+use rusqlite::{
+    Connection, OpenFlags, OptionalExtension, TransactionBehavior, config::DbConfig, params,
+};
 use scion_types::{Error, LogEntry, ObjectId, ObjectKind, Result};
 use std::collections::HashSet;
 use std::{
@@ -24,6 +27,43 @@ const INLINE_OBJECT_LIMIT: usize = 256 * 1024;
 const INLINE_BATCH_LIMIT: usize = 16 * 1024 * 1024;
 type EncodedObject = (ObjectKind, ObjectId, Vec<u8>);
 
+/// Per-connection local I/O tuning. Both regular and read-only opens use these
+/// defaults; database contents, FULL write synchronization and normal WAL
+/// auto-checkpointing are independent of these options.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LocalStoreOptions {
+    /// Maximum bytes of the main database that SQLite may map for reads.
+    /// Zero disables mapping. SQLite may clamp this to its platform/VFS limit.
+    /// Mapping preserves live-WAL coordination, but underlying mapped I/O errors
+    /// can become process signals; disable it when recoverable I/O errors are
+    /// required. Windows mappings can delay database-file truncation by VACUUM.
+    pub mmap_size: u64,
+    /// Whether the last connection checkpoints and removes WAL files on close.
+    /// False avoids teardown/recreation for short-lived readers. FULL commits and
+    /// normal WAL auto-checkpointing remain enabled. Backups must include the WAL.
+    pub checkpoint_on_close: bool,
+}
+
+impl Default for LocalStoreOptions {
+    fn default() -> Self {
+        Self {
+            mmap_size: 256 * 1024 * 1024,
+            checkpoint_on_close: false,
+        }
+    }
+}
+
+impl LocalStoreOptions {
+    fn validate(self) -> Result<()> {
+        if self.mmap_size > i64::MAX as u64 {
+            return Err(Error::Invalid(
+                "SQLite mmap_size exceeds signed 64-bit range".into(),
+            ));
+        }
+        Ok(())
+    }
+}
+
 /// Durable local backend: bounded small objects and metadata in SQLite WAL,
 /// with larger immutable compressed objects in sharded files. Existing loose
 /// objects remain readable; the encoded object format and content IDs do not change.
@@ -31,6 +71,8 @@ type EncodedObject = (ObjectKind, ObjectId, Vec<u8>);
 pub struct LocalStore {
     root: PathBuf,
     db: Mutex<Connection>,
+    options: LocalStoreOptions,
+    mmap_configured: AtomicBool,
     read_only: bool,
     has_inline_objects: AtomicBool,
     #[cfg(unix)]
@@ -39,10 +81,16 @@ pub struct LocalStore {
 }
 impl LocalStore {
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
+        Self::open_with_options(path, LocalStoreOptions::default())
+    }
+
+    /// Open or create a writable store with explicit per-connection I/O policy.
+    pub fn open_with_options(path: impl AsRef<Path>, options: LocalStoreOptions) -> Result<Self> {
+        options.validate()?;
         fs::create_dir_all(path.as_ref())?;
         let root = fs::canonicalize(path)?;
         let db = Connection::open(root.join("metadata.sqlite3")).map_err(db_error)?;
-        db.busy_timeout(Duration::from_secs(30)).map_err(db_error)?;
+        configure_connection(&db, options)?;
         db.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;
             CREATE TABLE IF NOT EXISTS records(namespace TEXT NOT NULL, key TEXT NOT NULL, value BLOB NOT NULL, PRIMARY KEY(namespace,key)) WITHOUT ROWID;
             CREATE TABLE IF NOT EXISTS inline_objects(kind TEXT NOT NULL, id BLOB NOT NULL, encoded BLOB NOT NULL, PRIMARY KEY(kind,id)) WITHOUT ROWID;
@@ -51,6 +99,8 @@ impl LocalStore {
         Ok(Self {
             root,
             db: Mutex::new(db),
+            options,
+            mmap_configured: AtomicBool::new(false),
             read_only: false,
             has_inline_objects: AtomicBool::new(true),
             #[cfg(unix)]
@@ -65,18 +115,33 @@ impl LocalStore {
     /// All mutation methods return an error, including writes to loose objects.
     /// SQLite may maintain WAL reader coordination files when writers are active.
     pub fn open_read_only(path: impl AsRef<Path>) -> Result<Self> {
+        Self::open_read_only_with_options(path, LocalStoreOptions::default())
+    }
+
+    /// Open an existing read-only store with explicit per-connection I/O policy.
+    /// Database reads and mmap configuration are deferred until the first query;
+    /// corrupt database contents are reported by that query, never hidden.
+    pub fn open_read_only_with_options(
+        path: impl AsRef<Path>,
+        options: LocalStoreOptions,
+    ) -> Result<Self> {
+        options.validate()?;
         let root = fs::canonicalize(path)?;
         let db = Connection::open_with_flags(
             root.join("metadata.sqlite3"),
             OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
         )
         .map_err(db_error)?;
-        db.busy_timeout(Duration::from_secs(30)).map_err(db_error)?;
-        // Old file-only stores remain readable without an implicit migration.
-        let has_inline_objects = has_inline_table(&db)?;
+        configure_connection(&db, options)?;
+        // Probe the optional inline table only when reading an object. Graph and
+        // metadata-only clients do not need an extra schema query. Legacy stores
+        // still detect a concurrent writer's schema upgrade on later object reads.
+        let has_inline_objects = false;
         Ok(Self {
             root,
             db: Mutex::new(db),
+            options,
+            mmap_configured: AtomicBool::new(false),
             read_only: true,
             has_inline_objects: AtomicBool::new(has_inline_objects),
             #[cfg(unix)]
@@ -87,6 +152,22 @@ impl LocalStore {
 
     pub fn root(&self) -> &Path {
         &self.root
+    }
+    pub fn options(&self) -> LocalStoreOptions {
+        self.options
+    }
+
+    // Configure mapping lazily under the same lock as the connection. A failed
+    // PRAGMA propagates before the requested operation and is retried later.
+    // The flag is accessed only while holding this mutex, so Relaxed is enough.
+    fn database(&self) -> Result<MutexGuard<'_, Connection>> {
+        let db = self.db.lock();
+        if !self.mmap_configured.load(Ordering::Relaxed) {
+            db.pragma_update(None, "mmap_size", self.options.mmap_size as i64)
+                .map_err(db_error)?;
+            self.mmap_configured.store(true, Ordering::Relaxed);
+        }
+        Ok(db)
     }
     fn require_writable(&self) -> Result<()> {
         if self.read_only {
@@ -103,7 +184,7 @@ impl LocalStore {
             .join(&hex[2..])
     }
     fn inline_encoded(&self, kind: ObjectKind, id: ObjectId) -> Result<Option<Vec<u8>>> {
-        let db = self.db.lock();
+        let db = self.database()?;
         if !self.has_inline_objects.load(Ordering::Relaxed) {
             if !has_inline_table(&db)? {
                 return Ok(None);
@@ -126,7 +207,7 @@ impl LocalStore {
         }
     }
     fn write_inline(&self, kind: ObjectKind, id: ObjectId, encoded: &[u8]) -> Result<()> {
-        let db = self.db.lock();
+        let db = self.database()?;
         let inserted = db
             .prepare_cached(
                 "INSERT INTO inline_objects(kind,id,encoded) VALUES (?1,?2,?3) ON CONFLICT DO NOTHING",
@@ -140,7 +221,7 @@ impl LocalStore {
         Ok(())
     }
     fn flush_inline(&self, objects: &[EncodedObject]) -> Result<()> {
-        let mut db = self.db.lock();
+        let mut db = self.database()?;
         let tx = db
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(db_error)?;
@@ -153,8 +234,9 @@ impl LocalStore {
         id: ObjectId,
         objects: &[EncodedObject],
         records: &[ImmutableRecord],
-    ) -> Result<u64> {
-        let mut db = self.db.lock();
+        cas: Option<&RecordCas>,
+    ) -> Result<PublicationResult> {
+        let mut db = self.database()?;
         let tx = db
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(db_error)?;
@@ -163,21 +245,34 @@ impl LocalStore {
             insert_immutable(&tx, &record.namespace, &record.key, &record.value)?;
         }
         let id = id.to_string();
-        tx.execute(
+        tx.prepare_cached(
             "INSERT INTO changeset_log(repo,id) VALUES (?1,?2) ON CONFLICT DO NOTHING",
-            params![repo, id],
         )
+        .map_err(db_error)?
+        .execute(params![repo, id])
         .map_err(db_error)?;
         insert_immutable(&tx, &format!("repo/{repo}/changesets"), &id, b"1")?;
         let seq: i64 = tx
-            .query_row(
-                "SELECT sequence FROM changeset_log WHERE repo=?1 AND id=?2",
-                params![repo, id],
-                |r| r.get(0),
-            )
+            .prepare_cached("SELECT sequence FROM changeset_log WHERE repo=?1 AND id=?2")
+            .map_err(db_error)?
+            .query_row(params![repo, id], |r| r.get(0))
             .map_err(db_error)?;
+        let cas_applied = cas
+            .map(|cas| {
+                apply_cas(
+                    &tx,
+                    &cas.namespace,
+                    &cas.key,
+                    cas.expected.as_deref(),
+                    cas.value.as_deref(),
+                )
+            })
+            .transpose()?;
         tx.commit().map_err(db_error)?;
-        Ok(seq as u64)
+        Ok(PublicationResult {
+            sequence: seq as u64,
+            cas_applied,
+        })
     }
     fn write_encoded(&self, kind: ObjectKind, id: ObjectId, encoded: &[u8]) -> Result<()> {
         let path = self.path(kind, id);
@@ -304,34 +399,28 @@ impl Storage for LocalStore {
         }
     }
     fn get_record(&self, ns: &str, key: &str) -> Result<Option<Vec<u8>>> {
-        let db = self.db.lock();
+        let db = self.database()?;
         db.prepare_cached("SELECT value FROM records WHERE namespace=?1 AND key=?2")
             .map_err(db_error)?
             .query_row(params![ns, key], |r| r.get(0))
             .optional()
             .map_err(db_error)
     }
+    fn get_record_pair(
+        &self,
+        first: (&str, &str),
+        second: (&str, &str),
+    ) -> Result<[Option<Vec<u8>>; 2]> {
+        let db = self.database()?;
+        db.prepare_cached("SELECT (SELECT value FROM records WHERE namespace=?1 AND key=?2), (SELECT value FROM records WHERE namespace=?3 AND key=?4)")
+            .map_err(db_error)?
+            .query_row(params![first.0, first.1, second.0, second.1], |row| Ok([row.get(0)?, row.get(1)?]))
+            .map_err(db_error)
+    }
     fn put_record(&self, ns: &str, key: &str, value: &[u8]) -> Result<()> {
         self.require_writable()?;
-        let db = self.db.lock();
-        db.execute(
-            "INSERT INTO records(namespace,key,value) VALUES (?1,?2,?3) ON CONFLICT DO NOTHING",
-            params![ns, key, value],
-        )
-        .map_err(db_error)?;
-        let existing: Vec<u8> = db
-            .query_row(
-                "SELECT value FROM records WHERE namespace=?1 AND key=?2",
-                params![ns, key],
-                |r| r.get(0),
-            )
-            .map_err(db_error)?;
-        if existing != value {
-            return Err(Error::Conflict(format!(
-                "immutable metadata collision: {ns}/{key}"
-            )));
-        }
-        Ok(())
+        let db = self.database()?;
+        insert_immutable(&db, ns, key, value)
     }
     fn compare_and_swap(
         &self,
@@ -341,32 +430,10 @@ impl Storage for LocalStore {
         value: Option<&[u8]>,
     ) -> Result<bool> {
         self.require_writable()?;
-        let mut db = self.db.lock();
-        let tx = db
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(db_error)?;
-        let current: Option<Vec<u8>> = tx
-            .query_row(
-                "SELECT value FROM records WHERE namespace=?1 AND key=?2",
-                params![ns, key],
-                |r| r.get(0),
-            )
-            .optional()
-            .map_err(db_error)?;
-        if current.as_deref() != expected {
-            return Ok(false);
-        }
-        if let Some(value) = value {
-            tx.execute("INSERT INTO records(namespace,key,value) VALUES (?1,?2,?3) ON CONFLICT(namespace,key) DO UPDATE SET value=excluded.value", params![ns,key,value]).map_err(db_error)?;
-        } else {
-            tx.execute(
-                "DELETE FROM records WHERE namespace=?1 AND key=?2",
-                params![ns, key],
-            )
-            .map_err(db_error)?;
-        }
-        tx.commit().map_err(db_error)?;
-        Ok(true)
+        // Each conditional mutation is one SQLite statement, which supplies its
+        // own atomic FULL-synchronous transaction. No read/modify/write window.
+        let db = self.database()?;
+        apply_cas(&db, ns, key, expected, value)
     }
     fn append_log(&self, repo: &str, id: ObjectId) -> Result<u64> {
         self.publish_commit(repo, id, &[])
@@ -374,7 +441,7 @@ impl Storage for LocalStore {
     fn publish_commit(&self, repo: &str, id: ObjectId, records: &[ImmutableRecord]) -> Result<u64> {
         self.require_writable()?;
         validate_publication(repo, id, records)?;
-        self.publish_batch(repo, id, &[], records)
+        Ok(self.publish_batch(repo, id, &[], records, None)?.sequence)
     }
     fn publish_commit_with_objects(
         &self,
@@ -383,8 +450,20 @@ impl Storage for LocalStore {
         objects: &[PreparedObject],
         records: &[ImmutableRecord],
     ) -> Result<u64> {
+        Ok(self
+            .publish_commit_with_objects_and_cas(repo, id, objects, records, None)?
+            .sequence)
+    }
+    fn publish_commit_with_objects_and_cas(
+        &self,
+        repo: &str,
+        id: ObjectId,
+        objects: &[PreparedObject],
+        records: &[ImmutableRecord],
+        cas: Option<&RecordCas>,
+    ) -> Result<PublicationResult> {
         self.require_writable()?;
-        validate_publication(repo, id, records)?;
+        validate_publication_cas(repo, id, records, cas)?;
         let mut pending = Vec::new();
         let mut pending_bytes = 0;
         let mut seen = HashSet::new();
@@ -418,10 +497,10 @@ impl Storage for LocalStore {
             pending_bytes += encoded.len();
             pending.push((object.kind(), object.id(), encoded));
         }
-        self.publish_batch(repo, id, &pending, records)
+        self.publish_batch(repo, id, &pending, records, cas)
     }
     fn read_log(&self, repo: &str, after: u64, limit: usize) -> Result<Vec<LogEntry>> {
-        let db = self.db.lock();
+        let db = self.database()?;
         let mut stmt = db.prepare_cached("SELECT sequence,id FROM changeset_log WHERE repo=?1 AND sequence>?2 ORDER BY sequence LIMIT ?3").map_err(db_error)?;
         let rows = stmt
             .query_map(
@@ -443,7 +522,7 @@ impl Storage for LocalStore {
         .collect()
     }
     fn scan_records(&self, ns: &str, prefix: &str, limit: usize) -> Result<Vec<(String, Vec<u8>)>> {
-        let db = self.db.lock();
+        let db = self.database()?;
         let mut stmt = db.prepare_cached("SELECT key,value FROM records WHERE namespace=?1 AND key>=?2 ORDER BY key LIMIT ?3").map_err(db_error)?;
         let rows = stmt
             .query_map(params![ns, prefix, limit.min(100_000) as i64], |r| {
@@ -460,6 +539,16 @@ impl Storage for LocalStore {
         }
         Ok(result)
     }
+}
+
+fn configure_connection(db: &Connection, options: LocalStoreOptions) -> Result<()> {
+    db.busy_timeout(Duration::from_secs(30)).map_err(db_error)?;
+    db.set_db_config(
+        DbConfig::SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE,
+        !options.checkpoint_on_close,
+    )
+    .map_err(db_error)?;
+    Ok(())
 }
 
 fn has_inline_table(db: &Connection) -> Result<bool> {
@@ -498,25 +587,19 @@ fn verify_inline_duplicate(db: &Connection, kind: ObjectKind, id: ObjectId) -> R
     Ok(())
 }
 
-fn insert_immutable(
-    tx: &rusqlite::Transaction<'_>,
-    namespace: &str,
-    key: &str,
-    value: &[u8],
-) -> Result<()> {
+fn insert_immutable(tx: &Connection, namespace: &str, key: &str, value: &[u8]) -> Result<()> {
     let inserted = tx
-        .execute(
+        .prepare_cached(
             "INSERT INTO records(namespace,key,value) VALUES (?1,?2,?3) ON CONFLICT DO NOTHING",
-            params![namespace, key, value],
         )
+        .map_err(db_error)?
+        .execute(params![namespace, key, value])
         .map_err(db_error)?;
     if inserted == 0 {
         let previous: Vec<u8> = tx
-            .query_row(
-                "SELECT value FROM records WHERE namespace=?1 AND key=?2",
-                params![namespace, key],
-                |row| row.get(0),
-            )
+            .prepare_cached("SELECT value FROM records WHERE namespace=?1 AND key=?2")
+            .map_err(db_error)?
+            .query_row(params![namespace, key], |row| row.get(0))
             .map_err(db_error)?;
         if previous != value {
             return Err(Error::Conflict(format!(
@@ -525,6 +608,47 @@ fn insert_immutable(
         }
     }
     Ok(())
+}
+
+fn apply_cas(
+    db: &Connection,
+    namespace: &str,
+    key: &str,
+    expected: Option<&[u8]>,
+    value: Option<&[u8]>,
+) -> Result<bool> {
+    let affected = match (expected, value) {
+        (None, Some(value)) => db
+            .prepare_cached(
+                "INSERT INTO records(namespace,key,value) VALUES (?1,?2,?3) ON CONFLICT DO NOTHING",
+            )
+            .map_err(db_error)?
+            .execute(params![namespace, key, value])
+            .map_err(db_error)?,
+        (Some(expected), Some(value)) => db
+            .prepare_cached(
+                "UPDATE records SET value=?3 WHERE namespace=?1 AND key=?2 AND value=?4",
+            )
+            .map_err(db_error)?
+            .execute(params![namespace, key, value, expected])
+            .map_err(db_error)?,
+        (Some(expected), None) => db
+            .prepare_cached("DELETE FROM records WHERE namespace=?1 AND key=?2 AND value=?3")
+            .map_err(db_error)?
+            .execute(params![namespace, key, expected])
+            .map_err(db_error)?,
+        (None, None) => {
+            let exists: bool = db
+                .prepare_cached(
+                    "SELECT EXISTS(SELECT 1 FROM records WHERE namespace=?1 AND key=?2)",
+                )
+                .map_err(db_error)?
+                .query_row(params![namespace, key], |row| row.get(0))
+                .map_err(db_error)?;
+            return Ok(!exists);
+        }
+    };
+    Ok(affected == 1)
 }
 
 #[cfg(test)]
@@ -725,5 +849,44 @@ mod tests {
         assert_eq!(sequences.len(), 1);
         let reopened = LocalStore::open(dir.path()).unwrap();
         assert_eq!(reopened.read_log("r", 0, 10).unwrap().len(), 1);
+    }
+    #[test]
+    fn options_preserve_full_sync_and_normal_wal_autocheckpoint() {
+        for mmap_size in [0, 256 * 1024 * 1024] {
+            let dir = tempfile::tempdir().unwrap();
+            let store = LocalStore::open_with_options(
+                dir.path(),
+                LocalStoreOptions {
+                    mmap_size,
+                    checkpoint_on_close: false,
+                },
+            )
+            .unwrap();
+            assert!(!store.mmap_configured.load(Ordering::Relaxed));
+            store.put_record("options", "key", b"value").unwrap();
+            let db = store.db.lock();
+            let sync: i64 = db
+                .pragma_query_value(None, "synchronous", |row| row.get(0))
+                .unwrap();
+            assert_eq!(sync, 2, "FULL synchronization must remain enabled");
+            let auto: i64 = db
+                .pragma_query_value(None, "wal_autocheckpoint", |row| row.get(0))
+                .unwrap();
+            assert_eq!(
+                auto, 1000,
+                "normal runtime auto-checkpointing must remain enabled"
+            );
+            let effective: i64 = db
+                .pragma_query_value(None, "mmap_size", |row| row.get(0))
+                .unwrap();
+            assert!((0..=mmap_size as i64).contains(&effective));
+            if mmap_size == 0 {
+                assert_eq!(effective, 0);
+            }
+            assert!(
+                db.db_config(DbConfig::SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE)
+                    .unwrap()
+            );
+        }
     }
 }

@@ -39,6 +39,13 @@ impl Storage for ShardedStore {
     fn get_record(&self, n: &str, k: &str) -> Result<Option<Vec<u8>>> {
         self.metadata.get_record(n, k)
     }
+    fn get_record_pair(
+        &self,
+        first: (&str, &str),
+        second: (&str, &str),
+    ) -> Result<[Option<Vec<u8>>; 2]> {
+        self.metadata.get_record_pair(first, second)
+    }
     fn put_record(&self, n: &str, k: &str, v: &[u8]) -> Result<()> {
         self.metadata.put_record(n, k, v)
     }

@@ -1,8 +1,10 @@
 //! Durable comparison worker used by scripts/compare_git.py. It is an example,
 //! not a Cargo benchmark, so `cargo test --all-targets` cannot start a long run.
-use scion_engine::Repository;
-use scion_store::LocalStore;
-use scion_types::{Changeset, FileChange, FileEntry, FileKind, ObjectId, RepoPath, Result};
+use scion_engine::{CommitRefUpdate, Repository};
+use scion_store::{LocalStore, PreparedObject};
+use scion_types::{
+    Changeset, FileChange, FileEntry, FileKind, ObjectId, ObjectKind, RepoPath, Result,
+};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
@@ -131,19 +133,32 @@ fn execute(repository: &Repository, request: Request) -> Result<Value> {
             content,
             sequence,
         } => {
-            let changes =
-                BTreeMap::from([(path, FileChange::put(put(repository, content.as_bytes())?))]);
-            let next = create(
-                repository,
-                Some(parent),
-                changes,
-                format!("edit {sequence}"),
-                sequence,
+            let blob = PreparedObject::new(ObjectKind::Blob, content.into_bytes())?;
+            let entry = FileEntry {
+                id: blob.id(),
+                size: blob.bytes().len() as u64,
+                kind: FileKind::Regular,
+            };
+            let publication = repository.create_commit_with_blobs(
+                Changeset {
+                    parents: vec![parent],
+                    author: "Benchmark <benchmark@example.invalid>".into(),
+                    committer: None,
+                    timestamp_ms: 1_700_000_000_000 + sequence as i64 * 1000,
+                    message: format!("edit {sequence}"),
+                    changes: BTreeMap::from([(path, FileChange::put(entry))]),
+                    metadata: BTreeMap::new(),
+                },
+                vec![blob],
+                Some(CommitRefUpdate {
+                    name: "bench".into(),
+                    expected: Some(parent),
+                }),
             )?;
-            if !repository.update_ref("bench", Some(parent), Some(next))? {
+            if publication.reference_updated != Some(true) {
                 return Err(scion_types::Error::Conflict("benchmark ref changed".into()));
             }
-            Ok(json!(next))
+            Ok(json!(publication.changeset.id()?))
         }
         Request::Chain {
             parent,

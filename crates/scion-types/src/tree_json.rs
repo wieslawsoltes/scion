@@ -5,9 +5,109 @@
 //! final types. Unknown or incompatible shapes are rejected so `Tree::from_json`
 //! can use the existing derived decoder, preserving its compatibility contract.
 
-use crate::{FileEntry, FileKind, ObjectId, TreeEntry};
+use crate::{FileEntry, FileKind, ObjectId, TreeEntry, validate_path};
 use serde::{Deserialize, Deserializer, de};
-use std::{collections::BTreeMap, fmt};
+use std::{borrow::Cow, collections::BTreeMap, fmt};
+
+/// Stream every entry and validate every name, retaining only the requested
+/// value. Unlike `IgnoredAny`, this still checks ignored sibling payloads.
+pub(crate) fn lookup(bytes: &[u8], name: &str) -> serde_json::Result<Option<TreeEntry>> {
+    let mut deserializer = serde_json::Deserializer::from_slice(bytes);
+    let value = de::DeserializeSeed::deserialize(Lookup(name), &mut deserializer)?;
+    deserializer.end()?;
+    Ok(value)
+}
+
+struct Name<'a>(Cow<'a, str>);
+
+impl<'de> Deserialize<'de> for Name<'de> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct NameVisitor;
+        impl<'de> de::Visitor<'de> for NameVisitor {
+            type Value = Name<'de>;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("a tree entry name")
+            }
+
+            fn visit_borrowed_str<E: de::Error>(self, value: &'de str) -> Result<Self::Value, E> {
+                Ok(Name(Cow::Borrowed(value)))
+            }
+
+            fn visit_str<E: de::Error>(self, value: &str) -> Result<Self::Value, E> {
+                Ok(Name(Cow::Owned(value.to_owned())))
+            }
+        }
+        deserializer.deserialize_str(NameVisitor)
+    }
+}
+
+struct Lookup<'a>(&'a str);
+
+impl<'de> de::DeserializeSeed<'de> for Lookup<'_> {
+    type Value = Option<TreeEntry>;
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
+        deserializer.deserialize_map(self)
+    }
+}
+
+impl<'de> de::Visitor<'de> for Lookup<'_> {
+    type Value = Option<TreeEntry>;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("a canonical tree object")
+    }
+
+    fn visit_map<M: de::MapAccess<'de>>(self, mut map: M) -> Result<Self::Value, M::Error> {
+        let Some(Name(key)) = map.next_key()? else {
+            return Err(de::Error::missing_field("entries"));
+        };
+        if key != "entries" {
+            return Err(de::Error::custom("noncanonical tree field"));
+        }
+        let result = map.next_value_seed(EntriesLookup(self.0))?;
+        if map.next_key::<Name<'de>>()?.is_some() {
+            return Err(de::Error::custom("noncanonical tree field"));
+        }
+        Ok(result)
+    }
+}
+
+struct EntriesLookup<'a>(&'a str);
+
+impl<'de> de::DeserializeSeed<'de> for EntriesLookup<'_> {
+    type Value = Option<TreeEntry>;
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
+        deserializer.deserialize_map(self)
+    }
+}
+
+impl<'de> de::Visitor<'de> for EntriesLookup<'_> {
+    type Value = Option<TreeEntry>;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("a map of tree entries")
+    }
+
+    fn visit_map<M: de::MapAccess<'de>>(self, mut map: M) -> Result<Self::Value, M::Error> {
+        let mut result = None;
+        while let Some((Name(name), entry)) = map.next_entry::<Name<'de>, DecodedEntry>()? {
+            validate_path(&name).map_err(de::Error::custom)?;
+            if name.is_empty() || name.contains('/') {
+                return Err(de::Error::custom(
+                    "tree entries must be single path components",
+                ));
+            }
+            if name == self.0 {
+                // BTreeMap deserialization keeps the last duplicate.
+                result = Some(entry.0);
+            }
+        }
+        Ok(result)
+    }
+}
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

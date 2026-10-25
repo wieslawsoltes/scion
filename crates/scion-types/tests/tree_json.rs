@@ -4,6 +4,17 @@ use scion_types::{ObjectId, ObjectKind, RepoPath, Tree, canonical};
 fn compare(input: &str) {
     let reference = serde_json::from_str::<Tree>(input);
     let optimized = Tree::from_json(input.as_bytes());
+    for name in ["item", "missing"] {
+        let lookup = Tree::entry_from_json(input.as_bytes(), name);
+        match reference
+            .as_ref()
+            .ok()
+            .filter(|tree| tree.validate().is_ok())
+        {
+            Some(tree) => assert_eq!(lookup.unwrap(), tree.entries.get(name).cloned(), "{input}"),
+            None => assert!(lookup.is_err(), "lookup accepted an invalid tree: {input}"),
+        }
+    }
     match (reference, optimized) {
         (Ok(reference), Ok(optimized)) => {
             assert_eq!(
@@ -180,5 +191,35 @@ fn borrowed_tree_name_validation_matches_repository_paths() {
             entries: [(name.clone(), scion_types::TreeEntry::Directory { id })].into(),
         };
         assert_eq!(expected, tree.validate().is_ok(), "{name:?}");
+        let encoded = canonical(&tree).unwrap();
+        assert_eq!(
+            expected,
+            Tree::entry_from_json(&encoded, &name).is_ok(),
+            "{name:?}"
+        );
+        assert_eq!(
+            expected,
+            Tree::entry_from_json(&encoded, "absent").is_ok(),
+            "{name:?}"
+        );
+    }
+}
+
+#[test]
+fn point_lookup_checks_siblings_after_match_and_escaped_names() {
+    let id = ObjectId::hash(ObjectKind::Tree, b"fixture");
+    let entry = format!(r#"{{"type":"directory","id":"{id}"}}"#);
+    for name in ["item", "é", "quote\"name", "☃"] {
+        let key = serde_json::to_string(name).unwrap();
+        let input = format!(r#"{{"entries":{{{key}:{entry},"tail":{entry}}}}}"#);
+        compare(&input);
+        assert_eq!(
+            Tree::entry_from_json(input.as_bytes(), name).unwrap(),
+            Some(scion_types::TreeEntry::Directory { id })
+        );
+        let invalid = format!(
+            r#"{{"entries":{{{key}:{entry},"tail":{{"type":"directory","id":"invalid"}}}}}}"#
+        );
+        assert!(Tree::entry_from_json(invalid.as_bytes(), name).is_err());
     }
 }
