@@ -60,6 +60,13 @@ storage implementations. Repository membership, object identity, and changeset
 validation remain required. Repeated unrelated lookups do not re-probe the same
 revision.
 
+Verified blobs of at most 64 KiB now share the existing bounded repository cache.
+Repeated file reads and text diffs can reuse their content after membership and
+path checks. Capacity, clearing, and entry limits include every retained kind;
+direct storage reads and commit validation remain uncached. Cache hits use bytes
+verified on insertion, with later physical corruption observable on a fresh
+storage read or after clearing/eviction.
+
 ## Measurement-driven decisions
 
 SQLite mapping is configurable, but the default remains disabled. The initial

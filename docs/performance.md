@@ -81,7 +81,7 @@ cargo test -p scion-engine -p scion-graph
 
 | Subsystem | Current behavior |
 | --- | --- |
-| Changesets | Validate changed blobs; create a canonical delta; publish the log separately from reference updates. |
+| Changesets | Validate changed blobs; create a canonical delta; publish immutable content and the log. Prepared publication can bundle an explicit reference CAS; ordinary commit creation leaves refs unchanged. |
 | Trees | Batch path-copy updates; content-identical subtrees are shared. Directory fanout contributes to node cost. |
 | First-parent history | Binary lifting provides logarithmic jumps. |
 | General ancestry | Generation pruning and linear skip spans retain every merge-parent edge; positive first-parent proofs use binary lifting. |
