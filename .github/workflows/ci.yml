@@ -36,6 +36,7 @@ jobs:
         env:
           RUSTDOCFLAGS: -D warnings
       - run: cargo test --workspace --doc --all-features --locked
+      - run: python3 -m unittest discover -s scripts -p 'test_*.py'
 
   test:
     name: Test (${{ matrix.os }})
@@ -52,6 +53,40 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --workspace --all-targets --all-features --locked
       - run: cargo test --workspace --all-targets --all-features --locked
+
+  static-linux:
+    name: Static CRT Linux (${{ matrix.target }}, all features)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+    env:
+      RUSTFLAGS: -C target-feature=+crt-static
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: static-crt-${{ matrix.target }}
+      - run: cargo build --workspace --all-targets --all-features --locked --target ${{ matrix.target }}
+      - run: cargo test --workspace --all-targets --all-features --locked --target ${{ matrix.target }}
+      - name: Verify executable startup linkage
+        run: >-
+          python3 scripts/build_support.py --target ${{ matrix.target }} --static-crt
+          target/${{ matrix.target }}/debug/scn
+          target/${{ matrix.target }}/debug/scion-server
+          target/${{ matrix.target }}/debug/scion-cache
+          target/${{ matrix.target }}/debug/scion-daemon
+          target/${{ matrix.target }}/debug/examples/comparison_driver
 
   msrv:
     name: Minimum supported Rust (1.88)

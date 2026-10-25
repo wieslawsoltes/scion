@@ -79,6 +79,22 @@ fn repository_membership_prevents_cross_repository_reads_and_parent_injection() 
     let mut injected = a.get_changeset(id).unwrap();
     injected.parents.push(id);
     assert!(b.create_commit(injected).is_err());
+    let key = id.to_string();
+    for suffix in ["graph", "derived/tree/1"] {
+        let bytes = a
+            .store()
+            .get_record(&format!("repo/a/{suffix}"), &key)
+            .unwrap()
+            .unwrap();
+        b.store()
+            .put_record(&format!("repo/b/{suffix}"), &key, &bytes)
+            .unwrap();
+    }
+    assert!(matches!(
+        scion_graph::GraphAccess::node(&b, id),
+        Err(Error::NotFound(_))
+    ));
+    assert!(matches!(b.root_tree(id), Err(Error::NotFound(_))));
 }
 
 #[test]
@@ -306,7 +322,11 @@ struct CountingStore {
     tree_reads: AtomicUsize,
     tree_writes: AtomicUsize,
     blob_reads: AtomicUsize,
+    record_reads: AtomicUsize,
+    small_probes: AtomicUsize,
+    small_bytes: AtomicUsize,
     fail_tree_writes: AtomicBool,
+    corrupt_blob_reads: AtomicBool,
 }
 impl Storage for CountingStore {
     fn put_object(&self, k: ObjectKind, b: &[u8]) -> Result<ObjectId> {
@@ -324,16 +344,34 @@ impl Storage for CountingStore {
         }
         if k == ObjectKind::Blob {
             self.blob_reads.fetch_add(1, Ordering::Relaxed);
+            if self.corrupt_blob_reads.load(Ordering::Relaxed) {
+                let mut encoded = self.inner.get_encoded(k, id)?;
+                encoded[0] ^= 1;
+                return scion_store::decode_object(k, id, &encoded);
+            }
         }
         self.inner.get_object(k, id)
     }
     fn get_encoded(&self, k: ObjectKind, id: ObjectId) -> Result<Vec<u8>> {
         self.inner.get_encoded(k, id)
     }
+    fn try_get_small_object(
+        &self,
+        kind: ObjectKind,
+        id: ObjectId,
+        limit: usize,
+    ) -> Result<Option<Vec<u8>>> {
+        self.small_probes.fetch_add(1, Ordering::Relaxed);
+        let bytes = self.inner.try_get_small_object(kind, id, limit)?;
+        self.small_bytes
+            .fetch_add(bytes.as_ref().map_or(0, Vec::len), Ordering::Relaxed);
+        Ok(bytes)
+    }
     fn put_encoded(&self, k: ObjectKind, id: ObjectId, b: &[u8]) -> Result<()> {
         self.inner.put_encoded(k, id, b)
     }
     fn get_record(&self, n: &str, k: &str) -> Result<Option<Vec<u8>>> {
+        self.record_reads.fetch_add(1, Ordering::Relaxed);
         self.inner.get_record(n, k)
     }
     fn put_record(&self, n: &str, k: &str, v: &[u8]) -> Result<()> {
@@ -356,6 +394,356 @@ impl Storage for CountingStore {
     }
     fn scan_records(&self, n: &str, p: &str, l: usize) -> Result<Vec<(String, Vec<u8>)>> {
         self.inner.scan_records(n, p, l)
+    }
+}
+
+#[test]
+fn verified_blob_reads_are_shared_by_clones_and_patches_until_cleared() {
+    let store = Arc::new(CountingStore::default());
+    let repo = Repository::new("test", store.clone()).unwrap();
+    let before = commit(&repo, &[], &[("file", Some(b"before\n"))], "before");
+    let after = commit(&repo, &[before], &[("file", Some(b"after\n"))], "after");
+    repo.clear_tree_cache();
+    store.blob_reads.store(0, Ordering::Relaxed);
+    let clone = repo.clone();
+    let mut owned = repo.read_file(after, &path("file")).unwrap();
+    owned.fill(b'!');
+    assert_eq!(clone.read_file(after, &path("file")).unwrap(), b"after\n");
+    assert_eq!(store.blob_reads.load(Ordering::Relaxed), 1);
+    let expected = repo.diff(before, after).unwrap();
+    assert!(expected[0].patch.as_ref().unwrap().contains("+after"));
+    assert_eq!(store.blob_reads.load(Ordering::Relaxed), 2);
+    assert_eq!(clone.diff(before, after).unwrap(), expected);
+    assert_eq!(store.blob_reads.load(Ordering::Relaxed), 2);
+    assert!(repo.tree_cache_stats().estimated_bytes <= 8 * 1024 * 1024);
+    clone.clear_tree_cache();
+    assert_eq!(repo.tree_cache_stats().entries, 0);
+    assert_eq!(repo.read_file(after, &path("file")).unwrap(), b"after\n");
+    assert_eq!(store.blob_reads.load(Ordering::Relaxed), 3);
+}
+
+#[test]
+fn large_blobs_and_disabled_caches_repeat_verified_storage_reads() {
+    for (capacity, bytes) in [
+        (0, vec![b'x'; 32]),
+        (8 * 1024 * 1024, vec![b'y'; 64 * 1024 + 1]),
+    ] {
+        let store = Arc::new(CountingStore::default());
+        let repo = Repository::new("test", store.clone())
+            .unwrap()
+            .with_tree_cache_capacity(capacity);
+        let revision = commit(&repo, &[], &[("file", Some(&bytes))], "uncached");
+        repo.clear_tree_cache();
+        store.blob_reads.store(0, Ordering::Relaxed);
+        for _ in 0..2 {
+            assert_eq!(repo.read_file(revision, &path("file")).unwrap(), bytes);
+        }
+        assert_eq!(store.blob_reads.load(Ordering::Relaxed), 2);
+        assert!(repo.tree_cache_stats().estimated_bytes <= capacity);
+        if capacity == 0 {
+            assert_eq!(repo.tree_cache_stats().entries, 0);
+        }
+    }
+}
+
+#[test]
+fn corrupt_blob_reads_are_not_cached_and_direct_validation_bypasses_warm_cache() {
+    let store = Arc::new(CountingStore::default());
+    let repo = Repository::new("test", store.clone()).unwrap();
+    let revision = commit(&repo, &[], &[("file", Some(b"verified\n"))], "original");
+    let file = repo.file(revision, &path("file")).unwrap().unwrap();
+    repo.clear_tree_cache();
+    store.blob_reads.store(0, Ordering::Relaxed);
+    store.corrupt_blob_reads.store(true, Ordering::Relaxed);
+    assert!(matches!(
+        repo.read_file(revision, &path("file")),
+        Err(Error::Corrupt(_))
+    ));
+    store.corrupt_blob_reads.store(false, Ordering::Relaxed);
+    assert_eq!(
+        repo.read_file(revision, &path("file")).unwrap(),
+        b"verified\n"
+    );
+    assert_eq!(store.blob_reads.load(Ordering::Relaxed), 2);
+    store.corrupt_blob_reads.store(true, Ordering::Relaxed);
+    assert_eq!(
+        repo.read_file(revision, &path("file")).unwrap(),
+        b"verified\n"
+    );
+    assert_eq!(store.blob_reads.load(Ordering::Relaxed), 2);
+    assert!(matches!(
+        repo.store().get_object(ObjectKind::Blob, file.id),
+        Err(Error::Corrupt(_))
+    ));
+    let mut request = repo.get_changeset(revision).unwrap();
+    request.parents = vec![revision];
+    request.message = "must validate storage".into();
+    assert!(matches!(
+        repo.create_commit(request),
+        Err(Error::Corrupt(_))
+    ));
+    assert_eq!(store.blob_reads.load(Ordering::Relaxed), 4);
+    repo.clear_tree_cache();
+    assert!(matches!(
+        repo.read_file(revision, &path("file")),
+        Err(Error::Corrupt(_))
+    ));
+    store.corrupt_blob_reads.store(false, Ordering::Relaxed);
+    assert_eq!(
+        repo.read_file(revision, &path("file")).unwrap(),
+        b"verified\n"
+    );
+    assert_eq!(store.blob_reads.load(Ordering::Relaxed), 6);
+}
+
+#[test]
+fn warm_blob_cache_does_not_authorize_foreign_revisions_or_missing_paths() {
+    let store = Arc::new(CountingStore::default());
+    let a = Repository::new("a", store.clone()).unwrap();
+    let b = Repository::new("b", store.clone()).unwrap();
+    let foreign = commit(&a, &[], &[("dir/file", Some(b"shared bytes"))], "a");
+    let own = commit(&b, &[], &[("dir/file", Some(b"shared bytes"))], "b");
+    store.blob_reads.store(0, Ordering::Relaxed);
+    assert_eq!(
+        b.read_file(own, &path("dir/file")).unwrap(),
+        b"shared bytes"
+    );
+    assert_eq!(store.blob_reads.load(Ordering::Relaxed), 1);
+    for (revision, requested) in [(foreign, "dir/file"), (own, "missing"), (own, "dir")] {
+        assert!(matches!(
+            b.read_file(revision, &path(requested)),
+            Err(Error::NotFound(_))
+        ));
+    }
+    assert_eq!(store.blob_reads.load(Ordering::Relaxed), 1);
+    assert_eq!(
+        b.read_file(own, &path("dir/file")).unwrap(),
+        b"shared bytes"
+    );
+}
+
+#[test]
+fn warm_blob_cache_keeps_immutable_revisions_and_observes_new_reference_values() {
+    let store = Arc::new(CountingStore::default());
+    let writer = Repository::new("test", store.clone()).unwrap();
+    let reader = Repository::new("test", store.clone()).unwrap();
+    let first = commit(&writer, &[], &[("file", Some(b"first"))], "first");
+    assert!(writer.update_ref("main", None, Some(first)).unwrap());
+    store.blob_reads.store(0, Ordering::Relaxed);
+    let resolved = reader.resolve_ref("main").unwrap().unwrap();
+    assert_eq!(reader.read_file(resolved, &path("file")).unwrap(), b"first");
+    let second = commit(&writer, &[first], &[("file", Some(b"second"))], "second");
+    assert!(
+        writer
+            .update_ref("main", Some(first), Some(second))
+            .unwrap()
+    );
+    // Commit validation above is intentionally uncached; count only reader I/O.
+    store.blob_reads.store(0, Ordering::Relaxed);
+    let resolved = reader.resolve_ref("main").unwrap().unwrap();
+    assert_eq!(resolved, second);
+    assert_eq!(
+        reader.read_file(resolved, &path("file")).unwrap(),
+        b"second"
+    );
+    assert_eq!(reader.read_file(first, &path("file")).unwrap(), b"first");
+    assert_eq!(store.blob_reads.load(Ordering::Relaxed), 1);
+    assert!(writer.update_ref("main", Some(second), None).unwrap());
+    assert_eq!(reader.resolve_ref("main").unwrap(), None);
+}
+
+#[test]
+fn edits_preserve_external_tree_snapshots_and_reloading_old_revisions() {
+    let repo = repo();
+    let before = commit(
+        &repo,
+        &[],
+        &[("dir/a", Some(b"old")), ("dir/b", Some(b"unchanged"))],
+        "original",
+    );
+    let root = repo.root_tree(before).unwrap();
+    let held_root = repo.shared_tree(root).unwrap();
+    let directory = match held_root.entries["dir"] {
+        TreeEntry::Directory { id } => id,
+        _ => panic!("expected directory"),
+    };
+    let held_directory = repo.shared_tree(directory).unwrap();
+    let root_snapshot = (*held_root).clone();
+    let directory_snapshot = (*held_directory).clone();
+    let after = commit(
+        &repo,
+        &[before],
+        &[("dir/a", Some(b"new")), ("dir/c", Some(b"added"))],
+        "edit",
+    );
+    assert_eq!(*held_root, root_snapshot);
+    assert_eq!(*held_directory, directory_snapshot);
+    assert_eq!(repo.tree(root).unwrap(), root_snapshot);
+    assert_eq!(repo.tree(directory).unwrap(), directory_snapshot);
+    assert_eq!(repo.read_file(before, &path("dir/a")).unwrap(), b"old");
+    assert_eq!(repo.read_file(after, &path("dir/a")).unwrap(), b"new");
+    assert_eq!(repo.read_file(after, &path("dir/b")).unwrap(), b"unchanged");
+    assert!(repo.file(before, &path("dir/c")).unwrap().is_none());
+    assert_eq!(
+        repo.store().get_object(ObjectKind::Tree, root).unwrap(),
+        canonical(&root_snapshot).unwrap()
+    );
+    assert!(repo.tree_cache_stats().estimated_bytes <= 8 * 1024 * 1024);
+}
+
+#[test]
+fn concurrent_branch_edits_of_one_cached_parent_keep_both_results_and_parent() {
+    let repo = repo();
+    let parent = commit(
+        &repo,
+        &[],
+        &[("dir/a", Some(b"parent")), ("dir/b", Some(b"stable"))],
+        "parent",
+    );
+    let before = repo.list_files(parent, &path("")).unwrap();
+    let barrier = Arc::new(std::sync::Barrier::new(3));
+    let workers: Vec<_> = ["left", "right"]
+        .into_iter()
+        .map(|name| {
+            let repo = repo.clone();
+            let barrier = barrier.clone();
+            std::thread::spawn(move || {
+                barrier.wait();
+                let revision = commit(
+                    &repo,
+                    &[parent],
+                    &[("dir/a", Some(name.as_bytes())), (name, Some(b"branch"))],
+                    name,
+                );
+                (name, revision)
+            })
+        })
+        .collect();
+    barrier.wait();
+    for worker in workers {
+        let (name, revision) = worker.join().unwrap();
+        assert_eq!(
+            repo.read_file(revision, &path("dir/a")).unwrap(),
+            name.as_bytes()
+        );
+        assert_eq!(repo.read_file(revision, &path("dir/b")).unwrap(), b"stable");
+        assert_eq!(repo.read_file(revision, &path(name)).unwrap(), b"branch");
+        let other = if name == "left" { "right" } else { "left" };
+        assert!(repo.file(revision, &path(other)).unwrap().is_none());
+    }
+    assert_eq!(repo.list_files(parent, &path("")).unwrap(), before);
+    assert_eq!(repo.read_file(parent, &path("dir/a")).unwrap(), b"parent");
+    assert!(repo.tree_cache_stats().estimated_bytes <= 8 * 1024 * 1024);
+    repo.clear_tree_cache();
+    assert_eq!(repo.tree_cache_stats().estimated_bytes, 0);
+}
+
+#[test]
+fn edits_from_partial_or_disabled_caches_load_complete_verified_parent_trees() {
+    for capacity in [0, 4096] {
+        let repo = repo().with_tree_cache_capacity(capacity);
+        let changes = (0..32)
+            .map(|index| {
+                (
+                    path(&format!("dir/file{index:02}")),
+                    FileChange::put(entry(&repo, format!("original {index}").as_bytes())),
+                )
+            })
+            .collect();
+        let parent = repo
+            .create_commit(Changeset {
+                parents: vec![],
+                author: "A".into(),
+                committer: None,
+                timestamp_ms: 0,
+                message: "wide directory".into(),
+                changes,
+                metadata: BTreeMap::new(),
+            })
+            .unwrap()
+            .id()
+            .unwrap();
+        repo.clear_tree_cache();
+        assert!(repo.entry(parent, &path("dir/file00")).unwrap().is_some());
+        let edited = commit(
+            &repo,
+            &[parent],
+            &[("dir/file00", Some(b"changed"))],
+            "point-cache edit",
+        );
+        for index in 0..32 {
+            let file = path(&format!("dir/file{index:02}"));
+            let original = format!("original {index}").into_bytes();
+            assert_eq!(repo.read_file(parent, &file).unwrap(), original);
+            assert_eq!(
+                repo.read_file(edited, &file).unwrap(),
+                if index == 0 {
+                    b"changed".to_vec()
+                } else {
+                    original
+                }
+            );
+        }
+        assert!(repo.tree_cache_stats().estimated_bytes <= capacity);
+        if capacity == 0 {
+            assert_eq!(repo.tree_cache_stats().entries, 0);
+        }
+    }
+}
+
+#[test]
+fn failed_edits_and_publication_leave_evicted_parent_data_unchanged() {
+    let store = Arc::new(CountingStore::default());
+    let repo = Repository::new("test", store.clone()).unwrap();
+    let parent = commit(
+        &repo,
+        &[],
+        &[("dir/a", Some(b"nested")), ("flat", Some(b"parent"))],
+        "parent",
+    );
+    let root = repo.root_tree(parent).unwrap();
+    let original = repo.store().get_object(ObjectKind::Tree, root).unwrap();
+    let original_files = repo.list_files(parent, &path("")).unwrap();
+    for (changed_path, change, fail_publication) in [
+        (
+            "flat/child",
+            FileChange::put(entry(&repo, b"blocked")),
+            false,
+        ),
+        ("dir", FileChange::Delete, false),
+        ("flat", FileChange::put(entry(&repo, b"new value")), true),
+    ] {
+        // Leave the old tree cached with one owner so the edit takes it.
+        repo.shared_tree(root).unwrap();
+        let request = Changeset {
+            parents: vec![parent],
+            author: "A".into(),
+            committer: None,
+            timestamp_ms: 0,
+            message: format!("failing {changed_path}"),
+            changes: BTreeMap::from([(path(changed_path), change)]),
+            metadata: BTreeMap::new(),
+        };
+        let unpublished = request.id().unwrap();
+        store
+            .fail_tree_writes
+            .store(fail_publication, Ordering::Relaxed);
+        assert!(repo.create_commit(request).is_err());
+        store.fail_tree_writes.store(false, Ordering::Relaxed);
+        assert!(matches!(
+            repo.get_changeset(unpublished),
+            Err(Error::NotFound(_))
+        ));
+        assert_eq!(store.read_log("test", 0, 10).unwrap().len(), 1);
+        assert_eq!(
+            repo.store().get_object(ObjectKind::Tree, root).unwrap(),
+            original
+        );
+        assert_eq!(repo.list_files(parent, &path("")).unwrap(), original_files);
+        assert_eq!(repo.read_file(parent, &path("flat")).unwrap(), b"parent");
+        assert!(repo.tree_cache_stats().estimated_bytes <= 8 * 1024 * 1024);
+        repo.clear_tree_cache();
+        assert_eq!(repo.tree_cache_stats().estimated_bytes, 0);
     }
 }
 
@@ -435,7 +823,9 @@ fn one_file_commit_does_not_read_or_rewrite_unrelated_subtrees() {
     let diff = repo.diff(root, edited).unwrap();
     assert_eq!(diff.len(), 1);
     assert_eq!(diff[0].path, path("dir500/f"));
-    assert_eq!(store.tree_reads.load(Ordering::Relaxed), 4);
+    // Exact first-parent deltas need only the two parent directories. The target
+    // entries come directly from its immutable changeset.
+    assert_eq!(store.tree_reads.load(Ordering::Relaxed), 2);
 
     store.tree_reads.store(0, Ordering::Relaxed);
     store.tree_writes.store(0, Ordering::Relaxed);
@@ -446,6 +836,211 @@ fn one_file_commit_does_not_read_or_rewrite_unrelated_subtrees() {
     );
     assert_eq!(store.tree_reads.load(Ordering::Relaxed), 0);
     assert_eq!(store.tree_writes.load(Ordering::Relaxed), 0);
+}
+
+#[test]
+fn distinct_cold_point_reads_promote_a_wide_directory_once() {
+    let store = Arc::new(CountingStore::default());
+    let repo = Repository::new("test", store.clone()).unwrap();
+    let file = entry(&repo, b"content");
+    let request = Changeset {
+        parents: vec![],
+        author: "author".into(),
+        committer: None,
+        timestamp_ms: 0,
+        message: "wide directory".into(),
+        metadata: BTreeMap::new(),
+        changes: (0..256)
+            .map(|index| {
+                (
+                    path(&format!("file{index:04}")),
+                    FileChange::put(file.clone()),
+                )
+            })
+            .collect(),
+    };
+    let revision = repo.create_commit(request).unwrap().id().unwrap();
+    repo.clear_tree_cache();
+    store.tree_reads.store(0, Ordering::Relaxed);
+    store.small_probes.store(0, Ordering::Relaxed);
+    store.small_bytes.store(0, Ordering::Relaxed);
+    for index in 0..256 {
+        assert_eq!(
+            repo.read_file(revision, &path(&format!("file{index:04}")))
+                .unwrap(),
+            b"content"
+        );
+        assert_eq!(
+            store.tree_reads.load(Ordering::Relaxed),
+            if index == 0 { 1 } else { 2 }
+        );
+    }
+    assert!(repo.file(revision, &path("absent")).unwrap().is_none());
+    assert_eq!(store.tree_reads.load(Ordering::Relaxed), 2);
+    // The oversized initial-import delta is probed once and never decoded.
+    assert_eq!(store.small_probes.load(Ordering::Relaxed), 1);
+    assert_eq!(store.small_bytes.load(Ordering::Relaxed), 0);
+    assert!(repo.tree_cache_stats().estimated_bytes <= 8 * 1024 * 1024);
+}
+
+#[test]
+fn bounded_recent_deltas_avoid_trees_without_reprobing_unchanged_files() {
+    let store = Arc::new(CountingStore::default());
+    let repo = Repository::new("test", store.clone()).unwrap();
+    let file = entry(&repo, b"original\n");
+    let request = Changeset {
+        parents: vec![],
+        author: "author".into(),
+        committer: None,
+        timestamp_ms: 0,
+        message: "import".into(),
+        metadata: BTreeMap::new(),
+        changes: (0..256)
+            .map(|index| {
+                (
+                    path(&format!("file{index:04}")),
+                    FileChange::put(file.clone()),
+                )
+            })
+            .collect(),
+    };
+    let initial = repo.create_commit(request).unwrap().id().unwrap();
+    let first = commit(
+        &repo,
+        &[initial],
+        &[("file0000", Some(b"first edit\n"))],
+        "first",
+    );
+    let second = commit(
+        &repo,
+        &[first],
+        &[("file0000", Some(b"second edit\n"))],
+        "second",
+    );
+    repo.clear_tree_cache();
+    store.tree_reads.store(0, Ordering::Relaxed);
+    store.small_probes.store(0, Ordering::Relaxed);
+    store.small_bytes.store(0, Ordering::Relaxed);
+    assert_eq!(
+        repo.read_file(second, &path("file0000")).unwrap(),
+        b"second edit\n"
+    );
+    assert_eq!(store.tree_reads.load(Ordering::Relaxed), 0);
+    assert_eq!(store.small_probes.load(Ordering::Relaxed), 1);
+    assert!((1..=8192).contains(&store.small_bytes.load(Ordering::Relaxed)));
+    let foreign = Repository::new("foreign", store.clone()).unwrap();
+    assert!(matches!(
+        foreign.read_file(second, &path("file0000")),
+        Err(Error::NotFound(_))
+    ));
+    assert_eq!(store.small_probes.load(Ordering::Relaxed), 1);
+
+    repo.clear_tree_cache();
+    store.tree_reads.store(0, Ordering::Relaxed);
+    store.small_probes.store(0, Ordering::Relaxed);
+    let diff = repo.diff(first, second).unwrap();
+    assert_eq!(diff.len(), 1);
+    assert_eq!(diff[0].path, path("file0000"));
+    assert!(diff[0].patch.as_ref().unwrap().contains("+second edit"));
+    assert_eq!(store.tree_reads.load(Ordering::Relaxed), 0);
+    assert_eq!(store.small_probes.load(Ordering::Relaxed), 1);
+
+    repo.clear_tree_cache();
+    store.tree_reads.store(0, Ordering::Relaxed);
+    store.small_probes.store(0, Ordering::Relaxed);
+    for index in 1..256 {
+        assert_eq!(
+            repo.read_file(second, &path(&format!("file{index:04}")))
+                .unwrap(),
+            b"original\n"
+        );
+    }
+    assert_eq!(store.small_probes.load(Ordering::Relaxed), 1);
+    assert_eq!(store.tree_reads.load(Ordering::Relaxed), 2);
+
+    // A large commit message also declines the shortcut, even for one edit.
+    let oversized = commit(
+        &repo,
+        &[second],
+        &[("file0000", Some(b"large metadata\n"))],
+        &"m".repeat(9000),
+    );
+    repo.clear_tree_cache();
+    store.small_bytes.store(0, Ordering::Relaxed);
+    assert_eq!(
+        repo.read_file(oversized, &path("file0000")).unwrap(),
+        b"large metadata\n"
+    );
+    assert_eq!(store.small_bytes.load(Ordering::Relaxed), 0);
+}
+
+#[test]
+fn bounded_recent_delta_still_validates_the_published_changeset() {
+    let store = Arc::new(MemoryStore::new());
+    let repo = Repository::new("test", store.clone()).unwrap();
+    let valid = commit(&repo, &[], &[("file", Some(b"content"))], "valid");
+    let root = repo.root_tree(valid).unwrap();
+    let mut invalid = repo.get_changeset(valid).unwrap();
+    invalid.author.clear();
+    for bytes in [b"{broken JSON".to_vec(), canonical(&invalid).unwrap()] {
+        let id = store.put_object(ObjectKind::Changeset, &bytes).unwrap();
+        store
+            .put_record(
+                "repo/test/derived/tree/1",
+                &id.to_string(),
+                &canonical(&root).unwrap(),
+            )
+            .unwrap();
+        store.append_log("test", id).unwrap();
+        repo.clear_tree_cache();
+        assert!(repo.file(id, &path("file")).is_err());
+    }
+}
+
+#[test]
+fn cached_revision_roots_are_bounded_positive_repository_membership_proofs() {
+    let store = Arc::new(CountingStore::default());
+    let repo = Repository::new("test", store.clone()).unwrap();
+    let revision = commit(&repo, &[], &[("file", Some(b"contents"))], "root");
+    repo.clear_tree_cache();
+    store.record_reads.store(0, Ordering::Relaxed);
+    let root = repo.root_tree(revision).unwrap();
+    assert_eq!(store.record_reads.load(Ordering::Relaxed), 2);
+    for _ in 0..32 {
+        assert_eq!(repo.clone().root_tree(revision).unwrap(), root);
+    }
+    assert_eq!(store.record_reads.load(Ordering::Relaxed), 2);
+    repo.clone().clear_tree_cache();
+    assert_eq!(repo.root_tree(revision).unwrap(), root);
+    assert_eq!(store.record_reads.load(Ordering::Relaxed), 4);
+
+    let foreign = Repository::new("foreign", store.clone()).unwrap();
+    let key = revision.to_string();
+    store
+        .put_record(
+            "repo/foreign/derived/tree/1",
+            &key,
+            &canonical(&root).unwrap(),
+        )
+        .unwrap();
+    for _ in 0..2 {
+        assert!(matches!(
+            foreign.root_tree(revision),
+            Err(Error::NotFound(_))
+        ));
+    }
+    assert_eq!(store.record_reads.load(Ordering::Relaxed), 8);
+    // An earlier negative query never hides subsequent authoritative publication.
+    store.append_log("foreign", revision).unwrap();
+    assert_eq!(foreign.root_tree(revision).unwrap(), root);
+    assert_eq!(store.record_reads.load(Ordering::Relaxed), 10);
+
+    let disabled = Repository::new("test", store.clone())
+        .unwrap()
+        .with_tree_cache_capacity(0);
+    assert_eq!(disabled.root_tree(revision).unwrap(), root);
+    assert_eq!(disabled.root_tree(revision).unwrap(), root);
+    assert_eq!(store.record_reads.load(Ordering::Relaxed), 14);
 }
 
 #[test]
@@ -541,6 +1136,133 @@ fn filtered_diff_never_reads_denied_file_contents() {
             .is_empty()
     );
     assert_eq!(store.blob_reads.load(Ordering::Relaxed), 0);
+    assert!(repo.diff_filtered(b, a, |_| false).unwrap().is_empty());
+    assert_eq!(store.blob_reads.load(Ordering::Relaxed), 0);
+}
+
+#[test]
+fn first_parent_diffs_match_full_tree_comparison_in_both_directions() {
+    let repo = repo();
+    let initial = commit(
+        &repo,
+        &[],
+        &[
+            ("file", Some(b"text\n")),
+            ("dir/a", Some(b"nested\n")),
+            ("binary", Some(b"a\0b")),
+        ],
+        "root",
+    );
+    let replaced = commit(
+        &repo,
+        &[initial],
+        &[
+            ("file", None),
+            ("file/child", Some(b"new child\n")),
+            ("dir/a", None),
+            ("dir", Some(b"now a file\n")),
+            ("binary", Some(b"new\0bytes")),
+            ("absent", None),
+        ],
+        "replace",
+    );
+    let mut mode = repo.get_changeset(replaced).unwrap();
+    let file = repo.file(replaced, &path("dir")).unwrap().unwrap();
+    mode.parents = vec![replaced];
+    mode.message = "mode and empty file".into();
+    mode.changes = BTreeMap::from([
+        (
+            path("dir"),
+            FileChange::put(FileEntry {
+                kind: FileKind::Executable,
+                ..file
+            }),
+        ),
+        (path("empty"), FileChange::put(entry(&repo, b""))),
+    ]);
+    let mode = repo.create_commit(mode).unwrap().id().unwrap();
+    let unchanged = commit(&repo, &[mode], &[], "metadata only");
+    let mut copy = repo.get_changeset(unchanged).unwrap();
+    copy.parents = vec![unchanged];
+    copy.message = "explicit copy".into();
+    copy.changes = BTreeMap::from([(
+        path("copied"),
+        FileChange::Put {
+            entry: repo.file(mode, &path("dir")).unwrap().unwrap(),
+            copy_from: Some(CopySource {
+                changeset: mode,
+                path: path("dir"),
+            }),
+        },
+    )]);
+    let copied = repo.create_commit(copy).unwrap().id().unwrap();
+    for revision in [initial, replaced, mode, unchanged, copied] {
+        for name in [
+            "file",
+            "file/child",
+            "dir",
+            "dir/a",
+            "binary",
+            "empty",
+            "copied",
+            "absent",
+            "",
+        ] {
+            repo.clear_tree_cache();
+            let expected = match repo.entry(revision, &path(name)).unwrap() {
+                Some(TreeEntry::File { entry }) => Some(entry),
+                _ => None,
+            };
+            repo.clear_tree_cache();
+            assert_eq!(repo.file(revision, &path(name)).unwrap(), expected);
+        }
+    }
+
+    let independent = |revision, message: &str| {
+        repo.create_commit(Changeset {
+            parents: vec![],
+            author: "oracle".into(),
+            committer: None,
+            timestamp_ms: 0,
+            message: message.into(),
+            metadata: BTreeMap::new(),
+            changes: repo
+                .list_files(revision, &RepoPath::root())
+                .unwrap()
+                .into_iter()
+                .map(|(path, entry)| (path, FileChange::put(entry)))
+                .collect(),
+        })
+        .unwrap()
+        .id()
+        .unwrap()
+    };
+    for (index, (before, after)) in [
+        (initial, replaced),
+        (replaced, mode),
+        (mode, unchanged),
+        (unchanged, copied),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let a = independent(before, &format!("before {index}"));
+        let b = independent(after, &format!("after {index}"));
+        for (before, after, a, b) in [(before, after, a, b), (after, before, b, a)] {
+            repo.clear_tree_cache();
+            let expected = repo.diff(a, b).unwrap();
+            repo.clear_tree_cache();
+            assert_eq!(repo.diff(before, after).unwrap(), expected);
+            assert_eq!(
+                repo.diff_filtered(before, after, |p| p.as_str() != "binary")
+                    .unwrap(),
+                expected
+                    .into_iter()
+                    .filter(|d| d.path.as_str() != "binary")
+                    .collect::<Vec<_>>()
+            );
+        }
+    }
 }
 
 #[test]

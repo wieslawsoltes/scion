@@ -113,21 +113,35 @@ impl FromStr for ObjectId {
             ));
         }
         let mut bytes = [0; 32];
-        fn nibble(value: u8) -> Option<u8> {
-            match value {
-                b'0'..=b'9' => Some(value - b'0'),
-                b'a'..=b'f' => Some(value - b'a' + 10),
-                b'A'..=b'F' => Some(value - b'A' + 10),
-                _ => None,
+        // The table keeps unpredictable digit/letter branches out of the loop
+        // when parsing many content IDs in a directory or graph node. Invalid
+        // bytes set the high bits and are rejected after the complete decode.
+        const HEX: [u8; 256] = {
+            let mut table = [0xff; 256];
+            let mut digit = 0;
+            while digit < 10 {
+                table[b'0' as usize + digit] = digit as u8;
+                digit += 1;
             }
-        }
+            let mut letter = 0;
+            while letter < 6 {
+                table[b'a' as usize + letter] = letter as u8 + 10;
+                table[b'A' as usize + letter] = letter as u8 + 10;
+                letter += 1;
+            }
+            table
+        };
+        let mut invalid = 0;
         for (byte, pair) in bytes.iter_mut().zip(s.as_bytes().as_chunks::<2>().0) {
-            let (Some(high), Some(low)) = (nibble(pair[0]), nibble(pair[1])) else {
-                return Err(Error::Invalid(
-                    "object ID must contain 64 hex digits".into(),
-                ));
-            };
+            let high = HEX[pair[0] as usize];
+            let low = HEX[pair[1] as usize];
+            invalid |= high | low;
             *byte = high << 4 | low;
+        }
+        if invalid & 0xf0 != 0 {
+            return Err(Error::Invalid(
+                "object ID must contain 64 hex digits".into(),
+            ));
         }
         Ok(Self(bytes))
     }
@@ -428,6 +442,13 @@ pub struct Tree {
     pub entries: BTreeMap<String, TreeEntry>,
 }
 impl Tree {
+    /// Encode the exact bytes produced by [`canonical`], including field order,
+    /// escaping and lowercase IDs, without general enum/string serialization.
+    /// Names remain subject to the separate [`Self::validate`] operation.
+    pub fn canonical_bytes(&self) -> Result<Vec<u8>> {
+        Ok(tree_json::encode(self)?)
+    }
+
     /// Decode stored tree JSON with a streaming path for the canonical shape.
     ///
     /// The accepted inputs and resulting values are identical to the derived
@@ -440,6 +461,23 @@ impl Tree {
                 entries: tree.entries,
             }),
             Err(_) => Ok(serde_json::from_slice(bytes)?),
+        }
+    }
+
+    /// Look up one entry without allocating a map or strings for its siblings.
+    ///
+    /// Every sibling payload and name is validated, including content after the
+    /// matching entry. Noncanonical JSON retains the ordinary decoder's exact
+    /// compatibility behavior. The result is equivalent to decoding, validating
+    /// the complete tree, and retrieving `name` from its entries.
+    pub fn entry_from_json(bytes: &[u8], name: &str) -> Result<Option<TreeEntry>> {
+        match tree_json::lookup(bytes, name) {
+            Ok(entry) => Ok(entry),
+            Err(_) => {
+                let tree = Self::from_json(bytes)?;
+                tree.validate()?;
+                Ok(tree.entries.get(name).cloned())
+            }
         }
     }
 

@@ -18,6 +18,13 @@ fuzz_target!(|input: &[u8]| {
         (Err(_), Err(_)) => {}
         _ => panic!("stored-tree decoder changed input acceptance"),
     }
+    let point = Tree::entry_from_json(input, "item");
+    match &reference {
+        Ok(tree) if tree.validate().is_ok() => {
+            assert_eq!(point.unwrap(), tree.entries.get("item").cloned());
+        }
+        _ => assert!(point.is_err(), "point lookup accepted an invalid tree"),
+    }
     if let Ok(changeset) = serde_json::from_slice::<Changeset>(input) {
         let bytes = canonical(&changeset).unwrap();
         let roundtrip: Changeset = serde_json::from_slice(&bytes).unwrap();
@@ -28,6 +35,9 @@ fuzz_target!(|input: &[u8]| {
     }
     if let Ok(tree) = reference {
         let bytes = canonical(&tree).unwrap();
+        let optimized = tree.canonical_bytes().unwrap();
+        assert_eq!(optimized, bytes);
+        assert_eq!(optimized, serde_json::to_vec(&tree).unwrap());
         let roundtrip: Tree = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(tree, roundtrip);
         assert_eq!(tree.validate().is_ok(), roundtrip.validate().is_ok());

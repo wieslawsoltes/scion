@@ -8,6 +8,7 @@ on:
       - "crates/scion-store/**"
       - "crates/scion-types/**"
       - "scripts/compare_git.py"
+      - "scripts/build_support.py"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/performance.yml"
@@ -46,21 +47,19 @@ jobs:
         with:
           python-version: "3.13"
       - uses: Swatinem/rust-cache@v2
-      - name: Build release comparison worker
-        run: cargo build --release --locked -p scion-engine --example comparison_driver
       - name: Measure and verify
         env:
           PROFILE: ${{ github.event_name == 'schedule' && 'full' || inputs.profile || 'quick' }}
         shell: bash
         run: |
           if [ "$PROFILE" = full ]; then
-            python scripts/compare_git.py --no-build --keep-workdir --output target/git-comparison/results
+            python scripts/compare_git.py --static-crt --keep-workdir --output target/git-comparison/results
           else
-            python scripts/compare_git.py --no-build --quick --keep-workdir --output target/git-comparison/results
+            python scripts/compare_git.py --static-crt --quick --keep-workdir --output target/git-comparison/results
           fi
       - name: Verify retained-fixture query replay
         run: >-
-          python scripts/compare_git.py --no-build
+          python scripts/compare_git.py --static-crt --no-build
           --reuse-report target/git-comparison/results.json
           --samples 3 --warmup 1 --output target/git-comparison/reuse
       - uses: actions/upload-artifact@v7

@@ -7,6 +7,8 @@ use std::sync::Arc;
 // Bound transient raw-tree retention independently of repository size. Beyond
 // this budget trees are persisted immediately; membership remains unpublished.
 const PREPARED_TREE_BYTES: usize = 32 * 1024 * 1024;
+// An optional recent-edit shortcut must never decode an entire initial import.
+const SMALL_CHANGESET_BYTES: usize = 8 * 1024;
 
 pub(crate) struct PreparedTree {
     pub root: ObjectId,
@@ -25,6 +27,18 @@ impl Repository {
         Ok((*self.shared_tree(id)?).clone())
     }
 
+    // Editing can reuse a fully cached allocation when no reader holds it.
+    // A miss loads a verified owned tree without retaining an unchanged copy;
+    // failed edits may evict the old cache entry but never change stored data.
+    fn tree_for_update(&self, id: ObjectId) -> Result<Tree> {
+        if let Some(tree) = self.trees.take_tree(id) {
+            return Ok(Arc::unwrap_or_clone(tree));
+        }
+        let tree = Tree::from_json(&self.store().get_object(ObjectKind::Tree, id)?)?;
+        tree.validate()?;
+        Ok(tree)
+    }
+
     /// A verified immutable tree shared without cloning sibling entries. Service
     /// authorization remains the caller's responsibility, as with `tree`.
     pub fn shared_tree(&self, id: ObjectId) -> Result<std::sync::Arc<Tree>> {
@@ -41,24 +55,61 @@ impl Repository {
     fn store_tree(&self, tree: Tree) -> Result<ObjectId> {
         let id = self
             .store()
-            .put_object(ObjectKind::Tree, &canonical(&tree)?)?;
+            .put_object(ObjectKind::Tree, &tree.canonical_bytes()?)?;
         self.trees.insert(id, std::sync::Arc::new(tree));
         Ok(id)
     }
 
     pub fn root_tree(&self, revision: ObjectId) -> Result<ObjectId> {
-        self.ensure_member(revision)?;
-        if let Some(bytes) = self
-            .store()
-            .get_record(&self.namespace("derived/tree/1"), &revision.to_string())?
-        {
-            return Ok(serde_json::from_slice(&bytes)?);
+        self.root_tree_for_lookup(revision).map(|(root, _)| root)
+    }
+
+    fn root_tree_for_lookup(&self, revision: ObjectId) -> Result<(ObjectId, bool)> {
+        if let Some(root) = self.trees.root(revision) {
+            return Ok((root, false));
+        }
+        let key = revision.to_string();
+        let [member, tree] = self.store().get_record_pair(
+            (&self.namespace("changesets"), &key),
+            (&self.namespace("derived/tree/1"), &key),
+        )?;
+        if member.is_none() {
+            return Err(Error::NotFound(format!(
+                "changeset {revision} in {}",
+                self.name()
+            )));
+        }
+        if let Some(bytes) = tree {
+            let root = serde_json::from_slice(&bytes)?;
+            self.trees.insert_root(revision, root);
+            return Ok((root, true));
         }
         // The general derived evaluator reconstructs evicted/rebuildable tree indexes.
         let object = self.derive(revision, &crate::derived::TreeIndex)?;
-        Ok(serde_json::from_slice(
-            &self.store().get_object(ObjectKind::Derived, object)?,
-        )?)
+        let root = serde_json::from_slice(&self.store().get_object(ObjectKind::Derived, object)?)?;
+        self.trees.insert_root(revision, root);
+        Ok((root, true))
+    }
+
+    /// Call after validating membership. Storage may decline this optimization;
+    /// oversized changesets are rejected before allocating their decoded data.
+    fn small_changeset(&self, revision: ObjectId) -> Result<Option<Changeset>> {
+        let Some(bytes) = self.store().try_get_small_object(
+            ObjectKind::Changeset,
+            revision,
+            SMALL_CHANGESET_BYTES,
+        )?
+        else {
+            return Ok(None);
+        };
+        if bytes.len() > SMALL_CHANGESET_BYTES {
+            return Err(Error::Corrupt(
+                "storage exceeded the bounded changeset read limit".into(),
+            ));
+        }
+        let changeset: Changeset = serde_json::from_slice(&bytes)?;
+        changeset.validate()?;
+        Ok(Some(changeset))
     }
 
     pub(crate) fn apply_tree(
@@ -79,7 +130,7 @@ impl Repository {
         let mut seen = std::collections::HashSet::new();
         let mut bytes = 0;
         let root = self.apply_tree_with(base, changes, &mut |tree| {
-            let object = PreparedObject::new(ObjectKind::Tree, canonical(&tree)?)?;
+            let object = PreparedObject::new(ObjectKind::Tree, tree.canonical_bytes()?)?;
             let id = object.id();
             if seen.contains(&id) {
                 return Ok(id);
@@ -122,7 +173,7 @@ impl Repository {
             node.change = Some(change);
         }
         let mut root = match base {
-            Some(id) => self.tree(id)?,
+            Some(id) => self.tree_for_update(id)?,
             None => Tree::default(),
         };
         for (name, change) in &delta.children {
@@ -166,7 +217,7 @@ impl Repository {
             };
         }
         let mut directory = match old {
-            Some(TreeEntry::Directory { id }) => self.tree(id)?,
+            Some(TreeEntry::Directory { id }) => self.tree_for_update(id)?,
             Some(TreeEntry::File { .. }) => {
                 return Err(Error::Conflict(format!("file blocks directory {path}")));
             }
@@ -203,14 +254,36 @@ impl Repository {
     /// Look up a tree entry by traversing only path ancestors.
     pub fn entry(&self, revision: ObjectId, path: &RepoPath) -> Result<Option<TreeEntry>> {
         let root = self.root_tree(revision)?;
+        self.entry_at_root(root, path)
+    }
+
+    fn entry_at_root(&self, root: ObjectId, path: &RepoPath) -> Result<Option<TreeEntry>> {
         if path.is_root() {
             return Ok(Some(TreeEntry::Directory { id: root }));
         }
         let mut current = root;
-        let parts: Vec<_> = path.components().collect();
-        for (i, part) in parts.iter().enumerate() {
-            let entry = self.shared_tree(current)?.entries.get(*part).cloned();
-            if i + 1 == parts.len() {
+        let mut parts = path.components().peekable();
+        while let Some(part) = parts.next() {
+            let entry = match self.trees.entry(current, part) {
+                Some(entry) => entry,
+                None if self.trees.should_promote(current) => {
+                    // A second distinct lookup demonstrates directory reuse.
+                    // Decode it once rather than repeatedly scanning the same
+                    // wide object for every name in a sequential access pattern.
+                    let entry = self.shared_tree(current)?.entries.get(part).cloned();
+                    // Oversized full trees may not fit the cache. Their selected
+                    // entries can still be retained within the existing budget.
+                    self.trees.insert_entry(current, part, entry.clone());
+                    entry
+                }
+                None => {
+                    let bytes = self.store().get_object(ObjectKind::Tree, current)?;
+                    let entry = Tree::entry_from_json(&bytes, part)?;
+                    self.trees.insert_entry(current, part, entry.clone());
+                    entry
+                }
+            };
+            if parts.peek().is_none() {
                 return Ok(entry);
             }
             match entry {
@@ -222,7 +295,17 @@ impl Repository {
     }
 
     pub fn file(&self, revision: ObjectId, path: &RepoPath) -> Result<Option<FileEntry>> {
-        Ok(match self.entry(revision, path)? {
+        let (root, cold) = self.root_tree_for_lookup(revision)?;
+        // Exact first-parent puts/deletes directly describe the revision's file
+        // value, even when a deleted file became a directory. Only file lookup
+        // uses this shortcut; entry() still resolves directory identities.
+        if cold
+            && let Some(changeset) = self.small_changeset(revision)?
+            && let Some(change) = changeset.changes.get(path)
+        {
+            return Ok(change.entry().cloned());
+        }
+        Ok(match self.entry_at_root(root, path)? {
             Some(TreeEntry::File { entry }) => Some(entry),
             _ => None,
         })
@@ -231,7 +314,7 @@ impl Repository {
         let file = self
             .file(revision, path)?
             .ok_or_else(|| Error::NotFound(path.to_string()))?;
-        self.store().get_object(ObjectKind::Blob, file.id)
+        self.read_blob(file.id).map(Arc::unwrap_or_clone)
     }
 
     pub fn list_files(
@@ -343,7 +426,7 @@ impl Repository {
 
     /// Content-aware diff skips equal subtree IDs before reading directory objects.
     pub fn diff(&self, base: ObjectId, target: ObjectId) -> Result<Vec<FileDiff>> {
-        self.diff_roots(self.root_tree(base)?, self.root_tree(target)?, true)
+        self.diff_filtered(base, target, |_| true)
     }
     /// Apply path authorization before reading file bodies or computing patches.
     /// Tree metadata is traversed internally, but denied file content is untouched.
@@ -353,6 +436,33 @@ impl Repository {
         target: ObjectId,
         allowed: impl Fn(&RepoPath) -> bool,
     ) -> Result<Vec<FileDiff>> {
+        if base == target {
+            self.ensure_member(base)?;
+            return Ok(Vec::new());
+        }
+        // Inspect the compact graph record before loading a potentially very
+        // large changeset. Nonadjacent diffs should not deserialize unrelated
+        // initial-import deltas just to discover their parent relationship.
+        let target_node = scion_graph::GraphAccess::node(self, target)?;
+        if target_node.parents.first() == Some(&base) {
+            let changeset = self.get_changeset(target)?;
+            if changeset.parents != target_node.parents {
+                return Err(Error::Corrupt(
+                    "changeset parents disagree with its graph index".into(),
+                ));
+            }
+            return self.diff_first_parent(base, &changeset, false, &allowed);
+        }
+        let base_node = scion_graph::GraphAccess::node(self, base)?;
+        if base_node.parents.first() == Some(&target) {
+            let changeset = self.get_changeset(base)?;
+            if changeset.parents != base_node.parents {
+                return Err(Error::Corrupt(
+                    "changeset parents disagree with its graph index".into(),
+                ));
+            }
+            return self.diff_first_parent(target, &changeset, true, &allowed);
+        }
         self.diff_roots(self.root_tree(base)?, self.root_tree(target)?, false)?
             .into_iter()
             .filter(|diff| allowed(&diff.path))
@@ -362,6 +472,56 @@ impl Repository {
                 Ok(diff)
             })
             .collect()
+    }
+
+    /// A changeset is an exact first-parent delta, including deletions needed for
+    /// file/directory replacements. Point lookups into the parent are sufficient
+    /// to recover its diff; decoding the target's full directories is redundant.
+    fn diff_first_parent(
+        &self,
+        parent: ObjectId,
+        changeset: &Changeset,
+        reverse: bool,
+        allowed: &impl Fn(&RepoPath) -> bool,
+    ) -> Result<Vec<FileDiff>> {
+        let (root, cold) = self.root_tree_for_lookup(parent)?;
+        let previous_delta = if cold && !changeset.changes.is_empty() {
+            self.small_changeset(parent)?
+        } else {
+            None
+        };
+        let mut output = Vec::with_capacity(changeset.changes.len().min(1024));
+        for (path, change) in &changeset.changes {
+            if !allowed(path) {
+                continue;
+            }
+            let before = match previous_delta
+                .as_ref()
+                .and_then(|delta| delta.changes.get(path))
+            {
+                Some(change) => change.entry().cloned(),
+                None => match self.entry_at_root(root, path)? {
+                    Some(TreeEntry::File { entry }) => Some(entry),
+                    _ => None,
+                },
+            };
+            let after = change.entry().cloned();
+            if before == after {
+                continue;
+            }
+            let (before, after) = if reverse {
+                (after, before)
+            } else {
+                (before, after)
+            };
+            output.push(FileDiff {
+                patch: self.text_patch(path, before.as_ref(), after.as_ref())?,
+                path: path.clone(),
+                before,
+                after,
+            });
+        }
+        Ok(output)
     }
 
     pub(crate) fn diff_roots(
@@ -466,11 +626,11 @@ impl Repository {
             return Ok(None);
         }
         let old = before
-            .map(|e| self.store().get_object(ObjectKind::Blob, e.id))
+            .map(|e| self.read_blob(e.id))
             .transpose()?
             .unwrap_or_default();
         let new = after
-            .map(|e| self.store().get_object(ObjectKind::Blob, e.id))
+            .map(|e| self.read_blob(e.id))
             .transpose()?
             .unwrap_or_default();
         if old.contains(&0) || new.contains(&0) {

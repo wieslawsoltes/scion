@@ -24,6 +24,8 @@ import urllib.error
 import urllib.request
 import zipfile
 
+from build_support import STATIC_CRT_TARGETS, binary_linkage, requested_crt, rustflags
+
 ROOT = Path(__file__).resolve().parents[1]
 BINARIES = ("scn", "scion-server", "scion-cache", "scion-daemon")
 
@@ -100,7 +102,11 @@ def checksum(path: Path) -> None:
     path.with_name(path.name + ".sha256").write_text(f"{sha256(path)}  {path.name}\n", encoding="utf-8")
 
 
-def bundle(data: dict, target: str, output: Path) -> None:
+def bundle(data: dict, target: str, output: Path, *, static_crt: bool = False) -> None:
+    if static_crt and target not in STATIC_CRT_TARGETS:
+        raise ValueError(f"unsupported static-CRT target: {target}")
+    if static_crt and requested_crt(os.environ) != "static":
+        raise ValueError("bundle --static-crt requires the same +crt-static Rust flags used for the build")
     suffix = ".exe" if "windows" in target else ""
     build = Path(data["target_directory"]) / target / "release"
     name = f"scion-v{version(data)}-{target}"
@@ -109,10 +115,12 @@ def bundle(data: dict, target: str, output: Path) -> None:
     with tempfile.TemporaryDirectory(prefix="scion-release-") as temp:
         staging = Path(temp) / name
         staging.mkdir()
+        linkage = {}
         for binary in BINARIES:
             source = build / (binary + suffix)
             if not source.is_file():
                 raise ValueError(f"Missing binary: {source}")
+            linkage[binary] = binary_linkage(source, target, require_static=static_crt)
             shutil.copy2(source, staging / source.name)
         for file in ("README.md", "LICENSE-MIT", "LICENSE-APACHE", "SECURITY.md"):
             shutil.copy2(ROOT / file, staging / file)
@@ -123,6 +131,11 @@ def bundle(data: dict, target: str, output: Path) -> None:
             "rustc": run("rustc", "--version", capture=True),
             "cargo": run("cargo", "--version", capture=True),
             "binaries": list(BINARIES),
+            "rustflags": rustflags(os.environ),
+            "rustflags_provenance": "bundle environment; use the same environment for Cargo build and bundle",
+            "requested_crt": requested_crt(os.environ),
+            "static_crt_required": static_crt,
+            "linkage": linkage,
         }, indent=2) + "\n", encoding="utf-8")
         if suffix:
             archive = output / (name + ".zip")
@@ -226,6 +239,7 @@ def main() -> None:
         commands.add_parser(name)
     binaries = commands.add_parser("bundle")
     binaries.add_argument("--target", required=True)
+    binaries.add_argument("--static-crt", action="store_true", help="verify supported GNU/Linux static linkage and matching build flags")
     binaries.add_argument("--output", type=Path, default=ROOT / "dist")
     sources = commands.add_parser("source")
     sources.add_argument("--output", type=Path, default=ROOT / "dist")
@@ -248,7 +262,7 @@ def main() -> None:
     elif args.command == "version":
         print(version(data))
     elif args.command == "bundle":
-        bundle(data, args.target, args.output)
+        bundle(data, args.target, args.output, static_crt=args.static_crt)
     elif args.command == "source":
         source(data, args.output)
     elif args.command == "publish":

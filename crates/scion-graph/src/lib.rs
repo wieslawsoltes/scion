@@ -3,6 +3,7 @@
 use scion_types::{Error, ObjectId, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap};
+use std::rc::Rc;
 
 const MAX_VISITED: usize = 10_000_000;
 
@@ -32,12 +33,12 @@ pub fn build_node(graph: &impl GraphAccess, parents: &[ObjectId]) -> Result<Grap
     // The first-parent and linear jump tables often consult exactly the same
     // ancestors. Read each immutable record once rather than repeating backend
     // membership checks, database round trips and decoding for each table.
-    let mut records = BTreeMap::<ObjectId, GraphNode>::new();
-    let mut read = |id| -> Result<GraphNode> {
+    let mut records = BTreeMap::<ObjectId, Rc<GraphNode>>::new();
+    let mut read = |id| -> Result<Rc<GraphNode>> {
         match records.entry(id) {
             std::collections::btree_map::Entry::Occupied(entry) => Ok(entry.get().clone()),
             std::collections::btree_map::Entry::Vacant(entry) => {
-                Ok(entry.insert(graph.node(id)?).clone())
+                Ok(entry.insert(Rc::new(graph.node(id)?)).clone())
             }
         }
     };
@@ -85,12 +86,32 @@ pub fn build_node(graph: &impl GraphAccess, parents: &[ObjectId]) -> Result<Grap
 /// Return the N-th first parent in logarithmic reads, or None beyond a root.
 pub fn nth_first_parent(
     graph: &impl GraphAccess,
-    mut id: ObjectId,
+    id: ObjectId,
+    n: u64,
+) -> Result<Option<ObjectId>> {
+    nth_first_parent_from(graph, id, &graph.node(id)?, n)
+}
+
+/// Continue from a record the caller already loaded. The jump destination is
+/// only loaded if another jump is required; neither endpoint is decoded twice.
+fn nth_first_parent_from(
+    graph: &impl GraphAccess,
+    id: ObjectId,
+    node: &GraphNode,
     mut n: u64,
 ) -> Result<Option<ObjectId>> {
-    if n > graph.node(id)?.first_parent_depth {
+    if n > node.first_parent_depth {
         return Ok(None);
     }
+    if n == 0 {
+        return Ok(Some(id));
+    }
+    let level = n.trailing_zeros() as usize;
+    let mut id = *node
+        .jumps
+        .get(level)
+        .ok_or_else(|| Error::Corrupt("incomplete first-parent jump table".into()))?;
+    n &= n - 1;
     while n > 0 {
         let level = n.trailing_zeros() as usize;
         let node = graph.node(id)?;
@@ -110,23 +131,52 @@ pub fn is_ancestor(
     descendant: ObjectId,
 ) -> Result<bool> {
     let target = graph.node(ancestor)?;
-    let start = graph.node(descendant)?;
     if ancestor == descendant {
         return Ok(true);
     }
+    let mut descendant = descendant;
+    let mut start = graph.node(descendant)?;
     if target.generation >= start.generation {
         return Ok(false);
     }
+    // A single-parent span has no alternative path to explore. Follow it once,
+    // by generation, and stop as soon as its known destination generation rules
+    // the target in or out. In particular a negative linear query must not
+    // traverse the same prefix speculatively through first-parent jumps and then
+    // again through the all-parent search.
+    let mut prefix_visits = 0;
+    while !start.linear_jumps.is_empty() {
+        prefix_visits += 1;
+        if prefix_visits > MAX_VISITED {
+            return Err(Error::Limit("graph traversal budget exceeded".into()));
+        }
+        let distance = start.generation - target.generation;
+        let level = (63 - distance.leading_zeros() as usize).min(start.linear_jumps.len() - 1);
+        let generation = start.generation - (1_u64 << level);
+        descendant = start.linear_jumps[level];
+        if descendant == ancestor {
+            return Ok(true);
+        }
+        if generation == target.generation {
+            return Ok(false);
+        }
+        start = graph.node(descendant)?;
+        if start.generation != generation {
+            return Err(Error::Corrupt("inconsistent linear jump generation".into()));
+        }
+    }
     if start.first_parent_depth >= target.first_parent_depth
-        && nth_first_parent(
+        && nth_first_parent_from(
             graph,
             descendant,
+            &start,
             start.first_parent_depth - target.first_parent_depth,
         )? == Some(ancestor)
     {
         return Ok(true);
     }
     let mut pending = BinaryHeap::from([(start.generation, descendant)]);
+    let mut initial = Some(start);
     let mut seen = BTreeSet::new();
     while let Some((generation, id)) = pending.pop() {
         if generation < target.generation {
@@ -138,13 +188,19 @@ pub fn is_ancestor(
         if !seen.insert(id) {
             continue;
         }
-        if seen.len() > MAX_VISITED {
+        if prefix_visits + seen.len() > MAX_VISITED {
             return Err(Error::Limit("graph traversal budget exceeded".into()));
         }
         if generation == target.generation {
             continue;
         }
-        let node = graph.node(id)?;
+        let node = if id == descendant {
+            initial
+                .take()
+                .expect("the initial frontier is visited once")
+        } else {
+            graph.node(id)?
+        };
         if !node.linear_jumps.is_empty() {
             let distance = generation - target.generation;
             let level = (63 - distance.leading_zeros() as usize).min(node.linear_jumps.len() - 1);
@@ -197,9 +253,10 @@ pub fn merge_bases(graph: &impl GraphAccess, a: ObjectId, b: ObjectId) -> Result
     // before painting what could be millions of intervening linear commits.
     if a_node.generation < b_node.generation
         && a_node.first_parent_depth < b_node.first_parent_depth
-        && nth_first_parent(
+        && nth_first_parent_from(
             graph,
             b,
+            &b_node,
             b_node.first_parent_depth - a_node.first_parent_depth,
         )? == Some(a)
     {
@@ -207,9 +264,10 @@ pub fn merge_bases(graph: &impl GraphAccess, a: ObjectId, b: ObjectId) -> Result
     }
     if b_node.generation < a_node.generation
         && b_node.first_parent_depth < a_node.first_parent_depth
-        && nth_first_parent(
+        && nth_first_parent_from(
             graph,
             a,
+            &a_node,
             a_node.first_parent_depth - b_node.first_parent_depth,
         )? == Some(b)
     {
@@ -236,6 +294,9 @@ pub fn merge_bases(graph: &impl GraphAccess, a: ObjectId, b: ObjectId) -> Result
                 let level =
                     (63 - distance.leading_zeros() as usize).min(a_node.linear_jumps.len() - 1);
                 a = a_node.linear_jumps[level];
+                if a == b {
+                    return Ok(vec![a]);
+                }
                 a_node = graph.node(a)?;
             }
             std::cmp::Ordering::Less => {
@@ -246,6 +307,9 @@ pub fn merge_bases(graph: &impl GraphAccess, a: ObjectId, b: ObjectId) -> Result
                 let level =
                     (63 - distance.leading_zeros() as usize).min(b_node.linear_jumps.len() - 1);
                 b = b_node.linear_jumps[level];
+                if a == b {
+                    return Ok(vec![a]);
+                }
                 b_node = graph.node(b)?;
             }
             std::cmp::Ordering::Equal => {
@@ -557,6 +621,47 @@ mod tests {
             reads.values().all(|reads| *reads == 1),
             "duplicate backend reads: {reads:?}"
         );
+    }
+    #[test]
+    fn linear_reachability_never_reads_a_record_twice() {
+        let mut graph = Graph::default();
+        let root = graph.add("root", &[]);
+        let first = graph.add("first", &[root]);
+        let side = graph.add("side", &[root]);
+        let mut tip = first;
+        for i in 0..1023 {
+            tip = graph.add(&format!("linear{i}"), &[tip]);
+        }
+        struct Measured<'a> {
+            graph: &'a Graph,
+            reads: std::cell::RefCell<BTreeMap<ObjectId, usize>>,
+        }
+        impl GraphAccess for Measured<'_> {
+            fn node(&self, id: ObjectId) -> Result<GraphNode> {
+                *self.reads.borrow_mut().entry(id).or_default() += 1;
+                self.graph.node(id)
+            }
+        }
+        let measured = Measured {
+            graph: &graph,
+            reads: Default::default(),
+        };
+        for (ancestor, expected) in [(first, true), (side, false)] {
+            assert_eq!(is_ancestor(&measured, ancestor, tip).unwrap(), expected);
+            let reads = measured.reads.borrow();
+            // 1023 = 2^10 - 1: ten jumps plus the separately validated target.
+            assert!(reads.len() <= 11, "unnecessary graph reads: {reads:?}");
+            assert!(reads.values().all(|count| *count == 1));
+            drop(reads);
+            measured.reads.borrow_mut().clear();
+        }
+        assert!(is_ancestor(&measured, tip, tip).unwrap());
+        assert_eq!(measured.reads.borrow().get(&tip), Some(&1));
+        measured.reads.borrow_mut().clear();
+        assert_eq!(nth_first_parent(&measured, tip, 1023).unwrap(), Some(first));
+        let reads = measured.reads.borrow();
+        assert_eq!(reads.len(), 10);
+        assert!(reads.values().all(|count| *count == 1));
     }
     #[test]
     fn bisect_chooses_middle() {

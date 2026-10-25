@@ -1,7 +1,7 @@
 //! Server-side source control independent of transport, runtime and working copy.
 //! Changesets are immutable first-parent file deltas; refs are separate CAS rows.
 use scion_graph::{GraphAccess, GraphNode};
-use scion_store::{ImmutableRecord, PreparedObject, SharedStore};
+use scion_store::{ImmutableRecord, PreparedObject, RecordCas, SharedStore};
 use scion_types::*;
 use std::collections::BTreeMap;
 
@@ -14,6 +14,23 @@ mod virtual_base;
 pub use derived::{DerivedData, DerivedPolicy};
 pub use merge::RebaseResult;
 pub use tree_cache::TreeCacheStats;
+
+/// Optional compare-and-swap reference movement accompanying a new changeset.
+/// The reference's new value is always the changeset being published.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CommitRefUpdate {
+    pub name: String,
+    pub expected: Option<ObjectId>,
+}
+
+/// Durable commit publication, including the outcome of an optional reference
+/// update. A stale reference never invalidates or hides the immutable commit.
+#[derive(Clone, Debug)]
+pub struct CommitPublication {
+    pub changeset: Changeset,
+    pub sequence: u64,
+    pub reference_updated: Option<bool>,
+}
 
 /// A namespaced repository over an independently reusable storage backend.
 #[derive(Clone)]
@@ -47,13 +64,17 @@ impl Repository {
     pub fn store(&self) -> &SharedStore {
         &self.store
     }
-    /// Configure decoded immutable-tree retention; zero disables it. The default
-    /// is 8 MiB of conservative accounting, shared by clones of this repository.
+    /// Configure retention of immutable trees, selected directory entries,
+    /// membership-validated revision roots and verified blobs of at most 64 KiB;
+    /// zero disables it. All values share 8 MiB of conservative accounting by
+    /// default, shared by clones of this repository.
     pub fn with_tree_cache_capacity(mut self, bytes: usize) -> Self {
         self.trees = std::sync::Arc::new(tree_cache::TreeCache::new(bytes));
         self
     }
-    /// Discard retained trees; existing readers retain their immutable snapshots.
+    /// Discard retained trees, point lookups, validated roots and verified blobs.
+    /// Existing readers retain their immutable snapshots. Cache misses verify
+    /// stored content again; hits return the previously verified bytes.
     pub fn clear_tree_cache(&self) {
         self.trees.clear();
     }
@@ -68,10 +89,54 @@ impl Repository {
         self.store.put_object(ObjectKind::Blob, bytes)
     }
 
+    /// Read after the caller has resolved a repository member and allowed path.
+    /// Storage verifies content on misses; cached immutable bytes need no repeat
+    /// I/O or decoding. Commit validation uses Storage directly, as should audits.
+    fn read_blob(&self, id: ObjectId) -> Result<std::sync::Arc<Vec<u8>>> {
+        if let Some(bytes) = self.trees.blob(id) {
+            return Ok(bytes);
+        }
+        let bytes = std::sync::Arc::new(self.store.get_object(ObjectKind::Blob, id)?);
+        self.trees.insert_blob(id, bytes.clone());
+        Ok(bytes)
+    }
+
     /// Create a durable immutable commit without moving any reference.
     /// All parent and content validation occurs before atomic log publication.
     pub fn create_commit(&self, request: CommitRequest) -> Result<Changeset> {
+        Ok(self
+            .create_commit_with_blobs(request, Vec::new(), None)?
+            .changeset)
+    }
+
+    /// Validate and publish newly prepared blobs, their changeset and derived
+    /// metadata, and optionally compare-and-swap a reference to the new commit.
+    ///
+    /// Staged blobs need no separate durable upload or verification reread. All
+    /// acknowledged content is durable before membership is visible. Backends
+    /// may combine publication and the CAS in one transaction; the portable
+    /// storage fallback publishes first and then performs CAS. A stale expected
+    /// reference returns `Some(false)` while retaining the immutable commit.
+    /// Previously uploaded blobs preserve their independent durability contract.
+    pub fn create_commit_with_blobs(
+        &self,
+        request: CommitRequest,
+        blobs: Vec<PreparedObject>,
+        reference: Option<CommitRefUpdate>,
+    ) -> Result<CommitPublication> {
         request.validate()?;
+        if let Some(reference) = &reference {
+            validate_name(&reference.name)?;
+        }
+        let mut staged = std::collections::HashMap::with_capacity(blobs.len());
+        for blob in &blobs {
+            if blob.kind() != ObjectKind::Blob {
+                return Err(Error::Invalid(
+                    "staged commit content must contain only blobs".into(),
+                ));
+            }
+            staged.insert(blob.id(), blob.bytes());
+        }
         for parent in &request.parents {
             self.ensure_member(*parent)?;
         }
@@ -80,8 +145,11 @@ impl Repository {
                 return Err(Error::Limit("path nesting exceeds 256 directories".into()));
             }
             if let FileChange::Put { entry, copy_from } = change {
-                let blob = self.store.get_object(ObjectKind::Blob, entry.id)?;
-                if blob.len() as u64 != entry.size {
+                let size = match staged.get(&entry.id) {
+                    Some(blob) => blob.len(),
+                    None => self.store.get_object(ObjectKind::Blob, entry.id)?.len(),
+                };
+                if size as u64 != entry.size {
                     return Err(Error::Invalid(format!("blob size mismatch for {path}")));
                 }
                 if let Some(source) = copy_from {
@@ -106,10 +174,21 @@ impl Repository {
         let object = PreparedObject::new(ObjectKind::Changeset, canonical(&request)?)?;
         let id = object.id();
         prepared.objects.push(object);
+        prepared.objects.extend(blobs);
+        let cas = reference
+            .map(|reference| {
+                Ok::<_, Error>(RecordCas {
+                    namespace: self.namespace("refs"),
+                    key: reference.name,
+                    expected: reference.expected.as_ref().map(canonical).transpose()?,
+                    value: Some(canonical(&id)?),
+                })
+            })
+            .transpose()?;
         // Backends may batch immutable content and metadata into one durable
         // transaction; the portable fallback writes all content before indexes,
         // membership and the log. No staged tree enters the cache before success.
-        self.store.publish_commit_with_objects(
+        let publication = self.store.publish_commit_with_objects_and_cas(
             &self.name,
             id,
             &prepared.objects,
@@ -125,11 +204,17 @@ impl Repository {
                     value: canonical(&graph)?,
                 },
             ],
+            cas.as_ref(),
         )?;
         for (id, tree) in prepared.decoded {
             self.trees.insert(id, tree);
         }
-        Ok(request)
+        self.trees.insert_root(id, prepared.root);
+        Ok(CommitPublication {
+            changeset: request,
+            sequence: publication.sequence,
+            reference_updated: publication.cas_applied,
+        })
     }
 
     /// Read a commit only if it belongs to this repository; knowing its ID is insufficient.
@@ -226,11 +311,15 @@ impl Repository {
 
 impl GraphAccess for Repository {
     fn node(&self, id: ObjectId) -> Result<GraphNode> {
-        self.ensure_member(id)?;
-        match self
-            .store
-            .get_record(&self.namespace("graph"), &id.to_string())?
-        {
+        let key = id.to_string();
+        let [member, record] = self.store.get_record_pair(
+            (&self.namespace("changesets"), &key),
+            (&self.namespace("graph"), &key),
+        )?;
+        if member.is_none() {
+            return Err(Error::NotFound(format!("changeset {id} in {}", self.name)));
+        }
+        match record {
             Some(bytes) => Ok(serde_json::from_slice(&bytes)?),
             None => Err(Error::Corrupt(format!("missing graph record for {id}"))),
         }

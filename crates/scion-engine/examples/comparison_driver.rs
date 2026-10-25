@@ -1,9 +1,11 @@
 //! Durable comparison worker used by scripts/compare_git.py. It is an example,
 //! not a Cargo benchmark, so `cargo test --all-targets` cannot start a long run.
-use scion_engine::Repository;
-use scion_store::LocalStore;
-use scion_types::{Changeset, FileChange, FileEntry, FileKind, ObjectId, RepoPath, Result};
-use serde::Deserialize;
+use scion_engine::{CommitRefUpdate, Repository};
+use scion_store::{LocalStore, PreparedObject};
+use scion_types::{
+    Changeset, FileChange, FileEntry, FileKind, ObjectId, ObjectKind, RepoPath, Result,
+};
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
@@ -48,6 +50,21 @@ enum Request {
     Read {
         revision: ObjectId,
         path: RepoPath,
+    },
+}
+
+#[derive(Serialize)]
+#[serde(untagged)]
+enum Response {
+    Success {
+        ok: bool,
+        result: Value,
+        operation_ns: u128,
+    },
+    Failure {
+        ok: bool,
+        error: String,
+        operation_ns: u128,
     },
 }
 
@@ -131,19 +148,32 @@ fn execute(repository: &Repository, request: Request) -> Result<Value> {
             content,
             sequence,
         } => {
-            let changes =
-                BTreeMap::from([(path, FileChange::put(put(repository, content.as_bytes())?))]);
-            let next = create(
-                repository,
-                Some(parent),
-                changes,
-                format!("edit {sequence}"),
-                sequence,
+            let blob = PreparedObject::new(ObjectKind::Blob, content.into_bytes())?;
+            let entry = FileEntry {
+                id: blob.id(),
+                size: blob.bytes().len() as u64,
+                kind: FileKind::Regular,
+            };
+            let publication = repository.create_commit_with_blobs(
+                Changeset {
+                    parents: vec![parent],
+                    author: "Benchmark <benchmark@example.invalid>".into(),
+                    committer: None,
+                    timestamp_ms: 1_700_000_000_000 + sequence as i64 * 1000,
+                    message: format!("edit {sequence}"),
+                    changes: BTreeMap::from([(path, FileChange::put(entry))]),
+                    metadata: BTreeMap::new(),
+                },
+                vec![blob],
+                Some(CommitRefUpdate {
+                    name: "bench".into(),
+                    expected: Some(parent),
+                }),
             )?;
-            if !repository.update_ref("bench", Some(parent), Some(next))? {
+            if publication.reference_updated != Some(true) {
                 return Err(scion_types::Error::Conflict("benchmark ref changed".into()));
             }
-            Ok(json!(next))
+            Ok(json!(publication.changeset.id()?))
         }
         Request::Chain {
             parent,
@@ -198,7 +228,11 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     }
     let once = arguments.iter().any(|argument| argument == "--once");
     let read_only = arguments.iter().any(|argument| argument == "--read-only");
-    let store = if read_only {
+    let store = if read_only && once {
+        // One logical query keeps a consistent WAL view and reuses its read
+        // transaction. Resident workers retain live visibility between requests.
+        LocalStore::open_read_snapshot(directory)?
+    } else if read_only {
         LocalStore::open_read_only(directory)?
     } else {
         LocalStore::open(directory)?
@@ -210,17 +244,38 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         writeln!(output, "{{\"ready\":true}}")?;
         output.flush()?;
     }
-    for line in io::stdin().lock().lines() {
-        let request: Request = serde_json::from_str(&line?)?;
+    let mut input = io::stdin().lock();
+    let mut line = String::new();
+    let mut response_bytes = Vec::with_capacity(4096);
+    loop {
+        line.clear();
+        if input.read_line(&mut line)? == 0 {
+            break;
+        }
+        let request: Request = serde_json::from_str(&line)?;
         let start = Instant::now();
         let result = execute(&repository, request);
         let elapsed = start.elapsed().as_nanos();
         let response = match result {
-            Ok(value) => json!({"ok":true,"result":value,"operation_ns":elapsed}),
-            Err(error) => json!({"ok":false,"error":error.to_string(),"operation_ns":elapsed}),
+            Ok(result) => Response::Success {
+                ok: true,
+                result,
+                operation_ns: elapsed,
+            },
+            Err(error) => Response::Failure {
+                ok: false,
+                error: error.to_string(),
+                operation_ns: elapsed,
+            },
         };
-        serde_json::to_writer(&mut output, &response)?;
-        writeln!(output)?;
+        // Deliver one complete response per write. Streaming JSON fragments
+        // through line-buffered stdout can wake the caller before the terminating
+        // newline, adding avoidable pipe reads and scheduler round trips. The
+        // request/ack timer still includes serialization, every byte and flushing.
+        response_bytes.clear();
+        serde_json::to_writer(&mut response_bytes, &response)?;
+        response_bytes.push(b'\n');
+        output.write_all(&response_bytes)?;
         output.flush()?;
         if once {
             break;
