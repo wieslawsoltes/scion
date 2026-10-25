@@ -1,0 +1,50 @@
+name: Fuzz
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - crates/scion-types/**
+      - crates/scion-store/**
+      - fuzz/**
+      - .github/workflows/fuzz.yml
+  schedule:
+    - cron: "37 5 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzz-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fuzz:
+    name: Fuzz ${{ matrix.target }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [paths, canonical, envelope]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: fuzz
+          key: fuzz-${{ matrix.target }}
+      - run: cargo install cargo-fuzz --locked
+      - name: Exercise generated and seeded cases
+        env:
+          FUZZ_TARGET: ${{ matrix.target }}
+          FUZZ_SECONDS: ${{ github.event_name == 'schedule' && '300' || '30' }}
+        run: cargo +nightly fuzz run "$FUZZ_TARGET" -- -max_total_time="$FUZZ_SECONDS" -max_len=65536 -rss_limit_mb=2048
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: fuzz-failure-${{ matrix.target }}
+          path: fuzz/artifacts
+          if-no-files-found: ignore

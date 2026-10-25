@@ -1,0 +1,159 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+
+jobs:
+  quality:
+    name: Formatting, Clippy, and documentation
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all -- --check
+      - run: cargo fmt --manifest-path fuzz/Cargo.toml -- --check
+      - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+      - run: cargo doc --workspace --all-features --no-deps --locked
+        env:
+          RUSTDOCFLAGS: -D warnings
+      - run: cargo test --workspace --doc --all-features --locked
+
+  test:
+    name: Test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --workspace --all-targets --all-features --locked
+      - run: cargo test --workspace --all-targets --all-features --locked
+
+  msrv:
+    name: Minimum supported Rust (1.88)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.88.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: msrv
+      - run: cargo +1.88.0 check --workspace --all-targets --all-features --locked
+
+  packages:
+    name: Verify every publishable crate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - uses: Swatinem/rust-cache@v2
+      - run: python scripts/release.py check-metadata
+      - run: cargo package --workspace --all-features --locked
+      - uses: actions/upload-artifact@v7
+        with:
+          name: crates
+          path: target/package/*.crate
+          if-no-files-found: error
+
+  dependencies:
+    name: Dependency licenses, advisories, and sources
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+          arguments: --all-features
+
+  postgres:
+    name: PostgreSQL storage conformance
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: scion
+          POSTGRES_PASSWORD: scion-ci-only
+          POSTGRES_DB: scion
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U scion -d scion"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p scion-store --features postgres --test postgres --locked
+        env:
+          SCION_TEST_DATABASE_URL: postgres://scion:scion-ci-only@localhost:5432/scion
+
+  containers:
+    name: Container topology
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build and start three tiers
+        shell: bash
+        run: |
+          export SCION_CAPABILITY_KEY="$(openssl rand -hex 32)"
+          export SCION_TOKEN="$(openssl rand -hex 32)"
+          docker compose up --build --detach --wait --wait-timeout 120
+          curl --fail http://127.0.0.1:7420/ready
+          curl --fail http://127.0.0.1:7421/health
+          curl --fail http://127.0.0.1:7422/health
+          docker compose exec -e SCION_TOKEN -T server scn --server http://127.0.0.1:7420 --repo demo init --author CI --message smoke
+      - name: Container logs
+        if: failure()
+        shell: bash
+        run: |
+          export SCION_CAPABILITY_KEY="$(openssl rand -hex 32)"
+          export SCION_TOKEN="$(openssl rand -hex 32)"
+          docker compose logs --no-color
+      - name: Stop containers
+        if: always()
+        shell: bash
+        run: |
+          export SCION_CAPABILITY_KEY="$(openssl rand -hex 32)"
+          export SCION_TOKEN="$(openssl rand -hex 32)"
+          docker compose down --volumes

@@ -1,0 +1,151 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to build (for example v0.1.0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+  SCION_RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  verify:
+    name: Validate release and crate archives
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - uses: Swatinem/rust-cache@v2
+      - run: python scripts/release.py check-tag
+      - run: python scripts/release.py check-metadata
+      - run: cargo fmt --all -- --check
+      - run: cargo fmt --manifest-path fuzz/Cargo.toml -- --check
+      - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+      - run: cargo test --workspace --all-features --locked
+      - run: cargo doc --workspace --all-features --no-deps --locked
+        env:
+          RUSTDOCFLAGS: -D warnings
+      - run: cargo package --workspace --all-features --locked
+      - run: python scripts/release.py source --output dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: source-and-crates
+          path: |
+            dist/*
+            target/package/*.crate
+          if-no-files-found: error
+
+  binaries:
+    name: Build ${{ matrix.target }}
+    needs: verify
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+          - os: macos-15
+            target: aarch64-apple-darwin
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+          - os: windows-2025
+            target: x86_64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.target }}
+      - run: cargo test --workspace --all-features --locked --target ${{ matrix.target }}
+      - run: cargo build --workspace --bins --release --all-features --locked --target ${{ matrix.target }}
+      - run: python scripts/release.py bundle --target ${{ matrix.target }} --output dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: binaries-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  github-release:
+    name: Publish release assets
+    needs: [verify, binaries]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+      - run: python scripts/release.py collect --input artifacts --output dist
+      - name: Upload assets and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if ! gh release view "$SCION_RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$SCION_RELEASE_TAG" --verify-tag --generate-notes --draft
+          fi
+          gh release upload "$SCION_RELEASE_TAG" dist/* --clobber
+          gh release edit "$SCION_RELEASE_TAG" --draft=false
+
+  crates-io:
+    name: Publish reusable crates in dependency order
+    needs: [verify, binaries]
+    if: vars.PUBLISH_CRATES == 'true'
+    runs-on: ubuntu-24.04
+    environment: crates-io
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - uses: Swatinem/rust-cache@v2
+      - run: python scripts/release.py check-tag
+      - run: cargo package --workspace --all-features --locked
+      - run: python scripts/release.py publish --execute
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
