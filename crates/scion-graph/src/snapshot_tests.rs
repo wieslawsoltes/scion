@@ -318,6 +318,16 @@ fn atomic_replacement_preserves_old_open_reader_membership_on_unix_and_windows()
     assert!(is_ancestor(&new, id(1), id(3)).unwrap());
     assert_eq!(old.metadata().node_count, 2);
     assert_eq!(new.metadata().node_count, 3);
+    assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 1);
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_TEMPORARY: u32 = 0x100;
+        assert_eq!(
+            fs::metadata(&path).unwrap().file_attributes() & FILE_ATTRIBUTE_TEMPORARY,
+            0
+        );
+    }
     std::thread::scope(|scope| {
         for _ in 0..8 {
             scope.spawn(|| {
@@ -328,6 +338,24 @@ fn atomic_replacement_preserves_old_open_reader_membership_on_unix_and_windows()
             });
         }
     });
+}
+
+#[test]
+fn failed_atomic_publication_cleans_temporary_file_and_preserves_destination() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("graph");
+    fs::create_dir(&path).unwrap();
+    let existing = path.join("existing");
+    fs::write(&existing, b"preserve this destination").unwrap();
+    // A completed, synced file cannot replace an existing directory. Exercise
+    // the publication error after `keep`, rather than an earlier input error.
+    assert!(matches!(
+        GraphSnapshot::write(&path, "repo", source(9000), 0, std::iter::empty()),
+        Err(Error::Io(_))
+    ));
+    assert_eq!(fs::read(&existing).unwrap(), b"preserve this destination");
+    assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 1);
+    assert_eq!(fs::read_dir(&path).unwrap().count(), 1);
 }
 
 fn rehash_header(bytes: &mut [u8]) {

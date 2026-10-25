@@ -206,11 +206,7 @@ impl GraphSnapshot {
         layout.metadata.file_bytes = end;
         write_all_at(file, &layout.encode_header(), 0)?;
         file.sync_all()?;
-        // persist replaces an existing file atomically on Unix and Windows.
-        // The temporary file is on the same filesystem as its destination.
-        temporary
-            .persist(path)
-            .map_err(|error| Error::Io(error.error))?;
+        publish_snapshot(temporary, path)?;
         #[cfg(unix)]
         File::open(parent)?.sync_all()?;
         Ok(layout.metadata)
@@ -268,6 +264,24 @@ impl GraphSnapshot {
     pub fn metadata(&self) -> &GraphSnapshotMetadata {
         &self.layout.metadata
     }
+}
+
+fn publish_snapshot(temporary: tempfile::NamedTempFile, destination: &Path) -> io::Result<()> {
+    // Allocate the replacement cleanup guard before `keep` releases ownership.
+    // Until `keep` succeeds, the NamedTempFile alone owns cleanup on error.
+    let mut cleanup = tempfile::TempPath::try_from_path(temporary.path())?;
+    cleanup.disable_cleanup(true);
+    // `keep` also clears FILE_ATTRIBUTE_TEMPORARY on Windows. Retain the file
+    // handle through publication; its contents have already been synced.
+    let (_file, source) = temporary.keep().map_err(|error| error.error)?;
+    cleanup.disable_cleanup(false);
+    // Unlike tempfile's MoveFileExW-based persist, std uses POSIX replacement
+    // semantics on supported Windows filesystems when the destination is open.
+    // Source and destination are in the same directory, so this is atomic.
+    std::fs::rename(&source, destination)?;
+    // The source name is now vacant. Never remove a file reusing that name.
+    cleanup.disable_cleanup(true);
+    Ok(())
 }
 
 impl GraphAccess for GraphSnapshot {
