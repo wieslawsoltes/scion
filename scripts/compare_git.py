@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Reproducible LocalStore/Git comparison; stdlib only, no kernel-cache flushing.
 
-Prepared commits: two resident processes, full request/ack latency, durable
+Prepared commits: resident processes, full request/ack latency, durable
 objects plus ref updates. Queries: a fresh process for each engine and sample.
 Run --quick for a smoke test, or --reuse-report to repeat every query on a
-retained fixture. See docs/git-comparison.md for interpretation.
+retained fixture. --baseline-driver and --baseline-report add a verified prior
+Scion executable to the same run. See docs/git-comparison.md for interpretation.
 """
 from __future__ import annotations
 
@@ -291,6 +292,50 @@ def retained_fixture(report_path):
     return dimensions.copy(), fixture, work, provenance
 
 
+def baseline_metadata(driver, report_path):
+    """Bind the old executable to its own published, clean-source evidence."""
+    raw = report_path.read_bytes()
+    report = json.loads(raw)
+    if report["schema"] != 1:
+        raise ValueError("unsupported baseline-report schema")
+    source, build = report["source"], report["build"]
+    commit = source["commit"]
+    if not isinstance(commit, str) or len(commit) not in (40, 64) or any(c not in "0123456789abcdef" for c in commit):
+        raise ValueError("baseline report has an invalid source commit")
+    if source["dirty"] is not False or source["status"] != "" or build["source_changed_during_build"] is not False:
+        raise ValueError("baseline report must identify unchanged, clean source")
+    hashes = source["source_sha256"]
+    if not isinstance(hashes, dict) or not hashes or any(not isinstance(path, str) or not isinstance(digest, str) or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest) for path, digest in hashes.items()):
+        raise ValueError("baseline report has invalid source hashes")
+    expected = build["driver_sha256"]
+    if not isinstance(expected, str) or len(expected) != 64 or any(c not in "0123456789abcdef" for c in expected):
+        raise ValueError("baseline report has an invalid executable hash")
+    actual = hashlib.sha256(driver.read_bytes()).hexdigest()
+    if actual != expected:
+        raise ValueError(f"baseline executable SHA-256 differs from its report: {actual} != {expected}")
+    return {
+        "implementation": "scion_baseline",
+        "driver": str(driver), "driver_sha256": actual,
+        "source_report": str(report_path.resolve()),
+        "source_report_sha256": hashlib.sha256(raw).hexdigest(),
+        "source": source, "build": build,
+        "reported_host": report["host"],
+        "provenance": "source/build metadata belongs to the baseline report, not the candidate checkout",
+    }
+
+
+def implementation_order(sample, with_baseline):
+    """Preserve Scion/Git relative order; rotate baseline through all positions."""
+    order = ["scion", "git"] if sample % 2 == 0 else ["git", "scion"]
+    if with_baseline:
+        order.insert(sample % 3, "scion_baseline")
+    return order
+
+
+def report_outputs(output):
+    return (output.with_suffix(".json"), output.with_suffix(".csv"), output.with_name(output.name + "-summary.csv"))
+
+
 def record(rows, operation, scope, implementation, sample, wall_ns, internal_ns=None, output_bytes=None):
     rows.append({"operation": operation, "scope": scope, "implementation": implementation, "sample": sample, "wall_ns": wall_ns, "internal_ns": internal_ns, "output_bytes": output_bytes})
 
@@ -337,7 +382,20 @@ def main():
     parser.add_argument("--no-build", action="store_true")
     parser.add_argument("--offline", action="store_true")
     parser.add_argument("--driver", type=Path, default=ROOT / "target/release/examples" / ("comparison_driver.exe" if os.name == "nt" else "comparison_driver"))
+    parser.add_argument("--baseline-driver", type=Path, help="previous Scion executable; requires its published --baseline-report")
+    parser.add_argument("--baseline-report", type=Path, help="clean-source report whose driver SHA-256 must match --baseline-driver")
     args = parser.parse_args()
+    if (args.baseline_driver is None) != (args.baseline_report is None):
+        parser.error("--baseline-driver and --baseline-report must be supplied together")
+    baseline_info = None
+    protected = {args.driver.resolve()}
+    if args.baseline_driver is not None:
+        args.baseline_driver = args.baseline_driver.resolve()
+        try:
+            baseline_info = baseline_metadata(args.baseline_driver, args.baseline_report)
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            parser.error(f"cannot verify baseline: {error}")
+        protected.update((args.baseline_driver, args.baseline_report.resolve()))
     reused = None
     if args.reuse_report is not None:
         if args.quick or args.work_root is not None or any(value is not None for value in (args.files, args.commits, args.branch_commits, args.fanout, args.blob_bytes, args.variants)):
@@ -346,10 +404,7 @@ def main():
             dimensions, fixture, retained_work, reused = retained_fixture(args.reuse_report)
         except (OSError, ValueError, KeyError, TypeError) as error:
             parser.error(f"cannot reuse fixture: {error}")
-        protected = {args.reuse_report.resolve(), (retained_work / "fixture.json").resolve()}
-        outputs = (args.output.with_suffix(".json"), args.output.with_suffix(".csv"), args.output.with_name(args.output.name + "-summary.csv"))
-        if any(output.resolve() in protected for output in outputs):
-            parser.error("--output must not overwrite the source report or retained fixture marker")
+        protected.update((args.reuse_report.resolve(), (retained_work / "fixture.json").resolve()))
         if args.samples is not None: dimensions["samples"] = args.samples
         if args.warmup is not None: dimensions["warmup"] = args.warmup
     else:
@@ -363,6 +418,8 @@ def main():
             "variants": args.variants if args.variants is not None else 128,
             "warmup": args.warmup if args.warmup is not None else 3,
         }
+    if any(output.resolve() in protected for output in report_outputs(args.output)):
+        parser.error("--output must not overwrite source reports, executables or the retained fixture marker")
     args.fanout, args.blob_bytes, args.variants, args.warmup = (dimensions[key] for key in ("fanout", "blob_bytes", "variants", "warmup"))
     if min(value for key, value in dimensions.items() if key != "warmup") < 1 or args.warmup < 0 or args.blob_bytes < 32:
         parser.error("dimensions must be positive, warmup nonnegative, and blob size at least 32 bytes")
@@ -370,14 +427,22 @@ def main():
     build = ["cargo", "build", "--release", "--locked", "-p", "scion-engine", "--example", "comparison_driver"]
     if args.offline: build.append("--offline")
     if not args.no_build:
+        target = Path(ENV.get("CARGO_TARGET_DIR", ROOT / "target"))
+        if not target.is_absolute(): target = ROOT / target
+        product = (target / "release/examples" / ("comparison_driver.exe" if os.name == "nt" else "comparison_driver")).resolve()
+        if baseline_info is not None and product == args.baseline_driver:
+            parser.error("copy the baseline executable outside Cargo's output path before building the candidate")
         print("Building optimized comparison driver", file=sys.stderr, flush=True)
         completed = subprocess.run(build, cwd=ROOT, env=ENV, check=False)
         if completed.returncode: raise SystemExit(completed.returncode)
     source_after = source_metadata()
     driver = args.driver.resolve()
     if not driver.is_file(): parser.error(f"driver does not exist: {driver}")
+    if baseline_info is not None and hashlib.sha256(args.baseline_driver.read_bytes()).hexdigest() != baseline_info["driver_sha256"]:
+        parser.error("baseline executable changed while building the candidate")
     work = retained_work if reused is not None else Path(tempfile.mkdtemp(prefix="scion-git-comparison-", dir=args.work_root))
     git_dir, scion_dir = work / "git", work / "scion"
+    baseline_dir = scion_dir if reused is not None else work / "scion-baseline"
     result = {
         "schema": 1, "mode": "queries_only" if reused is not None else "full", "dimensions": dimensions, "host": host_metadata(work), "source": source_after,
         "build": {"command": build, "performed": not args.no_build, "incremental": False, "source_changed_during_build": source_before["source_sha256"] != source_after["source_sha256"], "driver_sha256": hashlib.sha256(driver.read_bytes()).hexdigest()},
@@ -386,8 +451,13 @@ def main():
     }
     if reused is not None:
         result["reuse"] = reused
+    if baseline_info is not None:
+        result["baseline"] = baseline_info
+        result["baseline"]["store_directory"] = str(baseline_dir)
+        result["baseline"]["fixture_scope"] = "same retained Scion fixture, read-only" if reused is not None else "independent store with identical logical requests and verified identical Scion IDs"
+        result["configuration"]["sample_order"] += "; baseline insertion rotates through positions 0, 1, 2 (all six permutations every six iterations)"
     rows = result["samples"]
-    scion = git = reader = None
+    scion = git = reader = baseline = None
     try:
         if reused is None:
             run(["git", "init", "--bare", "--object-format=sha1", git_dir])
@@ -404,10 +474,20 @@ def main():
             git_root, elapsed, root_mark = git.initialize(dimensions["files"], args.fanout, args.variants, args.blob_bytes)
             git_tip = git_root
             result["setup"].append({"operation": "initialize", "implementation": "git", "wall_ns": elapsed})
+            if baseline_info is not None:
+                baseline = ScionWorker(args.baseline_driver, baseline_dir, work / "scion-baseline.stderr")
+                response, elapsed = baseline.request(initial)
+                baseline_root = baseline_tip = response["result"]
+                if baseline_root != scion_root:
+                    raise RuntimeError("baseline and candidate initial changeset IDs differ")
+                result["setup"].append({"operation": "initialize", "implementation": "scion_baseline", "wall_ns": elapsed})
             for sample in range(dimensions["samples"]):
-                for implementation in (["scion", "git"] if sample % 2 == 0 else ["git", "scion"]):
-                    if implementation == "scion":
-                        response, elapsed = scion.request({"op": "noop"})
+                for implementation in implementation_order(sample, baseline_info is not None):
+                    if implementation != "git":
+                        worker = scion if implementation == "scion" else baseline
+                        response, elapsed = worker.request({"op": "noop"})
+                        if response["result"] is not True:
+                            raise RuntimeError(f"incorrect {implementation} no-op response")
                         record(rows, "noop", "resident", implementation, sample, elapsed, response["operation_ns"])
                     else:
                         _, elapsed = git.noop(root_mark)
@@ -419,17 +499,27 @@ def main():
                 content = (f"edit {sequence:06}\n".encode() + body(0, args.blob_bytes))[0:args.blob_bytes - 1] + b"\n"
                 text = content.decode()
                 old_scion, old_git = scion_tip, git_tip
-                for implementation in (["scion", "git"] if sample % 2 == 0 else ["git", "scion"]):
+                if baseline_info is not None:
+                    old_baseline = baseline_tip
+                for implementation in implementation_order(sample, baseline_info is not None):
                     if implementation == "scion":
                         response, elapsed = scion.request({"op": "commit", "parent": scion_tip, "path": changed_path, "content": text, "sequence": sequence})
                         scion_tip = response["result"]
+                        internal = response["operation_ns"]
+                    elif implementation == "scion_baseline":
+                        response, elapsed = baseline.request({"op": "commit", "parent": baseline_tip, "path": changed_path, "content": text, "sequence": sequence})
+                        baseline_tip = response["result"]
                         internal = response["operation_ns"]
                     else:
                         git_tip, elapsed = git.commit(git_tip, changed_path, text, sequence)
                         internal = None
                     if sample >= args.warmup:
                         record(rows, "prepared_commit", "resident", implementation, sample - args.warmup, elapsed, internal)
+                if baseline_info is not None and baseline_tip != scion_tip:
+                    raise RuntimeError(f"baseline and candidate changeset IDs differ at edit {sequence}")
             fixture = {"scion": {"root": scion_root, "tip": scion_tip, "previous": old_scion}, "git": {"root": git_root, "tip": git_tip, "previous": old_git}, "path": changed_path, "content": text}
+            if baseline_info is not None:
+                fixture["scion_baseline"] = {"root": baseline_root, "tip": baseline_tip, "previous": old_baseline}
             for label, count, parent_label in [("trunk", dimensions["commits"], "root"), ("left", dimensions["branch_commits"], "trunk"), ("right", dimensions["branch_commits"], "trunk"), ("side", 1, "root")]:
                 print(f"Preparing {label}: {count} commits (setup excluded from comparisons)", file=sys.stderr, flush=True)
                 response, elapsed = scion.request({"op": "chain", "parent": fixture["scion"][parent_label], "count": count, "label": label})
@@ -438,8 +528,16 @@ def main():
                 identifier, elapsed = git.chain(fixture["git"][parent_label], count, label)
                 fixture["git"][label] = identifier
                 result["setup"].append({"operation": f"chain_{label}", "implementation": "git", "wall_ns": elapsed})
+                if baseline_info is not None:
+                    response, elapsed = baseline.request({"op": "chain", "parent": fixture["scion_baseline"][parent_label], "count": count, "label": label})
+                    fixture["scion_baseline"][label] = response["result"]
+                    if response["result"] != fixture["scion"][label]:
+                        raise RuntimeError(f"baseline and candidate changeset IDs differ on {label}")
+                    result["setup"].append({"operation": f"chain_{label}", "implementation": "scion_baseline", "wall_ns": elapsed})
             git.close(); git = None
             scion.close(); scion = None
+            if baseline is not None:
+                baseline.close(); baseline = None
         else:
             print(f"Reusing retained fixture in {work}; measuring queries only", file=sys.stderr, flush=True)
         changed_path, text = fixture["path"], fixture["content"]
@@ -463,18 +561,21 @@ def main():
         print("Measuring fresh-process queries with warm OS cache", file=sys.stderr, flush=True)
         for operation, request, git_arguments in operations:
             for sample in range(args.warmup + dimensions["samples"]):
-                for implementation in (["scion", "git"] if sample % 2 == 0 else ["git", "scion"]):
-                    if implementation == "scion":
-                        completed, elapsed = run([driver, scion_dir, "--once", "--read-only"], input=encoded(request))
+                scion_values = {}
+                for implementation in implementation_order(sample, baseline_info is not None):
+                    if implementation != "git":
+                        executable, directory = (driver, scion_dir) if implementation == "scion" else (args.baseline_driver, baseline_dir)
+                        completed, elapsed = run([executable, directory, "--once", "--read-only"], input=encoded(request))
                         response = json.loads(completed.stdout)
                         if not response["ok"]: raise RuntimeError(response["error"])
                         value = response["result"]
+                        scion_values[implementation] = value
                         internal = response["operation_ns"]
                         expected = {"repository_open": True, "ancestry_positive": True, "ancestry_negative": False, "merge_base_ancestor": [sc["root"]], "merge_base_divergent": [sc["trunk"]], "file_read": text}
                         if operation == "small_diff":
                             if len(value) != 1 or value[0]["path"] != changed_path or not value[0]["patch"]:
-                                raise RuntimeError(f"incorrect Scion diff: {value!r}")
-                        elif value != expected[operation]: raise RuntimeError(f"incorrect Scion {operation}: {value!r}")
+                                raise RuntimeError(f"incorrect {implementation} diff: {value!r}")
+                        elif value != expected[operation]: raise RuntimeError(f"incorrect {implementation} {operation}: {value!r}")
                     else:
                         completed, elapsed = run(["git", "-C", git_dir, *git_arguments], accepted=(0, 1) if operation == "ancestry_negative" else (0,))
                         internal = None
@@ -484,13 +585,18 @@ def main():
                         if operation == "small_diff" and f"diff --git a/{changed_path}".encode() not in completed.stdout: raise RuntimeError("incorrect Git diff")
                     if sample >= args.warmup:
                         record(rows, operation, "fresh_process", implementation, sample - args.warmup, elapsed, internal, len(completed.stdout))
+                if baseline_info is not None and scion_values["scion"] != scion_values["scion_baseline"]:
+                    raise RuntimeError(f"baseline and candidate {operation} results differ")
         for sample in range(dimensions["samples"]):
-            for implementation in (["scion", "git"] if sample % 2 == 0 else ["git", "scion"]):
-                completed, elapsed = run([driver, "--version"] if implementation == "scion" else ["git", "--version"])
+            for implementation in implementation_order(sample, baseline_info is not None):
+                executable = {"scion": driver, "git": "git", "scion_baseline": args.baseline_driver}[implementation]
+                completed, elapsed = run([executable, "--version"])
                 record(rows, "process_startup", "fresh_process", implementation, sample, elapsed, output_bytes=len(completed.stdout))
         print("Measuring resident reads across deterministic warmed paths", file=sys.stderr, flush=True)
         scion = ScionWorker(driver, scion_dir, work / "scion-read.stderr", read_only=True)
         reader = GitReader(git_dir, work / "git-read.stderr")
+        if baseline_info is not None:
+            baseline = ScionWorker(args.baseline_driver, baseline_dir, work / "scion-baseline-read.stderr", read_only=True)
         indices = [(sample * 104729) % dimensions["files"] for sample in range(dimensions["samples"])]
         result["configuration"]["resident_reads"] = {
             "path_indices": indices,
@@ -498,14 +604,17 @@ def main():
             "scope": "resident Scion worker and resident git cat-file --batch;one request/response each",
             "cache": "each selected path is read once in every warmup pass before measurement",
         }
+        if baseline_info is not None:
+            result["configuration"]["resident_reads"]["baseline_scope"] = "separate resident baseline worker; identical requests and warmup passes"
         for iteration in range((args.warmup + 1) * len(indices)):
             sample = iteration % len(indices)
             index = indices[sample]
             path = file_path(index, args.fanout)
             expected = content if index == 0 else body(index % args.variants, args.blob_bytes)
-            for implementation in (["scion", "git"] if iteration % 2 == 0 else ["git", "scion"]):
-                if implementation == "scion":
-                    response, elapsed = scion.request({"op": "read", "revision": sc["tip"], "path": path})
+            for implementation in implementation_order(iteration, baseline_info is not None):
+                if implementation != "git":
+                    worker = scion if implementation == "scion" else baseline
+                    response, elapsed = worker.request({"op": "read", "revision": sc["tip"], "path": path})
                     actual = response["result"].encode()
                     internal = response["operation_ns"]
                 else:
@@ -517,22 +626,40 @@ def main():
                     record(rows, "file_read_spread", "resident", implementation, sample, elapsed, internal, len(actual))
         reader.close(); reader = None
         scion.close(); scion = None
+        if baseline is not None:
+            baseline.close(); baseline = None
         result["verification"] = {"query_results": "all checked", "file_contents": "byte-identical", "changed_paths": "one matching path", "commit_parents": "identical logical DAG topology", "commit_graph": "Git --reachable --changed-paths written before query timings"}
         if reused is not None:
             result["verification"]["prepared_commits"] = "not measured; queries-only reuse"
             result["verification"]["fixture_marker"] = "identical to the source report"
         result["summary"] = summarize(rows)
-        save(args.output, result)
+        if hashlib.sha256(driver.read_bytes()).hexdigest() != result["build"]["driver_sha256"]:
+            raise RuntimeError("candidate executable changed during measurement")
         lookup = {(row["operation"], row["scope"], row["implementation"]): row for row in result["summary"]}
-        print("operation,scope,scion_p50_us,git_p50_us,git_over_scion")
+        if baseline_info is not None:
+            if hashlib.sha256(args.baseline_driver.read_bytes()).hexdigest() != baseline_info["driver_sha256"] or hashlib.sha256(args.baseline_report.read_bytes()).hexdigest() != baseline_info["source_report_sha256"]:
+                raise RuntimeError("baseline executable or provenance report changed during measurement")
+            result["verification"]["baseline"] = "executable SHA-256 matches its unchanged clean-source report; identical logical requests, query results, and file bytes; full-mode changeset IDs checked after every edit and chain"
+            result["comparisons"] = []
+            for operation, scope in sorted({(row["operation"], row["scope"]) for row in result["summary"]}):
+                scion_p50 = lookup[operation, scope, "scion"]["p50_us"]
+                git_p50 = lookup[operation, scope, "git"]["p50_us"]
+                baseline_p50 = lookup[operation, scope, "scion_baseline"]["p50_us"]
+                result["comparisons"].append({"operation": operation, "scope": scope, "git_over_scion": git_p50 / scion_p50, "baseline_over_scion": baseline_p50 / scion_p50})
+        save(args.output, result)
+        print("operation,scope,scion_p50_us,git_p50_us,git_over_scion" + (",baseline_p50_us,baseline_over_scion" if baseline_info is not None else ""))
         for operation, scope in sorted({(row["operation"], row["scope"]) for row in result["summary"]}):
             scion_p50 = lookup[operation, scope, "scion"]["p50_us"]
             git_p50 = lookup[operation, scope, "git"]["p50_us"]
-            print(f"{operation},{scope},{scion_p50:.3f},{git_p50:.3f},{git_p50 / scion_p50:.3f}")
+            line = f"{operation},{scope},{scion_p50:.3f},{git_p50:.3f},{git_p50 / scion_p50:.3f}"
+            if baseline_info is not None:
+                baseline_p50 = lookup[operation, scope, "scion_baseline"]["p50_us"]
+                line += f",{baseline_p50:.3f},{baseline_p50 / scion_p50:.3f}"
+            print(line)
         print(f"Raw results: {args.output.with_suffix('.json')}", file=sys.stderr)
         if args.keep_workdir or reused is not None: print(f"Fixture retained: {work}", file=sys.stderr)
     finally:
-        for worker in (git, scion, reader):
+        for worker in (git, scion, reader, baseline):
             if worker is not None:
                 try: worker.close()
                 except Exception:
