@@ -2,13 +2,14 @@ use crate::{
     ImmutableRecord, PreparedObject, Storage, decode_object, encode_object, validate_publication,
 };
 use parking_lot::Mutex;
-use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
+use rusqlite::{Connection, OpenFlags, OptionalExtension, TransactionBehavior, params};
 use scion_types::{Error, LogEntry, ObjectId, ObjectKind, Result};
 use std::collections::HashSet;
 use std::{
     fs,
     io::Write,
     path::{Path, PathBuf},
+    sync::atomic::{AtomicBool, Ordering},
     time::Duration,
 };
 
@@ -30,6 +31,8 @@ type EncodedObject = (ObjectKind, ObjectId, Vec<u8>);
 pub struct LocalStore {
     root: PathBuf,
     db: Mutex<Connection>,
+    read_only: bool,
+    has_inline_objects: AtomicBool,
     #[cfg(unix)]
     durable_directories: Mutex<HashSet<PathBuf>>,
     durable_objects: Mutex<HashSet<(ObjectKind, ObjectId)>>,
@@ -48,13 +51,48 @@ impl LocalStore {
         Ok(Self {
             root,
             db: Mutex::new(db),
+            read_only: false,
+            has_inline_objects: AtomicBool::new(true),
             #[cfg(unix)]
             durable_directories: Default::default(),
             durable_objects: Default::default(),
         })
     }
+
+    /// Open an existing store without creating directories, migrating its schema
+    /// or changing journal settings. Queries see commits made by concurrent
+    /// writers, including their live WAL; this is not SQLite's immutable mode.
+    /// All mutation methods return an error, including writes to loose objects.
+    /// SQLite may maintain WAL reader coordination files when writers are active.
+    pub fn open_read_only(path: impl AsRef<Path>) -> Result<Self> {
+        let root = fs::canonicalize(path)?;
+        let db = Connection::open_with_flags(
+            root.join("metadata.sqlite3"),
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )
+        .map_err(db_error)?;
+        db.busy_timeout(Duration::from_secs(30)).map_err(db_error)?;
+        // Old file-only stores remain readable without an implicit migration.
+        let has_inline_objects = has_inline_table(&db)?;
+        Ok(Self {
+            root,
+            db: Mutex::new(db),
+            read_only: true,
+            has_inline_objects: AtomicBool::new(has_inline_objects),
+            #[cfg(unix)]
+            durable_directories: Default::default(),
+            durable_objects: Default::default(),
+        })
+    }
+
     pub fn root(&self) -> &Path {
         &self.root
+    }
+    fn require_writable(&self) -> Result<()> {
+        if self.read_only {
+            return Err(Error::Storage("local store was opened read-only".into()));
+        }
+        Ok(())
     }
     fn path(&self, kind: ObjectKind, id: ObjectId) -> PathBuf {
         let hex = id.to_string();
@@ -64,24 +102,41 @@ impl LocalStore {
             .join(&hex[..2])
             .join(&hex[2..])
     }
-    fn contains_inline(&self, kind: ObjectKind, id: ObjectId) -> Result<bool> {
-        self.db
-            .lock()
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM inline_objects WHERE kind=?1 AND id=?2)",
-                params![kind.as_str(), id.0.as_slice()],
-                |row| row.get(0),
-            )
+    fn inline_encoded(&self, kind: ObjectKind, id: ObjectId) -> Result<Option<Vec<u8>>> {
+        let db = self.db.lock();
+        if !self.has_inline_objects.load(Ordering::Relaxed) {
+            if !has_inline_table(&db)? {
+                return Ok(None);
+            }
+            // A writer can upgrade a legacy store after this reader opens.
+            self.has_inline_objects.store(true, Ordering::Relaxed);
+        }
+        db.prepare_cached("SELECT encoded FROM inline_objects WHERE kind=?1 AND id=?2")
+            .map_err(db_error)?
+            .query_row(params![kind.as_str(), id.0.as_slice()], |row| row.get(0))
+            .optional()
             .map_err(db_error)
     }
+    fn contains_inline(&self, kind: ObjectKind, id: ObjectId) -> Result<bool> {
+        if let Some(encoded) = self.inline_encoded(kind, id)? {
+            decode_object(kind, id, &encoded)?;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
     fn write_inline(&self, kind: ObjectKind, id: ObjectId, encoded: &[u8]) -> Result<()> {
-        self.db
-            .lock()
-            .execute(
+        let db = self.db.lock();
+        let inserted = db
+            .prepare_cached(
                 "INSERT INTO inline_objects(kind,id,encoded) VALUES (?1,?2,?3) ON CONFLICT DO NOTHING",
-                params![kind.as_str(), id.0.as_slice(), encoded],
             )
+            .map_err(db_error)?
+            .execute(params![kind.as_str(), id.0.as_slice(), encoded])
             .map_err(db_error)?;
+        if inserted == 0 {
+            verify_inline_duplicate(&db, kind, id)?;
+        }
         Ok(())
     }
     fn flush_inline(&self, objects: &[EncodedObject]) -> Result<()> {
@@ -127,6 +182,7 @@ impl LocalStore {
     fn write_encoded(&self, kind: ObjectKind, id: ObjectId, encoded: &[u8]) -> Result<()> {
         let path = self.path(kind, id);
         if path.is_file() {
+            decode_object(kind, id, &fs::read(&path)?)?;
             return self.establish_durability(kind, id, &path);
         }
         let parent = path
@@ -138,7 +194,11 @@ impl LocalStore {
         temp.as_file().sync_all()?;
         match temp.persist_noclobber(&path) {
             Ok(_) => {}
-            Err(e) if e.error.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(e) if e.error.kind() == std::io::ErrorKind::AlreadyExists => {
+                // A concurrent immutable writer may win the filename. Verify
+                // that winner instead of acknowledging unrelated/corrupt data.
+                decode_object(kind, id, &fs::read(&path)?)?;
+            }
             Err(e) => return Err(e.error.into()),
         }
         self.establish_durability(kind, id, &path)
@@ -153,6 +213,7 @@ impl LocalStore {
             .ok_or_else(|| Error::Storage("object parent absent".into()))?;
         #[cfg(unix)]
         {
+            fs::File::open(path)?.sync_all()?;
             // Each process establishes durability on its first visit. A directory
             // merely existing is insufficient: another writer may just have
             // created it. Cache only after synchronizing all uncached ancestors.
@@ -189,6 +250,7 @@ impl LocalStore {
 }
 impl Storage for LocalStore {
     fn put_object(&self, kind: ObjectKind, bytes: &[u8]) -> Result<ObjectId> {
+        self.require_writable()?;
         if bytes.len() > crate::MAX_OBJECT_SIZE {
             return Err(Error::Limit("object exceeds 256 MiB".into()));
         }
@@ -198,6 +260,7 @@ impl Storage for LocalStore {
         }
         let path = self.path(kind, id);
         if path.is_file() {
+            decode_object(kind, id, &fs::read(&path)?)?;
             self.establish_durability(kind, id, &path)?;
         } else {
             let encoded = encode_object(kind, bytes)?;
@@ -213,17 +276,7 @@ impl Storage for LocalStore {
         decode_object(kind, id, &self.get_encoded(kind, id)?)
     }
     fn get_encoded(&self, kind: ObjectKind, id: ObjectId) -> Result<Vec<u8>> {
-        let inline: Option<Vec<u8>> = self
-            .db
-            .lock()
-            .query_row(
-                "SELECT encoded FROM inline_objects WHERE kind=?1 AND id=?2",
-                params![kind.as_str(), id.0.as_slice()],
-                |row| row.get(0),
-            )
-            .optional()
-            .map_err(db_error)?;
-        if let Some(encoded) = inline {
+        if let Some(encoded) = self.inline_encoded(kind, id)? {
             return Ok(encoded);
         }
         match fs::read(self.path(kind, id)) {
@@ -235,12 +288,14 @@ impl Storage for LocalStore {
         }
     }
     fn put_encoded(&self, kind: ObjectKind, id: ObjectId, bytes: &[u8]) -> Result<()> {
+        self.require_writable()?;
         decode_object(kind, id, bytes)?;
         if self.contains_inline(kind, id)? {
             return Ok(());
         }
         let path = self.path(kind, id);
         if path.is_file() {
+            decode_object(kind, id, &fs::read(&path)?)?;
             self.establish_durability(kind, id, &path)
         } else if bytes.len() <= INLINE_OBJECT_LIMIT {
             self.write_inline(kind, id, bytes)
@@ -249,17 +304,15 @@ impl Storage for LocalStore {
         }
     }
     fn get_record(&self, ns: &str, key: &str) -> Result<Option<Vec<u8>>> {
-        self.db
-            .lock()
-            .query_row(
-                "SELECT value FROM records WHERE namespace=?1 AND key=?2",
-                params![ns, key],
-                |r| r.get(0),
-            )
+        let db = self.db.lock();
+        db.prepare_cached("SELECT value FROM records WHERE namespace=?1 AND key=?2")
+            .map_err(db_error)?
+            .query_row(params![ns, key], |r| r.get(0))
             .optional()
             .map_err(db_error)
     }
     fn put_record(&self, ns: &str, key: &str, value: &[u8]) -> Result<()> {
+        self.require_writable()?;
         let db = self.db.lock();
         db.execute(
             "INSERT INTO records(namespace,key,value) VALUES (?1,?2,?3) ON CONFLICT DO NOTHING",
@@ -287,6 +340,7 @@ impl Storage for LocalStore {
         expected: Option<&[u8]>,
         value: Option<&[u8]>,
     ) -> Result<bool> {
+        self.require_writable()?;
         let mut db = self.db.lock();
         let tx = db
             .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -318,6 +372,7 @@ impl Storage for LocalStore {
         self.publish_commit(repo, id, &[])
     }
     fn publish_commit(&self, repo: &str, id: ObjectId, records: &[ImmutableRecord]) -> Result<u64> {
+        self.require_writable()?;
         validate_publication(repo, id, records)?;
         self.publish_batch(repo, id, &[], records)
     }
@@ -328,6 +383,7 @@ impl Storage for LocalStore {
         objects: &[PreparedObject],
         records: &[ImmutableRecord],
     ) -> Result<u64> {
+        self.require_writable()?;
         validate_publication(repo, id, records)?;
         let mut pending = Vec::new();
         let mut pending_bytes = 0;
@@ -338,10 +394,21 @@ impl Storage for LocalStore {
             }
             let encoded = encode_object(object.kind(), object.bytes())?;
             if encoded.len() > INLINE_OBJECT_LIMIT {
+                // Encoding choice is not identity: another valid compression
+                // may already occupy the inline tier. Reject corrupt content
+                // there before routing this representation to a loose file.
+                if self.contains_inline(object.kind(), object.id())? {
+                    continue;
+                }
                 // A durable file may become an unreachable orphan if subsequent
                 // metadata validation fails, but membership is never exposed.
                 self.write_encoded(object.kind(), object.id(), &encoded)?;
                 continue;
+            }
+            let path = self.path(object.kind(), object.id());
+            if path.is_file() {
+                decode_object(object.kind(), object.id(), &fs::read(&path)?)?;
+                self.establish_durability(object.kind(), object.id(), &path)?;
             }
             if pending_bytes + encoded.len() > INLINE_BATCH_LIMIT {
                 self.flush_inline(&pending)?;
@@ -355,7 +422,7 @@ impl Storage for LocalStore {
     }
     fn read_log(&self, repo: &str, after: u64, limit: usize) -> Result<Vec<LogEntry>> {
         let db = self.db.lock();
-        let mut stmt = db.prepare("SELECT sequence,id FROM changeset_log WHERE repo=?1 AND sequence>?2 ORDER BY sequence LIMIT ?3").map_err(db_error)?;
+        let mut stmt = db.prepare_cached("SELECT sequence,id FROM changeset_log WHERE repo=?1 AND sequence>?2 ORDER BY sequence LIMIT ?3").map_err(db_error)?;
         let rows = stmt
             .query_map(
                 params![
@@ -377,7 +444,7 @@ impl Storage for LocalStore {
     }
     fn scan_records(&self, ns: &str, prefix: &str, limit: usize) -> Result<Vec<(String, Vec<u8>)>> {
         let db = self.db.lock();
-        let mut stmt = db.prepare("SELECT key,value FROM records WHERE namespace=?1 AND key>=?2 ORDER BY key LIMIT ?3").map_err(db_error)?;
+        let mut stmt = db.prepare_cached("SELECT key,value FROM records WHERE namespace=?1 AND key>=?2 ORDER BY key LIMIT ?3").map_err(db_error)?;
         let rows = stmt
             .query_map(params![ns, prefix, limit.min(100_000) as i64], |r| {
                 Ok((r.get::<_, String>(0)?, r.get::<_, Vec<u8>>(1)?))
@@ -395,6 +462,15 @@ impl Storage for LocalStore {
     }
 }
 
+fn has_inline_table(db: &Connection) -> Result<bool> {
+    db.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type='table' AND name='inline_objects')",
+        [],
+        |row| row.get(0),
+    )
+    .map_err(db_error)
+}
+
 fn insert_objects(tx: &rusqlite::Transaction<'_>, objects: &[EncodedObject]) -> Result<()> {
     let mut statement = tx
         .prepare_cached(
@@ -402,10 +478,23 @@ fn insert_objects(tx: &rusqlite::Transaction<'_>, objects: &[EncodedObject]) -> 
         )
         .map_err(db_error)?;
     for (kind, id, encoded) in objects {
-        statement
+        let inserted = statement
             .execute(params![kind.as_str(), id.0.as_slice(), encoded])
             .map_err(db_error)?;
+        if inserted == 0 {
+            verify_inline_duplicate(tx, *kind, *id)?;
+        }
     }
+    Ok(())
+}
+
+fn verify_inline_duplicate(db: &Connection, kind: ObjectKind, id: ObjectId) -> Result<()> {
+    let encoded: Vec<u8> = db
+        .prepare_cached("SELECT encoded FROM inline_objects WHERE kind=?1 AND id=?2")
+        .map_err(db_error)?
+        .query_row(params![kind.as_str(), id.0.as_slice()], |row| row.get(0))
+        .map_err(db_error)?;
+    decode_object(kind, id, &encoded)?;
     Ok(())
 }
 
