@@ -154,7 +154,13 @@ impl WorkingCopy {
         let cache_path = self.root.join(".scion/stat-cache");
         let mut guard = self.stat_cache.lock();
         let cache = guard.get_or_insert_with(|| StatCache::load(&cache_path));
-        cache.retain(|path| self.state.files.contains_key(path));
+        // Stale entries are harmless (inspection always validates the actual
+        // inode and compares against the current baseline). Prune only when the
+        // cache exceeds the manifest size, avoiding another full map pass on a
+        // warm unchanged scan while keeping branch-switch accumulation bounded.
+        if cache.len() > self.state.files.len() {
+            cache.retain(|path| self.state.files.contains_key(path));
+        }
         let mut stats = StatusStats::default();
         let mut changes = BTreeMap::new();
         for (path, tracked) in &self.state.files {
@@ -228,10 +234,17 @@ impl WorkingCopy {
     /// Explicitly discard optimization data after an external filesystem event.
     /// This does not change tracked files, sparse selections or materialization.
     pub fn invalidate_status_cache(&self, prefix: &RepoPath) -> Result<()> {
+        self.invalidate_status_paths(std::slice::from_ref(prefix))
+    }
+    /// Batch filesystem notifications into one atomic sidecar update. An empty
+    /// prefix invalidates everything after notification overflow or a full rescan.
+    pub fn invalidate_status_paths(&self, prefixes: &[RepoPath]) -> Result<()> {
         let path = self.root.join(".scion/stat-cache");
         let mut guard = self.stat_cache.lock();
         let cache = guard.get_or_insert_with(|| StatCache::load(&path));
-        cache.invalidate(prefix);
+        for prefix in prefixes {
+            cache.invalidate(prefix);
+        }
         cache.save(&path)
     }
     fn selected(&self, path: &RepoPath) -> bool {

@@ -64,7 +64,13 @@ impl Fingerprint {
         }
     }
     fn trustworthy(&self, observed: u64, now: u64) -> bool {
-        if !cfg!(unix) || self.0[1] == 0 || observed > now {
+        if !cfg!(unix)
+            || self.0[1] == 0
+            || self.0[7] == 0
+            || self.0[6] >= 1_000_000_000
+            || self.0[8] >= 1_000_000_000
+            || observed > now
+        {
             return false;
         }
         let timestamp = |seconds: u64, nanos: u64| {
@@ -102,6 +108,11 @@ pub(crate) struct StatCache {
 }
 impl StatCache {
     pub fn load(path: &Path) -> Self {
+        // Platforms without a trustworthy fingerprint verify content and avoid
+        // paying to load/rewrite a sidecar that they could never safely reuse.
+        if !cfg!(unix) {
+            return Self::default();
+        }
         // A damaged or unsupported sidecar only costs a content scan.
         Self::read(path).unwrap_or_default()
     }
@@ -110,7 +121,13 @@ impl StatCache {
         if !meta.is_file() || meta.len() > MAX_CACHE_BYTES {
             return Err(Error::Corrupt("invalid stat-cache file".into()));
         }
-        let bytes = fs::read(path)?;
+        let mut bytes = Vec::new();
+        File::open(path)?
+            .take(MAX_CACHE_BYTES + 1)
+            .read_to_end(&mut bytes)?;
+        if bytes.len() as u64 > MAX_CACHE_BYTES {
+            return Err(Error::Corrupt("stat-cache exceeds size limit".into()));
+        }
         if bytes.len() < 48
             || &bytes[..8] != MAGIC
             || blake3::hash(&bytes[40..]).as_bytes() != &bytes[8..40]
@@ -207,9 +224,27 @@ impl StatCache {
         self.dirty |= self.entries.remove(path).is_some();
     }
     pub fn invalidate(&mut self, prefix: &RepoPath) {
-        let count = self.entries.len();
-        self.entries.retain(|path, _| !prefix.contains(path));
-        self.dirty |= count != self.entries.len();
+        if prefix.is_root() {
+            self.dirty |= !self.entries.is_empty();
+            self.entries.clear();
+            return;
+        }
+        // Ordered bounds limit invalidation to this path and its descendants.
+        // A slash sorts immediately before '0' in portable UTF-8 paths.
+        let upper = format!("{}0", prefix.as_str());
+        let paths: Vec<_> = self
+            .entries
+            .range(prefix.clone()..)
+            .take_while(|(path, _)| path.as_str() < upper.as_str())
+            .filter(|(path, _)| prefix.contains(path))
+            .map(|(path, _)| path.clone())
+            .collect();
+        for path in paths {
+            self.remove(&path);
+        }
+    }
+    pub fn len(&self) -> usize {
+        self.entries.len()
     }
     pub fn retain(&mut self, present: impl Fn(&RepoPath) -> bool) {
         let count = self.entries.len();
@@ -304,16 +339,18 @@ impl StatCache {
             )));
         }
         let entry = FileEntry { id, size, kind };
-        self.entries.insert(
-            path.clone(),
-            Cached {
-                fingerprint: before,
-                observed: time_ns(SystemTime::now()),
-                expected,
-                entry: entry.clone(),
-            },
-        );
-        self.dirty = true;
+        if cfg!(unix) {
+            self.entries.insert(
+                path.clone(),
+                Cached {
+                    fingerprint: before,
+                    observed: time_ns(SystemTime::now()),
+                    expected,
+                    entry: entry.clone(),
+                },
+            );
+            self.dirty = true;
+        }
         Ok(entry)
     }
 }

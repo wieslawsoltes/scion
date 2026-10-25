@@ -8,7 +8,7 @@ use scion_protocol::{RpcRequest, now_ms};
 use scion_types::{Changeset, Error, ObjectId, RepoPath, Result};
 use serde::Serialize;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     io::Write,
     path::{Path, PathBuf},
     sync::Arc,
@@ -65,6 +65,9 @@ enum Commands {
         /// Include measured cache hits and content hashing work.
         #[arg(long)]
         stats: bool,
+        /// Discard all saved fingerprints and verify tracked contents again.
+        #[arg(long)]
+        refresh: bool,
     },
     Commit {
         #[arg(short = 'm', long)]
@@ -381,8 +384,15 @@ pub async fn run(args: &Args) -> Result<()> {
                 serde_json::json!({"revision":id,"path":wc.root(),"files":wc.state().files.len(),"lazy":lazy}),
             )
         }
-        Commands::Status { path, stats } => {
+        Commands::Status {
+            path,
+            stats,
+            refresh,
+        } => {
             let wc = WorkingCopy::open(path)?;
+            if *refresh {
+                wc.invalidate_status_cache(&RepoPath::root())?;
+            }
             if *stats {
                 output(args, wc.status_report()?)
             } else {
@@ -428,27 +438,43 @@ pub async fn run(args: &Args) -> Result<()> {
             let (_watcher, events) = wc.watch()?;
             output(args, wc.status()?)?;
             drop(wc);
-            let mut pending = false;
+            let mut pending = BTreeSet::new();
             loop {
                 match events.recv_timeout(std::time::Duration::from_millis(250)) {
                     Ok(event) => {
                         let event = event.map_err(|e| Error::Storage(e.to_string()))?;
-                        if !event
-                            .paths
-                            .iter()
-                            .all(|p| p.starts_with(root.join(".scion")))
-                        {
-                            pending = true;
+                        if event.need_rescan() || event.paths.is_empty() {
+                            pending.insert(RepoPath::root());
+                        } else if !event.kind.is_access() {
+                            for path in event.paths {
+                                if path.starts_with(root.join(".scion"))
+                                    || path.starts_with(root.join(".git"))
+                                {
+                                    continue;
+                                }
+                                let relative = path
+                                    .strip_prefix(&root)
+                                    .ok()
+                                    .and_then(|p| {
+                                        p.components()
+                                            .map(|c| c.as_os_str().to_str())
+                                            .collect::<Option<Vec<_>>>()
+                                    })
+                                    .and_then(|parts| RepoPath::new(parts.join("/")).ok());
+                                pending.insert(relative.unwrap_or_else(RepoPath::root));
+                            }
                         }
                     }
                     Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
                     Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
                 }
-                if pending {
+                if !pending.is_empty() {
                     match WorkingCopy::open(&root) {
                         Ok(wc) => {
+                            let paths: Vec<_> = pending.iter().cloned().collect();
+                            wc.invalidate_status_paths(&paths)?;
                             output(args, wc.status()?)?;
-                            pending = false;
+                            pending.clear();
                         }
                         Err(Error::Conflict(_)) => {}
                         Err(error) => return Err(error),

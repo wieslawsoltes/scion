@@ -207,7 +207,10 @@ impl Overlay {
             CREATE INDEX entries_parent ON entries(parent,name);
             CREATE TABLE base (path TEXT PRIMARY KEY, entry TEXT NOT NULL);
             CREATE TABLE edits (path TEXT PRIMARY KEY, inode INTEGER);
-            PRAGMA user_version=1;") .map_err(sql_error)?;
+            CREATE INDEX nodes_cache ON nodes(local,dirty,atime,inode);
+            CREATE TABLE usage (id INTEGER PRIMARY KEY CHECK(id=1),clean_bytes INTEGER NOT NULL);
+            INSERT INTO usage VALUES(1,0);
+            PRAGMA user_version=2;") .map_err(sql_error)?;
         let tx = conn.transaction().map_err(sql_error)?;
         tx.execute(
             "INSERT INTO config VALUES(1,?1)",
@@ -304,7 +307,7 @@ impl Overlay {
         let version: u32 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .map_err(sql_error)?;
-        if version != 1 {
+        if version != 1 && version != 2 {
             return Err(Error::Invalid(
                 "unsupported overlay database version".into(),
             ));
@@ -313,6 +316,23 @@ impl Overlay {
             root,
             db: Mutex::new(conn),
         };
+        if version == 1 {
+            let _lease = result.lease(true)?;
+            let mut conn = result.db.lock();
+            // Another process may have migrated while this one waited for the
+            // operation lease. Version two adds only disposable cache accounting.
+            let version: u32 = conn
+                .query_row("PRAGMA user_version", [], |r| r.get(0))
+                .map_err(sql_error)?;
+            if version == 1 {
+                let tx = conn.transaction().map_err(sql_error)?;
+                tx.execute_batch("CREATE INDEX IF NOT EXISTS nodes_cache ON nodes(local,dirty,atime,inode);
+                    CREATE TABLE IF NOT EXISTS usage (id INTEGER PRIMARY KEY CHECK(id=1),clean_bytes INTEGER NOT NULL);
+                    INSERT OR REPLACE INTO usage SELECT 1,COALESCE(sum(json_extract(origin,'$.entry.size')),0) FROM nodes WHERE local=1 AND dirty=0 AND origin IS NOT NULL;
+                    PRAGMA user_version=2;").map_err(sql_error)?;
+                tx.commit().map_err(sql_error)?;
+            }
+        }
         result.config()?;
         Ok(result)
     }
@@ -352,6 +372,24 @@ impl Overlay {
                 return Err(Error::Corrupt("overlay data is not a regular file".into()));
             }
             node.attr.size = meta.len();
+            node.attr.atime_ns = meta
+                .accessed()
+                .ok()
+                .map(system_time_ns)
+                .unwrap_or(node.attr.atime_ns);
+            node.attr.mtime_ns = meta
+                .modified()
+                .ok()
+                .map(system_time_ns)
+                .unwrap_or(node.attr.mtime_ns);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::MetadataExt;
+                let ctime = (i128::from(meta.ctime()) * 1_000_000_000
+                    + i128::from(meta.ctime_nsec()))
+                .clamp(0, i128::from(i64::MAX)) as u64;
+                node.attr.ctime_ns = node.attr.ctime_ns.max(ctime);
+            }
         }
         let count: u32 = conn
             .query_row(
@@ -721,10 +759,7 @@ impl Overlay {
         if bytes.is_empty() {
             return Ok(0);
         }
-        let mut conn = self.db.lock();
-        let tx = conn.transaction().map_err(sql_error)?;
-        dirty_inode(&tx, handle.inode)?;
-        tx.commit().map_err(sql_error)?;
+        mark_content_dirty(&mut self.db.lock(), handle.inode)?;
         handle.file.seek(SeekFrom::Start(offset))?;
         handle.file.write_all(bytes)?;
         if handle.sync {
@@ -762,15 +797,15 @@ impl Overlay {
             // Truncating a virtual file discards its base bytes without fetching.
             self.persist_data(inode, &[])?;
             let tx = conn.transaction().map_err(sql_error)?;
+            dirty_inode(&tx, inode)?;
             tx.execute("UPDATE nodes SET local=1 WHERE inode=?1", [inode])
                 .map_err(sql_error)?;
-            dirty_inode(&tx, inode)?;
+            tx.execute("UPDATE nodes SET mode=mode & 1023 WHERE inode=?1", [inode])
+                .map_err(sql_error)?;
             tx.commit().map_err(sql_error)?;
         } else {
             self.ensure_local(conn, &node, source)?;
-            let tx = conn.transaction().map_err(sql_error)?;
-            dirty_inode(&tx, inode)?;
-            tx.commit().map_err(sql_error)?;
+            mark_content_dirty(conn, inode)?;
             OpenOptions::new()
                 .write(true)
                 .open(self.data_path(inode))?
@@ -803,6 +838,24 @@ impl Overlay {
         get_node(&conn, inode)?;
         if let Some(size) = attributes.size {
             self.truncate_locked(&mut conn, inode, size, source)?;
+        }
+        if (attributes.atime_ns.is_some() || attributes.mtime_ns.is_some())
+            && get_node(&conn, inode)?.local
+        {
+            let mut times = fs::FileTimes::new();
+            if let Some(time) = attributes.atime_ns {
+                times = times
+                    .set_accessed(UNIX_EPOCH + Duration::from_nanos(time.min(i64::MAX as u64)));
+            }
+            if let Some(time) = attributes.mtime_ns {
+                times = times
+                    .set_modified(UNIX_EPOCH + Duration::from_nanos(time.min(i64::MAX as u64)));
+            }
+            OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(self.data_path(inode))?
+                .set_times(times)?;
         }
         let tx = conn.transaction().map_err(sql_error)?;
         if let Some(mode) = attributes.mode {
@@ -1012,6 +1065,10 @@ impl Overlay {
         if changes.is_empty() {
             return Err(Error::Invalid("overlay has no changes".into()));
         }
+        // No-op/reverted edits are omitted from `changes` but their dirty
+        // ledger is also reset by this commit. Persist their final restored
+        // bytes before any clean baseline can become durable.
+        self.sync_dirty_data(&self.db.lock())?;
         for (path, change) in &changes {
             if let FileChange::Put { entry, .. } = change {
                 let node = {
@@ -1027,7 +1084,6 @@ impl Overlay {
                 };
                 if node.local && node.dirty {
                     let file = File::open(self.data_path(node.attr.inode))?;
-                    file.sync_all()?;
                     let mut bytes = Vec::with_capacity(entry.size as usize);
                     file.take(scion_store::MAX_OBJECT_SIZE as u64 + 1)
                         .read_to_end(&mut bytes)?;
@@ -1072,7 +1128,7 @@ impl Overlay {
                             path: path.clone(),
                             entry: entry.clone(),
                         };
-                        tx.execute("UPDATE nodes SET origin=?2,dirty=0 WHERE inode=(SELECT inode FROM entries WHERE path=?1)",params![path.as_str(),serde_json::to_string(&origin)?]).map_err(sql_error)?;
+                        tx.execute("UPDATE nodes SET origin=?2 WHERE inode=(SELECT inode FROM entries WHERE path=?1)",params![path.as_str(),serde_json::to_string(&origin)?]).map_err(sql_error)?;
                     }
                 }
             }
@@ -1083,7 +1139,7 @@ impl Overlay {
                 [serde_json::to_string(&next)?],
             )
             .map_err(sql_error)?;
-            tx.execute("DELETE FROM edits", []).map_err(sql_error)?;
+            clear_dirty_edits(&tx, id)?;
             tx.commit().map_err(sql_error)?;
         }
         if let Some(name) = reference {
@@ -1102,38 +1158,62 @@ impl Overlay {
         }
         Ok(id)
     }
+    fn sync_dirty_data(&self, conn: &Connection) -> Result<usize> {
+        let ids = {
+            let mut statement = conn.prepare("SELECT inode FROM nodes WHERE local=1 AND dirty=1 AND inode IN (SELECT inode FROM edits WHERE inode IS NOT NULL)").map_err(sql_error)?;
+            statement
+                .query_map([], |r| r.get::<_, u64>(0))
+                .map_err(sql_error)?
+                .collect::<std::result::Result<Vec<_>, _>>()
+                .map_err(sql_error)?
+        };
+        for inode in &ids {
+            // Windows FlushFileBuffers requires write access even when the
+            // contents themselves are unchanged by this synchronization.
+            OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(self.data_path(*inode))?
+                .sync_all()?;
+        }
+        Ok(ids.len())
+    }
     /// Evict only clean hydrated base data, oldest access first. Dirty work and
     /// open inodes are never removed; they may exceed the requested cache budget.
     pub fn prune_clean_cache(&self, max_bytes: u64) -> Result<u64> {
         let _lease = self.lease(true)?;
-        let conn = self.db.lock();
-        let mut statement=conn.prepare("SELECT inode FROM nodes WHERE local=1 AND dirty=0 AND origin IS NOT NULL ORDER BY atime,inode").map_err(sql_error)?;
-        let ids = statement
-            .query_map([], |r| r.get::<_, u64>(0))
-            .map_err(sql_error)?
-            .collect::<std::result::Result<Vec<_>, _>>()
+        let mut conn = self.db.lock();
+        let mut total: u64 = conn
+            .query_row("SELECT clean_bytes FROM usage WHERE id=1", [], |r| r.get(0))
             .map_err(sql_error)?;
-        let mut files = Vec::new();
-        let mut total = 0u64;
-        for id in ids {
-            let path = self.data_path(id);
-            let size = fs::metadata(&path)?.len();
-            total = total.saturating_add(size);
-            files.push((id, path, size));
+        if total <= max_bytes {
+            return Ok(0);
         }
+        let candidates = {
+            let mut statement = conn.prepare("SELECT inode,json_extract(origin,'$.entry.size') FROM nodes WHERE local=1 AND dirty=0 AND origin IS NOT NULL ORDER BY atime,inode").map_err(sql_error)?;
+            statement
+                .query_map([], |r| Ok((r.get::<_, u64>(0)?, r.get::<_, u64>(1)?)))
+                .map_err(sql_error)?
+                .collect::<std::result::Result<Vec<_>, _>>()
+                .map_err(sql_error)?
+        };
         let mut removed = 0;
-        for (id, path, size) in files {
+        for (id, size) in candidates {
             if total <= max_bytes {
                 break;
             }
+            let path = self.data_path(id);
             let file = File::open(&path)?;
             if file.try_lock_exclusive().is_err() {
                 continue;
             }
-            // Clear the cache marker first; recovery can safely re-fetch after a
-            // crash at any later point. Do not evict any file with open handles.
-            conn.execute("UPDATE nodes SET local=0 WHERE inode=?1", [id])
+            // The shared data-file locks protect open inode identity. Clearing
+            // the cache marker before removing bytes makes crash recovery safe.
+            let tx = conn.transaction().map_err(sql_error)?;
+            tx.execute("UPDATE nodes SET local=0 WHERE inode=?1", [id])
                 .map_err(sql_error)?;
+            adjust_clean_bytes(&tx, -(size as i64))?;
+            tx.commit().map_err(sql_error)?;
             fs::remove_file(path)?;
             total = total.saturating_sub(size);
             removed += size;
@@ -1169,11 +1249,26 @@ impl Overlay {
             ));
         }
         self.persist_data(node.attr.inode, &bytes)?;
-        conn.execute(
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(self.data_path(node.attr.inode))?;
+        file.set_times(
+            fs::FileTimes::new()
+                .set_accessed(UNIX_EPOCH + Duration::from_nanos(node.attr.atime_ns))
+                .set_modified(UNIX_EPOCH + Duration::from_nanos(node.attr.mtime_ns)),
+        )?;
+        file.sync_all()?;
+        let tx = conn.unchecked_transaction().map_err(sql_error)?;
+        tx.execute(
             "UPDATE nodes SET local=1,atime=?2 WHERE inode=?1",
             params![node.attr.inode, nanos()],
         )
         .map_err(sql_error)?;
+        if !node.dirty {
+            adjust_clean_bytes(&tx, origin.entry.size as i64)?;
+        }
+        tx.commit().map_err(sql_error)?;
         Ok(())
     }
     fn persist_data(&self, inode: u64, bytes: &[u8]) -> Result<()> {
@@ -1373,10 +1468,81 @@ fn record_edit(tx: &Transaction<'_>, path: &RepoPath, inode: Option<u64>) -> Res
     .map_err(sql_error)?;
     Ok(())
 }
+// Only the transition to dirty needs durable metadata before data mutation.
+// Subsequent writes update the actual data inode's times and size, which getattr
+// reads directly. The exclusive operation lease serializes this test with commit.
+fn mark_content_dirty(conn: &mut Connection, inode: u64) -> Result<()> {
+    let node = get_node(conn, inode)?;
+    if node.dirty && node.attr.mode & 0o6000 == 0 {
+        return Ok(());
+    }
+    let tx = conn.transaction().map_err(sql_error)?;
+    dirty_inode(&tx, inode)?;
+    tx.execute("UPDATE nodes SET mode=mode & 1023 WHERE inode=?1", [inode])
+        .map_err(sql_error)?;
+    tx.commit().map_err(sql_error)?;
+    Ok(())
+}
+fn clear_dirty_edits(tx: &Transaction<'_>, revision: ObjectId) -> Result<()> {
+    // A replacement inode can be byte-identical to its baseline and therefore
+    // omitted from the changeset. It still needs an immutable origin before its
+    // dirty marker is cleared, so later rename/eviction/reopen remains valid.
+    let origins = {
+        let mut statement = tx.prepare("SELECT e.path,e.inode,b.entry FROM edits e JOIN base b ON b.path=e.path WHERE e.inode IS NOT NULL").map_err(sql_error)?;
+        statement
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, u64>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
+            })
+            .map_err(sql_error)?
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(sql_error)?
+    };
+    for (path, inode, entry) in origins {
+        let origin = Origin {
+            commit: revision,
+            path: RepoPath::new(path)?,
+            entry: serde_json::from_str(&entry)?,
+        };
+        tx.execute(
+            "UPDATE nodes SET origin=?2 WHERE inode=?1",
+            params![inode, serde_json::to_string(&origin)?],
+        )
+        .map_err(sql_error)?;
+    }
+    // Include reverted/no-op edits omitted from the actual changeset. Otherwise
+    // a later write through an existing handle could skip recreating its edit row.
+    let newly_clean: i64 = tx.query_row("SELECT COALESCE(sum(json_extract(origin,'$.entry.size')),0) FROM nodes WHERE local=1 AND dirty=1 AND origin IS NOT NULL AND inode IN (SELECT inode FROM edits WHERE inode IS NOT NULL)", [], |r| r.get(0)).map_err(sql_error)?;
+    adjust_clean_bytes(tx, newly_clean)?;
+    tx.execute(
+        "UPDATE nodes SET dirty=0 WHERE inode IN (SELECT inode FROM edits WHERE inode IS NOT NULL)",
+        [],
+    )
+    .map_err(sql_error)?;
+    tx.execute("DELETE FROM edits", []).map_err(sql_error)?;
+    Ok(())
+}
+fn adjust_clean_bytes(tx: &Transaction<'_>, delta: i64) -> Result<()> {
+    tx.execute(
+        "UPDATE usage SET clean_bytes=max(0,clean_bytes+?1) WHERE id=1",
+        [delta],
+    )
+    .map_err(sql_error)?;
+    Ok(())
+}
 fn dirty_inode(tx: &Transaction<'_>, inode: u64) -> Result<()> {
     let node = get_node(tx, inode)?;
+    if node.local
+        && !node.dirty
+        && let Some(origin) = &node.origin
+    {
+        adjust_clean_bytes(tx, -(origin.entry.size as i64))?;
+    }
     tx.execute(
-        "UPDATE nodes SET dirty=1,mtime=?2,ctime=?2 WHERE inode=?1",
+        "UPDATE nodes SET dirty=1,ctime=?2 WHERE inode=?1",
         params![inode, nanos()],
     )
     .map_err(sql_error)?;
@@ -1433,6 +1599,12 @@ fn lock_file(path: &Path) -> Result<File> {
         .create(true)
         .truncate(false)
         .open(path)?)
+}
+fn system_time_ns(time: SystemTime) -> u64 {
+    time.duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos()
+        .min(i64::MAX as u128) as u64
 }
 fn nanos() -> u64 {
     SystemTime::now()
@@ -1724,5 +1896,112 @@ mod tests {
         overlay.write(&mut handle, 0, b"allowed").unwrap();
         assert_eq!(overlay.status().unwrap().changes.len(), 1);
         assert_eq!(calls.load(Ordering::Relaxed), 0);
+    }
+    #[test]
+    fn repeated_writes_sync_dirty_ledger_once_and_reverted_edits_can_dirty_again() {
+        let (_dir, overlay, source, _) = fixture();
+        let node = overlay.resolve(&RepoPath::new("src/a").unwrap()).unwrap();
+        let mut handle = overlay.open_file(node.inode, rw(), &source).unwrap();
+        overlay.write(&mut handle, 0, b"world").unwrap();
+        let changes_after_transition = overlay.db.lock().total_changes();
+        for _ in 0..100 {
+            overlay.write(&mut handle, 0, b"world").unwrap();
+        }
+        assert_eq!(overlay.db.lock().total_changes(), changes_after_transition);
+        assert_eq!(overlay.getattr(node.inode).unwrap().size, 5);
+        overlay.write(&mut handle, 0, b"hello").unwrap();
+        assert!(overlay.changes().unwrap().is_empty());
+        // This is the baseline transition also used when another file commits.
+        {
+            let mut conn = overlay.db.lock();
+            let tx = conn.transaction().unwrap();
+            clear_dirty_edits(&tx, read_config(&tx).unwrap().revision).unwrap();
+            tx.commit().unwrap();
+        }
+        overlay.write(&mut handle, 0, b"again").unwrap();
+        assert!(overlay.db.lock().total_changes() > changes_after_transition);
+        assert_eq!(overlay.status().unwrap().changes.len(), 1);
+        assert_eq!(overlay.read(&mut handle, 0, 5).unwrap(), b"again");
+        overlay.fsync(&handle, false).unwrap();
+    }
+
+    #[test]
+    fn clean_cache_accounting_is_constant_work_and_migrates_v1() {
+        let (dir, overlay, source, _) = fixture();
+        let a = overlay.resolve(&RepoPath::new("src/a").unwrap()).unwrap();
+        let mut handle = overlay.open_file(a.inode, rw(), &source).unwrap();
+        let clean_bytes = || {
+            overlay
+                .db
+                .lock()
+                .query_row("SELECT clean_bytes FROM usage", [], |r| r.get::<_, u64>(0))
+                .unwrap()
+        };
+        assert_eq!(clean_bytes(), 5);
+        let changes = overlay.db.lock().total_changes();
+        for _ in 0..100 {
+            assert_eq!(overlay.prune_clean_cache(100).unwrap(), 0);
+        }
+        assert_eq!(overlay.db.lock().total_changes(), changes);
+        overlay.write(&mut handle, 0, b"world").unwrap();
+        assert_eq!(clean_bytes(), 0);
+        overlay.write(&mut handle, 0, b"hello").unwrap();
+        {
+            let mut conn = overlay.db.lock();
+            let tx = conn.transaction().unwrap();
+            clear_dirty_edits(&tx, read_config(&tx).unwrap().revision).unwrap();
+            tx.commit().unwrap();
+        }
+        assert_eq!(clean_bytes(), 5);
+        drop(handle);
+        // Simulate an original v1 overlay without the optimization table.
+        overlay
+            .db
+            .lock()
+            .execute_batch("DROP TABLE usage; DROP INDEX nodes_cache; PRAGMA user_version=1;")
+            .unwrap();
+        drop(overlay);
+        let overlay = Overlay::open(dir.path()).unwrap();
+        assert_eq!(overlay.prune_clean_cache(0).unwrap(), 5);
+        assert!(overlay.status().unwrap().changes.is_empty());
+    }
+
+    #[test]
+    fn identical_replacement_inode_keeps_an_origin_after_noop_baseline_reset() {
+        let (_dir, overlay, source, _) = fixture();
+        let src = overlay.lookup(1, "src").unwrap();
+        overlay.unlink(src.inode, "a").unwrap();
+        let node = overlay.create(src.inode, "a", 0o644, 1, 1).unwrap();
+        let mut handle = overlay.open_file(node.inode, rw(), &source).unwrap();
+        overlay.write(&mut handle, 0, b"hello").unwrap();
+        assert!(overlay.changes().unwrap().is_empty());
+        {
+            let mut conn = overlay.db.lock();
+            let tx = conn.transaction().unwrap();
+            clear_dirty_edits(&tx, read_config(&tx).unwrap().revision).unwrap();
+            tx.commit().unwrap();
+        }
+        drop(handle);
+        assert_eq!(overlay.prune_clean_cache(0).unwrap(), 5);
+        overlay
+            .rename(src.inode, "a", src.inode, "renamed", RenameMode::Replace)
+            .unwrap();
+        assert_eq!(overlay.changes().unwrap().len(), 2);
+        let mut handle = overlay.open_file(node.inode, rw(), &source).unwrap();
+        assert_eq!(overlay.read(&mut handle, 0, 5).unwrap(), b"hello");
+    }
+    #[test]
+    fn commit_barrier_syncs_reverted_dirty_files_omitted_from_the_delta() {
+        let (_dir, overlay, source, _) = fixture();
+        let a = overlay.resolve(&RepoPath::new("src/a").unwrap()).unwrap();
+        let b = overlay.resolve(&RepoPath::new("src/b").unwrap()).unwrap();
+        let mut a_handle = overlay.open_file(a.inode, rw(), &source).unwrap();
+        let mut b_handle = overlay.open_file(b.inode, rw(), &source).unwrap();
+        overlay.write(&mut a_handle, 0, b"world").unwrap();
+        overlay.write(&mut a_handle, 0, b"hello").unwrap();
+        overlay.write(&mut b_handle, 0, b"world").unwrap();
+        assert_eq!(overlay.changes().unwrap().len(), 1);
+        let _lease = overlay.lease(true).unwrap();
+        assert_eq!(overlay.sync_dirty_data(&overlay.db.lock()).unwrap(), 2);
     }
 }
