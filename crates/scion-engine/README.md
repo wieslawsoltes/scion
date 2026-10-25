@@ -58,3 +58,19 @@ reported even when the requested tips happen to have identical trees. Synthesis
 has explicit recursion, head-count, graph-cache and work budgets; exhaustion
 returns `Error::Limit` without publishing a changeset. Ordinary single-base merge,
 rebase and revert conflict behavior is unchanged.
+
+## Frozen local graph exports
+
+`export_local_graph_snapshot(data_path, repository_name, destination, limits)`
+opens a consistent read-only publication view, checks membership and full
+changeset hashes, and rebuilds a closed graph with `scion-graph`. The output is
+an explicit frozen analysis artifact: it does not change live repository
+queries or resolve mutable refs. `GraphSnapshotExportLimits` bounds collected
+log entries; the default and maximum are ten million commits. Destination paths
+must remain outside the source store and avoid source-file aliases.
+
+The returned metadata includes repository, source identity, publication sequence,
+node count, format, and storage size. See the
+[frozen graph guide](https://github.com/wieslawsoltes/scion/blob/main/docs/graph-snapshots.md)
+for the reusable graph reader, atomic replacement, limits, CLI, and preparation
+costs. Local `scn graph-snapshot` commands use this same public exporter.

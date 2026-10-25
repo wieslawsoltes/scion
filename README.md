@@ -159,32 +159,38 @@ All product crates carry package metadata and versioned internal dependencies. C
 
 ## Measured performance
 
-The latest complete three-way run compares the optimized build, the preserved
-Scion baseline, and **Git 2.56.0**. It uses 100,000 file paths, a 10,000-commit
-trunk, 1,000 commits per divergent arm, 31 samples per operation, and warm
+The latest large-history three-way run compares the optimized build, a preserved
+Scion baseline, and **Git 2.56.0**. It uses 100,000 file paths, a 100,000-commit
+trunk, 10,000 commits per divergent arm, 31 samples per operation, and warm
 operating-system caches. Both systems retain their documented durable-write
 settings. Fresh queries include process startup and shutdown; prepared commits
 and spread reads use resident workers.
 
+Candidate graph queries use the explicit frozen graph API, prepared alongside
+Git's native commit graph. Its 120,036-node artifact takes **6.320 seconds** to
+export and **96,467,328 bytes** of additional storage. Reads, diffs, and writes use
+ordinary LocalStore APIs. Preparation cost and frozen membership are part of the
+feature's documented contract.
+
 | Operation | Scion median | Git median | Scion improvement | Against Git |
 |---|---:|---:|---:|---:|
-| Prepared durable commit | 1,021.698 µs | 2,812.003 µs | 2.01× | 2.75× faster |
-| Positive ancestry | 1,162.399 µs | 3,282.029 µs | 1.30× | 2.82× faster |
-| Negative ancestry | 1,116.921 µs | 3,170.311 µs | 1.57× | 2.84× faster |
-| Ancestor merge base | 1,061.838 µs | 2,914.877 µs | 1.40× | 2.75× faster |
-| Divergent merge base | 1,200.617 µs | 1,561.130 µs | 1.49× | 1.30× faster |
-| Fresh file read, 1 KiB | 1,039.635 µs | 1,287.227 µs | 2.11× | 1.24× faster |
-| Fresh one-file text diff | 1,141.017 µs | 1,611.074 µs | 2.73× | 1.41× faster |
-| Resident spread file read | 17.116 µs | 47.241 µs | 2.23× | 2.76× faster |
+| Prepared durable commit | 967.706 µs | 2,913.522 µs | 2.27× | 3.01× faster |
+| Positive ancestry | 970.429 µs | 35,124.071 µs | 2.27× | 36.19× faster |
+| Negative ancestry | 970.199 µs | 38,889.853 µs | 2.89× | 40.08× faster |
+| Ancestor merge base | 898.230 µs | 32,357.663 µs | 2.29× | 36.02× faster |
+| Divergent merge base | 862.837 µs | 8,296.653 µs | 2.74× | 9.62× faster |
+| Fresh file read, 1 KiB | 1,189.358 µs | 1,445.924 µs | 1.95× | 1.22× faster |
+| Fresh one-file text diff | 1,359.774 µs | 1,930.002 µs | 2.56× | 1.42× faster |
+| Resident spread file read | 16.815 µs | 39.469 µs | 2.22× | 2.35× faster |
 
-Every functional median in this fixture beats Git. Reads, diffs, and durable
-commits improved by at least 2× against the preserved Scion build in the same
-run. Graph-query improvements are **1.30–1.57×**, below the 2× optimization target.
-Process, repository-open, and resident no-op controls remain in the
-[complete comparison](docs/git-comparison.md#optimized-three-way-comparison-25-october-2026),
-alongside p95s, raw samples, source/build identities, and historical large-history
-results. These measurements do not establish a universal speedup or fleet
-throughput.
+Every functional median in this fixture beats Git. Seven of eight improve by at
+least 2× over the preserved Scion build; fresh reads reach 1.95×. The smaller
+10,000-commit profile also beats Git in every functional row, with all four graph
+queries exceeding 2× improvement; its prepared-commit and fresh-read improvements
+remain below 2×. Controls and latency tails remain visible in the
+[complete comparison](docs/git-comparison.md#frozen-graph-comparisons-25-october-2026),
+alongside every raw sample, exact source/build identities, and earlier runs.
+These local measurements do not establish a universal speedup or fleet throughput.
 
 ## Documentation
 
@@ -193,6 +199,7 @@ throughput.
 | [Architecture](docs/architecture.md) | Object model, storage boundaries, tree updates, derived data, and graph queries |
 | [Public design and coverage](docs/public-design.md) | Sources, implementation contracts, validation, and known boundaries |
 | [Commands](docs/commands.md) | Everyday workflows, checkout-free operations, and Git migration |
+| [Frozen graph snapshots](docs/graph-snapshots.md) | Local prepared graph queries, export, integrity, bounds, and lifecycle |
 | [Working copies](docs/working-copies.md) | Status caching, sparse/lazy files, writable overlays, mounts, and recovery |
 | [Identity](docs/identity.md) | OIDC/JWKS trust, static credentials, directory grants, rotation, and policy reload |
 | [Cloud objects](docs/cloud-storage.md) | S3/GCS/Azure configuration, integrity, credentials, and conformance tests |
@@ -221,7 +228,7 @@ cargo package --workspace --all-features --locked
 
 CI exercises Linux, macOS, and Windows; verifies Rust 1.88 and every crate archive; and runs PostgreSQL, three-tier container, real Linux FUSE, MinIO, and official Spanner emulator integration tests. Fuzz targets cover paths, canonical objects, and compressed envelopes. The Git comparison workflow verifies equivalent outputs and retains raw timing samples. [Testing](docs/testing.md) links completed runs and explains what each gate establishes.
 
-Performance is workload-specific. The latest complete fixture improves every functional median over Git, while the controls, latency tails, historical losses, and unmet 2× graph-query target remain documented. Fleet throughput, availability, and Anthropic's reported infrastructure ratios are not established by these local measurements.
+Performance is workload-specific. The latest complete fixture improves every functional median over Git, while the controls, latency tails, historical losses, and remaining 2× targets remain documented. Fleet throughput, availability, and Anthropic's reported infrastructure ratios are not established by these local measurements.
 
 ## License
 
