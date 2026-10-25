@@ -193,10 +193,16 @@ either option.
 directories, migrating its schema, or changing journal settings. Object, record,
 log, and prefix reads reuse prepared statements. `get_record_pair` can read a
 membership guard and derived record in one query; the local implementation uses
-one live-WAL snapshot. The optional inline-object table is probed lazily on first
-object access, so metadata-only clients avoid that schema query. All mutation methods reject
-writes, including idempotent writes and loose-object insertion. Readers observe
-concurrent commits through the live WAL; this does not use SQLite's immutable
+one live-WAL snapshot. Object reads prepare their inline query directly; current
+stores need no separate table-existence query, including on the first read.
+Only a preparation failure can trigger a catalog check for legacy absence. An
+existing incompatible schema, a table disappearing after it was observed, or a
+query/integrity error is returned rather than hidden by loose-file fallback.
+Absence is not cached, so live legacy readers still observe later writer upgrades.
+Both full and bounded object reads retain their complete envelope/hash checks.
+All mutation methods reject writes, including idempotent writes and loose-object
+insertion. Readers observe concurrent commits through the live WAL; this does not
+use SQLite's immutable
 mode. SQLite can maintain WAL reader coordination sidecars, so the API is not a
 promise that no filesystem coordination files are touched.
 
