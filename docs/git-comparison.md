@@ -4,7 +4,8 @@
 same generated repository. It checks every query result and saves individual
 samples, summary statistics, configurations, tool versions and source hashes.
 The comparison uses `LocalStore`, including SQLite and filesystem durability.
-The latest complete results are the [frozen graph comparisons](#frozen-graph-comparisons-25-october-2026).
+The latest complete default run and large query replay are the
+[resident-cache follow-up](#resident-cache-and-edit-diff-follow-up-25-october-2026).
 The [non-snapshot three-way comparison](#optimized-three-way-comparison-25-october-2026)
 retains the ordinary SQLite graph path and its original observations.
 The [Git 2.56.0 version follow-up](#git-2560-follow-up-25-october-2026) retains the
@@ -13,6 +14,102 @@ earlier default and 100,000-commit histories as an optimization record.
 These measurements describe the specified workload and machine. They do not
 establish a general performance advantage over Git, distributed server throughput,
 or behavior under cold caches, concurrent writers or real monorepo contents.
+
+## Resident cache and edit-diff follow-up: 25 October 2026
+
+These measurements use clean public source
+[`991fdc9`](https://github.com/wieslawsoltes/scion/commit/991fdc9c36190104019840110c69a689edc9e5a1),
+Git 2.56.0, the same preserved Scion baseline, verified static-CRT GNU/Linux
+release linkage, 100,000 file paths, 31 samples, and three warmups. All result,
+fixture, source, and executable checks passed. Candidate and baseline stores
+remain independent; all three execution orders rotate through six permutations.
+
+The changes retain decoded graph nodes within the existing shared cache budget,
+avoid an extra schema query before inline object reads, and preserve affected
+parent-tree entries when reusing a decoded tree for an edit. The latter fixes a
+measured edit-to-diff regression. The separate [five-trial MemoryStore comparison](performance.md)
+records 2.217–32.879× improvements across all eleven original scaling cases.
+
+### Default profile: complete run
+
+The complete run constructs new independent stores with a 10,000-commit trunk
+and 1,000 commits per divergent arm. Prepared commits are measured before history
+extension, exactly as in the earlier profiles. All eight functional medians beat
+Git; seven exceed 2× improvement over the preserved Scion binary. The prepared
+commit result is **1.833×**, so the durable-commit 2× target is still unmet in this
+run despite higher ratios in earlier observations.
+
+| Operation | Scion p50 / p95, µs | Baseline p50, µs | Git p50, µs | Baseline / Scion | Git / Scion |
+|---|---:|---:|---:|---:|---:|
+| Prepared durable commit | 1,066.705 / 1,313.326 | 1,954.782 | 2,796.568 | 1.833× | 2.622× |
+| Positive ancestry | 693.353 / 910.990 | 1,532.865 | 3,207.614 | 2.211× | 4.626× |
+| Negative ancestry | 663.148 / 845.882 | 1,791.654 | 3,241.334 | 2.702× | 4.888× |
+| Ancestor merge base | 671.330 / 895.357 | 1,517.522 | 2,975.053 | 2.260× | 4.432× |
+| Divergent merge base | 674.744 / 766.733 | 1,724.723 | 1,517.202 | 2.556× | 2.249× |
+| Fresh file read, 1 KiB | 1,079.142 / 2,158.907 | 2,225.186 | 1,397.171 | 2.062× | 1.295× |
+| Fresh one-file text diff | 1,084.851 / 1,282.899 | 3,086.992 | 1,549.060 | 2.846× | 1.428× |
+| Resident spread file read | 16.996 / 28.874 | 37.646 | 40.090 | 2.215× | 2.359× |
+
+| Operation | Scion p50 / p95, µs | Baseline p50, µs | Git p50, µs | Baseline / Scion | Git / Scion |
+|---|---:|---:|---:|---:|---:|
+| Process startup control | 575.375 / 754.765 | 909.878 | 934.946 | 1.581× | 1.625× |
+| Repository-open control | 775.576 / 1,240.566 | 1,216.729 | 1,032.572 | 1.569× | 1.331× |
+| Resident no-op control | 19.539 / 38.288 | 20.391 | 19.769 | 1.044× | 1.012× |
+
+Controls remain below 2× improvement over the baseline. Their complete samples
+and tails are retained. These wall-clock results include transport, process, and
+filesystem variability; a passing functional median does not imply a universal
+2× improvement or a better latency tail on every run.
+
+[Raw JSON](benchmarks/git-comparison-2026-10-25-resident-default.json), [individual samples](benchmarks/git-comparison-2026-10-25-resident-default.csv), [summary CSV](benchmarks/git-comparison-2026-10-25-resident-default-summary.csv).
+
+### Large profile: queries-only replay
+
+This replay uses the retained, independently built 100,000-commit trunk and
+10,000-commit arms from the earlier complete large run. It checks the fixture
+marker, keeps the baseline database separate, prepares a new verified graph
+snapshot, and measures only queries. **No new prepared-commit or resident no-op
+measurement is included.** All seven functional query medians beat Git and exceed
+2× over the preserved baseline.
+
+| Operation | Scion p50 / p95, µs | Baseline p50, µs | Git p50, µs | Baseline / Scion | Git / Scion |
+|---|---:|---:|---:|---:|---:|
+| Positive ancestry | 916.008 / 1,230.751 | 2,081.001 | 45,267.094 | 2.272× | 49.418× |
+| Negative ancestry | 843.399 / 1,064.321 | 2,675.205 | 35,694.792 | 3.172× | 42.323× |
+| Ancestor merge base | 814.796 / 1,001.076 | 2,056.404 | 30,717.345 | 2.524× | 37.699× |
+| Divergent merge base | 744.280 / 1,165.713 | 2,069.233 | 6,060.676 | 2.780× | 8.143× |
+| Fresh file read, 1 KiB | 1,022.428 / 1,391.543 | 2,234.622 | 1,273.366 | 2.186× | 1.245× |
+| Fresh one-file text diff | 1,172.253 / 1,427.738 | 3,251.571 | 1,616.331 | 2.774× | 1.379× |
+| Resident spread file read | 17.076 / 26.640 | 37.917 | 40.541 | 2.220× | 2.374× |
+
+| Operation | Scion p50 / p95, µs | Baseline p50, µs | Git p50, µs | Baseline / Scion | Git / Scion |
+|---|---:|---:|---:|---:|---:|
+| Process startup control | 560.483 / 704.119 | 913.074 | 902.898 | 1.629× | 1.611× |
+| Repository-open control | 752.082 / 913.755 | 1,297.177 | 1,027.656 | 1.725× | 1.366× |
+
+[Raw JSON](benchmarks/git-comparison-2026-10-25-resident-large-queries.json), [individual samples](benchmarks/git-comparison-2026-10-25-resident-large-queries.csv), [summary CSV](benchmarks/git-comparison-2026-10-25-resident-large-queries-summary.csv).
+
+### Preparation costs and retained evidence
+
+| Profile | Graph nodes | Artifact bytes | Export wall time |
+|---|---:|---:|---:|
+| Complete default run | 12,036 | 8,923,168 | 0.511 s |
+| Large query replay | 120,036 | 96,467,328 | 7.764 s |
+
+Only candidate ancestry and merge-base operations use the explicit frozen graph
+artifact. File reads, diffs, writes, and resident requests use ordinary LocalStore
+APIs. Graph preparation is excluded from query latency, alongside Git's native
+pack and commit-graph preparation; both costs are present in each JSON report.
+The snapshot's membership is frozen and must be exported again to include later
+commits. Full query timings include opening, integrity and identity checks,
+response bytes, and process shutdown.
+
+The [first resident run](benchmarks/git-comparison-2026-10-25-resident-first-default.json)
+remains available: its resident-read and ancestor-merge-base improvements were
+1.845× and 1.932×. The [pre-fix scaling report](benchmarks/scaling-2026-10-25-before-diff-fix.json)
+retains the larger edit-to-diff regression that prompted the affected-entry fix.
+Earlier comparisons below remain intact. These observations are part of the
+performance record, including cases below the requested threshold.
 
 ## Frozen graph comparisons: 25 October 2026
 

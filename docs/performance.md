@@ -6,7 +6,11 @@ repository manifest for each commit. These measurements describe this independen
 implementation; they are not measurements of Anthropic's service or predictions
 of fleet throughput.
 
-For disk-durable measurements against Git, see the separate [Git comparison](git-comparison.md). The historical in-memory results below isolate algorithm and object-encoding costs and are retained as a baseline; they are not a substitute for the durable comparison or a claim that the latest implementation has these exact timings.
+The paired in-memory comparison below measures clean pre-optimization and
+optimized builds on the unchanged original workload. All eleven rows exceed
+2× in the observed ratio of median trial p50 values. For disk-durable
+measurements against Git, see the separate [Git comparison](git-comparison.md).
+Earlier standalone observations remain below as historical evidence.
 
 ## Reproduce
 
@@ -35,7 +39,7 @@ provenance is explicitly unknown.
 ```sh
 # Build in separate clean source trees and separate Cargo target directories:
 CARGO_TARGET_DIR=/tmp/scion-baseline-target \
-  cargo bench --locked -p scion-engine --bench scaling --no-run
+  cargo bench --locked --offline -p scion-engine --bench scaling --no-run
 # Repeat in the candidate checkout with a different target directory, then:
 python3 scripts/compare_scaling.py \
   --baseline-root /path/to/baseline --baseline-driver /path/to/baseline/scaling \
@@ -47,7 +51,7 @@ Ratios divide the baseline median of per-trial p50 values by the candidate
 median of per-trial p50 values. Individual operation samples are not available
 from the original Rust harness and are not pooled or reconstructed. Each
 initial-commit row is one observation per trial. Both build-provenance records
-are embedded in the recorded run below.
+are embedded in the recorded paired reports below.
 
 ### Regression exposed by the first paired run
 
@@ -76,10 +80,74 @@ The [complete first paired report](benchmarks/scaling-2026-10-25-before-diff-fix
 retains all measurements and both build identities. The same candidate's
 [first durable default-profile report](benchmarks/git-comparison-2026-10-25-resident-first-default.json)
 also remains available, including controls and rows below the 2× target. Later
-measurements must validate the fix before claiming the diff regression resolved
-in timing results.
+measurements of the published fix are recorded in the next section; the earlier
+reports remain unchanged.
 
-## Observed results
+## Paired results after the diff fix
+
+On October 25, 2026, clean candidate
+`991fdc9c36190104019840110c69a689edc9e5a1` was compared with clean preserved
+pre-optimization source `6a11ff76052d10951e9f7d029f0313de7c78101d`.
+The [complete optimized paired report](benchmarks/scaling-2026-10-25-optimized.json)
+contains all five trials, their execution order, original stdout and stderr,
+parsed p50/p95 rows, and both verified build-provenance records.
+
+Both executables used `rustc 1.99.1 (58cf8f9c3 2026-10-13)`, `cargo 1.99.1`,
+the workspace's optimized bench profile, and
+`cargo bench --locked --offline -p scion-engine --bench scaling --no-run`.
+They were built in separate target directories with `CARGO_INCREMENTAL=0`.
+The recorded source trees were clean before and after building and measuring;
+source commits, tree/archive hashes, executable hashes, build commands and
+environments are retained in the report. The unchanged Rust benchmark source
+has SHA-256
+`a3aabcb63f820fe2ac566c7f9b36856ec45612cda2c3604e22986ccc3ec93a00`.
+
+Each trial ran the complete original harness in a fresh process for each build.
+Order alternated baseline/candidate and candidate/baseline. No `--quick` profile,
+sample removal, workload edits or discarded trials were used. The harness
+creates 14-byte source files in directories of 100 files, measures 50 edits and
+diffs at each repository size, and runs each ancestry query 100 times against a
+10,000-commit chain.
+
+| Operation | Repository or graph size | Samples per trial | Baseline median of trial p50 (µs) | Candidate median of trial p50 (µs) | Baseline / candidate |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Initial commit | 1,000 files | 1 | 10,810.965 | 1,816.514 | 5.951× |
+| One-file commit | 1,000 files | 50 | 157.517 | 57.406 | 2.744× |
+| One-file diff | 1,000 files | 50 | 24.196 | 5.959 | 4.060× |
+| Initial commit | 10,000 files | 1 | 100,669.522 | 17,194.423 | 5.855× |
+| One-file commit | 10,000 files | 50 | 204.918 | 92.419 | 2.217× |
+| One-file diff | 10,000 files | 50 | 24.216 | 6.180 | 3.918× |
+| Initial commit | 100,000 files | 1 | 1,032,659.463 | 187,847.659 | 5.497× |
+| One-file commit | 100,000 files | 50 | 785.332 | 343.687 | 2.285× |
+| One-file diff | 100,000 files | 50 | 37.596 | 7.982 | 4.710× |
+| Positive ancestry | 10,000-commit chain | 100 | 22.994 | 0.931 | 24.698× |
+| Negative ancestry | 10,000-commit chain | 100 | 49.384 | 1.502 | 32.879× |
+
+The ratios divide the two medians of the five per-trial p50 values. Original
+within-trial p95 values remain in the report; individual operation samples are
+unavailable and have not been pooled. Each initial commit has exactly one
+observation per trial, so its original p50 and p95 describe the same observation.
+There are five initial-commit observations at each scale.
+
+The fixed resident edit-to-diff path improves all three diff rows by
+3.918–4.710× over the preserved baseline. Retaining affected original entries
+avoids reloading the parent directory after an edit takes ownership of a cached
+tree; it preserves the bounded cache and immutable stored trees. The
+[pre-fix report](benchmarks/scaling-2026-10-25-before-diff-fix.json) remains linked
+so the regression and its measured correction can be inspected together.
+
+These observations describe the compressed `MemoryStore` backend in one shared
+Linux x86_64 development container. They include validation, hashing,
+serialization, compression and in-process cache behavior. They exclude disk
+durability, network requests and concurrent deployment load. Hardware and host
+load were not controlled. The 2.217–32.879× range is an observed result for this
+workload and these builds; it does not establish a universal speedup or a Git
+comparison.
+
+## Historical standalone run
+
+The following earlier standalone observations are retained unchanged. They are
+separate from the paired comparison and are not its baseline denominator.
 
 Run on October 25, 2026, in a shared Linux x86_64 development container using
 `rustc 1.99.1 (58cf8f9c3 2026-10-13)`, the workspace's optimized bench profile,
