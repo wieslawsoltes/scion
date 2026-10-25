@@ -47,6 +47,7 @@ http = "1"
 tower = { version = "0.5", features = ["util", "limit", "timeout"] }
 tower-http = { version = "0.6", features = ["trace", "limit", "timeout", "request-id"] }
 postgres = "0.19"
+tokio-postgres-rustls = { version = "0.14", features = ["ring", "native-certs"] }
 url = "2"
 fs2 = "0.4"
 libc = "0.2"

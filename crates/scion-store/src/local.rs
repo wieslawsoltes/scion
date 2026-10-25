@@ -40,7 +40,11 @@ impl LocalStore {
             Err(e) => return Err(e.error.into()),
         }
         #[cfg(unix)]
-        fs::File::open(parent)?.sync_all()?;
+        // A newly-created shard also needs its directory entries persisted in
+        // each ancestor before a changeset may make the object reachable.
+        for ancestor in parent.ancestors().take_while(|p|p.starts_with(&self.root)) {
+            fs::File::open(ancestor)?.sync_all()?;
+        }
         Ok(())
     }
 }

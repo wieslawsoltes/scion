@@ -68,6 +68,7 @@ pub enum RpcRequest {
     RootTree { commit: ObjectId },
     TreeAt { commit: ObjectId, path: RepoPath },
     ListFiles { commit: ObjectId, prefix: RepoPath },
+    ListFilesPage { commit: ObjectId, prefix: RepoPath, after: Option<RepoPath>, limit: usize },
     ReadFile { commit: ObjectId, path: RepoPath },
     Diff { base: ObjectId, target: ObjectId },
     Log { revision: ObjectId, limit: usize },
@@ -89,6 +90,11 @@ pub enum RpcRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ObjectWitness { pub commit: ObjectId, pub path: RepoPath, pub kind: ObjectKind, pub id: ObjectId }
+
+/// Lexically ordered directory page. `next` is an exclusive cursor, including
+/// when all entries on a page were filtered by directory permissions.
+#[derive(Debug,Clone,Serialize,Deserialize)]
+pub struct FilePage {pub entries:std::collections::BTreeMap<RepoPath,scion_types::FileEntry>,pub next:Option<RepoPath>}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RpcReply { pub result: Option<serde_json::Value>, pub error: Option<RpcError> }

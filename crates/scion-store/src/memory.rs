@@ -8,6 +8,7 @@ struct State {
     objects: BTreeMap<(ObjectKind, ObjectId), Vec<u8>>,
     records: BTreeMap<(String, String), Vec<u8>>,
     logs: BTreeMap<String, Vec<ObjectId>>,
+    log_sequences: BTreeMap<(String,ObjectId), u64>,
 }
 
 /// Deterministic hermetic storage, useful for embedding and simulations.
@@ -51,8 +52,14 @@ impl Storage for MemoryStore {
     }
     fn append_log(&self, repo: &str, id: ObjectId) -> Result<u64> {
         let mut state = self.state.write();
-        let log = state.logs.entry(repo.into()).or_default();
-        let seq = if let Some(index) = log.iter().position(|x| *x == id) { index as u64 + 1 } else { log.push(id); log.len() as u64 };
+        let log_key=(repo.to_owned(),id);
+        let seq = if let Some(sequence) = state.log_sequences.get(&log_key) { *sequence } else {
+            let log = state.logs.entry(repo.into()).or_default();
+            log.push(id);
+            let sequence=log.len() as u64;
+            state.log_sequences.insert(log_key,sequence);
+            sequence
+        };
         state.records.insert((format!("repo/{repo}/changesets"), id.to_string()), b"1".to_vec());
         Ok(seq)
     }

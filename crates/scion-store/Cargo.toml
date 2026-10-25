@@ -11,7 +11,7 @@ categories.workspace = true
 
 [features]
 default = []
-postgres = ["dep:postgres"]
+postgres = ["dep:postgres", "dep:tokio-postgres-rustls"]
 
 [dependencies]
 scion-types.workspace = true
@@ -22,6 +22,7 @@ rusqlite.workspace = true
 parking_lot.workspace = true
 tempfile.workspace = true
 postgres = { workspace = true, optional = true }
+tokio-postgres-rustls = { workspace = true, optional = true }
 
 [lints]
 workspace = true
