@@ -5,7 +5,7 @@ use scion_store::{LocalStore, PreparedObject};
 use scion_types::{
     Changeset, FileChange, FileEntry, FileKind, ObjectId, ObjectKind, RepoPath, Result,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
@@ -50,6 +50,21 @@ enum Request {
     Read {
         revision: ObjectId,
         path: RepoPath,
+    },
+}
+
+#[derive(Serialize)]
+#[serde(untagged)]
+enum Response {
+    Success {
+        ok: bool,
+        result: Value,
+        operation_ns: u128,
+    },
+    Failure {
+        ok: bool,
+        error: String,
+        operation_ns: u128,
     },
 }
 
@@ -225,17 +240,38 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         writeln!(output, "{{\"ready\":true}}")?;
         output.flush()?;
     }
-    for line in io::stdin().lock().lines() {
-        let request: Request = serde_json::from_str(&line?)?;
+    let mut input = io::stdin().lock();
+    let mut line = String::new();
+    let mut response_bytes = Vec::with_capacity(4096);
+    loop {
+        line.clear();
+        if input.read_line(&mut line)? == 0 {
+            break;
+        }
+        let request: Request = serde_json::from_str(&line)?;
         let start = Instant::now();
         let result = execute(&repository, request);
         let elapsed = start.elapsed().as_nanos();
         let response = match result {
-            Ok(value) => json!({"ok":true,"result":value,"operation_ns":elapsed}),
-            Err(error) => json!({"ok":false,"error":error.to_string(),"operation_ns":elapsed}),
+            Ok(result) => Response::Success {
+                ok: true,
+                result,
+                operation_ns: elapsed,
+            },
+            Err(error) => Response::Failure {
+                ok: false,
+                error: error.to_string(),
+                operation_ns: elapsed,
+            },
         };
-        serde_json::to_writer(&mut output, &response)?;
-        writeln!(output)?;
+        // Deliver one complete response per write. Streaming JSON fragments
+        // through line-buffered stdout can wake the caller before the terminating
+        // newline, adding avoidable pipe reads and scheduler round trips. The
+        // request/ack timer still includes serialization, every byte and flushing.
+        response_bytes.clear();
+        serde_json::to_writer(&mut response_bytes, &response)?;
+        response_bytes.push(b'\n');
+        output.write_all(&response_bytes)?;
         output.flush()?;
         if once {
             break;
