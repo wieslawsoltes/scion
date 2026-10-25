@@ -24,6 +24,8 @@ import sys
 import tempfile
 import time
 
+from build_support import binary_linkage, host_target, rustflags, static_crt_environment
+
 ROOT = Path(__file__).resolve().parents[1]
 AUTHOR = "Benchmark <benchmark@example.invalid>"
 EPOCH = 1_700_000_000
@@ -216,7 +218,7 @@ class GitReader:
 def source_metadata():
     status = run(["git", "status", "--porcelain=v1"])[0].stdout.decode()
     diff = run(["git", "diff", "--binary", "HEAD"])[0].stdout
-    paths = [ROOT / "Cargo.toml", ROOT / "Cargo.lock", Path(__file__)]
+    paths = [ROOT / "Cargo.toml", ROOT / "Cargo.lock", Path(__file__), ROOT / "scripts/build_support.py"]
     for crate in ("scion-types", "scion-store", "scion-graph", "scion-engine"):
         paths.extend((ROOT / "crates" / crate).rglob("*.rs"))
         paths.append(ROOT / "crates" / crate / "Cargo.toml")
@@ -364,6 +366,24 @@ def save(output, result):
         writer.writerows(result["summary"])
 
 
+def comparison_build(*, static_crt=False, offline=False):
+    environment = ENV.copy()
+    target = host_target(environment) if static_crt else environment.get("CARGO_BUILD_TARGET")
+    directory = Path(environment.get("CARGO_TARGET_DIR", environment.get("CARGO_BUILD_TARGET_DIR", ROOT / "target")))
+    if not directory.is_absolute(): directory = ROOT / directory
+    command = ["cargo", "build", "--release", "--locked", "-p", "scion-engine", "--example", "comparison_driver"]
+    if static_crt:
+        environment = static_crt_environment(environment, target)
+        # An explicit host target keeps CRT flags off host proc macros/build
+        # scripts. Pin the output directory so Cargo config cannot redirect the
+        # product beyond the executable/baseline protection checked below.
+        command.extend(["--target", target, "--target-dir", str(directory)])
+    if offline: command.append("--offline")
+    product = directory / target if target else directory
+    product = (product / "release/examples" / ("comparison_driver.exe" if os.name == "nt" else "comparison_driver")).resolve()
+    return command, environment, product, target
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--quick", action="store_true")
@@ -381,12 +401,20 @@ def main():
     parser.add_argument("--keep-workdir", action="store_true")
     parser.add_argument("--no-build", action="store_true")
     parser.add_argument("--offline", action="store_true")
-    parser.add_argument("--driver", type=Path, default=ROOT / "target/release/examples" / ("comparison_driver.exe" if os.name == "nt" else "comparison_driver"))
+    parser.add_argument("--static-crt", action="store_true", help="native x86_64/aarch64 GNU/Linux static CRT; verify the ELF even with --no-build")
+    parser.add_argument("--driver", type=Path, help="comparison executable (default: the selected Cargo build output)")
     parser.add_argument("--baseline-driver", type=Path, help="previous Scion executable; requires its published --baseline-report")
     parser.add_argument("--baseline-report", type=Path, help="clean-source report whose driver SHA-256 must match --baseline-driver")
     args = parser.parse_args()
     if (args.baseline_driver is None) != (args.baseline_report is None):
         parser.error("--baseline-driver and --baseline-report must be supplied together")
+    try:
+        build, build_environment, product, build_target = comparison_build(static_crt=args.static_crt, offline=args.offline)
+    except (ValueError, OSError, subprocess.CalledProcessError) as error:
+        parser.error(str(error))
+    args.driver = (args.driver or product).resolve()
+    if args.static_crt and not args.no_build and args.driver != product:
+        parser.error("--static-crt builds its target-specific driver; use --no-build to verify another --driver")
     baseline_info = None
     protected = {args.driver.resolve()}
     if args.baseline_driver is not None:
@@ -424,20 +452,20 @@ def main():
     if min(value for key, value in dimensions.items() if key != "warmup") < 1 or args.warmup < 0 or args.blob_bytes < 32:
         parser.error("dimensions must be positive, warmup nonnegative, and blob size at least 32 bytes")
     source_before = source_metadata()
-    build = ["cargo", "build", "--release", "--locked", "-p", "scion-engine", "--example", "comparison_driver"]
-    if args.offline: build.append("--offline")
     if not args.no_build:
-        target = Path(ENV.get("CARGO_TARGET_DIR", ROOT / "target"))
-        if not target.is_absolute(): target = ROOT / target
-        product = (target / "release/examples" / ("comparison_driver.exe" if os.name == "nt" else "comparison_driver")).resolve()
         if baseline_info is not None and product == args.baseline_driver:
             parser.error("copy the baseline executable outside Cargo's output path before building the candidate")
         print("Building optimized comparison driver", file=sys.stderr, flush=True)
-        completed = subprocess.run(build, cwd=ROOT, env=ENV, check=False)
+        completed = subprocess.run(build, cwd=ROOT, env=build_environment, check=False)
         if completed.returncode: raise SystemExit(completed.returncode)
     source_after = source_metadata()
     driver = args.driver.resolve()
     if not driver.is_file(): parser.error(f"driver does not exist: {driver}")
+    try:
+        build_target = build_target or host_target(build_environment)
+        linkage = binary_linkage(driver, build_target, require_static=args.static_crt)
+    except (ValueError, OSError, subprocess.CalledProcessError) as error:
+        parser.error(str(error))
     if baseline_info is not None and hashlib.sha256(args.baseline_driver.read_bytes()).hexdigest() != baseline_info["driver_sha256"]:
         parser.error("baseline executable changed while building the candidate")
     work = retained_work if reused is not None else Path(tempfile.mkdtemp(prefix="scion-git-comparison-", dir=args.work_root))
@@ -445,8 +473,8 @@ def main():
     baseline_dir = scion_dir if reused is not None else work / "scion-baseline"
     result = {
         "schema": 1, "mode": "queries_only" if reused is not None else "full", "dimensions": dimensions, "host": host_metadata(work), "source": source_after,
-        "build": {"command": build, "performed": not args.no_build, "incremental": False, "source_changed_during_build": source_before["source_sha256"] != source_after["source_sha256"], "driver_sha256": hashlib.sha256(driver.read_bytes()).hexdigest()},
-        "configuration": {"git": GIT_CONFIG, "scion": {"backend": "LocalStore", "sqlite": "WAL, synchronous=FULL", "object_durability": "small objects and publication metadata in FULL-synchronous SQLite; larger loose objects use file fsync and directory fsync on Unix", "read_queries": "read-only SQLite connection with live WAL; no schema migrations"}, "cache": f"warm OS cache; {args.warmup} warmups; fresh query processes; no cache dropping", "sample_order": "alternating Scion/Git, then Git/Scion", "git_object_format": "sha1", "scion_object_format": "blake3", "fixture": f"files share {args.variants} deterministic {args.blob_bytes}-byte text bodies; metadata-heavy fixture, not a real repository"},
+        "build": {"command": build, "performed": not args.no_build, "incremental": False, "source_changed_during_build": source_before["source_sha256"] != source_after["source_sha256"], "driver": str(driver), "driver_sha256": hashlib.sha256(driver.read_bytes()).hexdigest(), "target": build_target, "static_crt_requested": args.static_crt, "rustflags": rustflags(build_environment), "rustflags_provenance": "build environment used by this invocation" if not args.no_build else "requested build environment; original flags cannot be recovered from the executable", "linkage": linkage},
+        "configuration": {"git": GIT_CONFIG, "scion": {"backend": "LocalStore", "sqlite": "WAL, synchronous=FULL", "records_layout": "rowid table for new stores; legacy retained stores keep their existing layout", "object_durability": "small objects and publication metadata in FULL-synchronous SQLite; larger loose objects use file fsync and directory fsync on Unix", "read_queries": "fresh processes use a read-only SQLite snapshot including live WAL; resident requests use live read-only connections; no implicit schema migrations"}, "cache": f"warm OS cache; {args.warmup} warmups; fresh query processes; no cache dropping", "sample_order": "alternating Scion/Git, then Git/Scion", "git_object_format": "sha1", "scion_object_format": "blake3", "fixture": f"files share {args.variants} deterministic {args.blob_bytes}-byte text bodies; metadata-heavy fixture, not a real repository"},
         "work_directory": str(work), "setup": [], "samples": [], "verification": {},
     }
     if reused is not None:
