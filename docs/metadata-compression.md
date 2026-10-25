@@ -23,6 +23,25 @@ samples or stop when a threshold happens to pass. Keep startup/open/no-op contro
 and all earlier observations visible. Re-run the unchanged five-trial MemoryStore
 workload and the large-history query replay to check affected paths.
 
+## Summarize the fixed batch
+
+After all five complete reports exist, use the strict read-only summarizer:
+
+```sh
+python3 scripts/summarize_git_runs.py \
+  target/run-1.json target/run-2.json target/run-3.json \
+  target/run-4.json target/run-5.json \
+  --output target/five-run-summary.json
+```
+
+It requires exactly five reports by default, verifies all 33 complete sample
+groups per report, recomputes stored percentiles and ratios, and rejects mixed
+source/build/Git/baseline identities or comparison settings. Duplicate reports,
+including reserialized copies, and output overwrites are rejected. The summary
+retains every run and all controls, records input and summarizer hashes, and
+labels medians of run p50 and run p95 values separately. Ratios divide median
+run p50 values; individual operation latencies are not pooled or reconstructed.
+
 ## Rejected simple parameter changes
 
 A codec-only probe uses the actual 1,000-entry root, 100-entry edited directory,
