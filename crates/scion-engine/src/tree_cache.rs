@@ -1,11 +1,12 @@
 use parking_lot::Mutex;
+use scion_graph::GraphNode;
 use scion_types::{ObjectId, Tree, TreeEntry};
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     sync::Arc,
 };
 
-/// Accounting for retained trees, entries, revision roots and verified small blobs.
+/// Accounting for retained trees, entries, revision roots, graph nodes and blobs.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct TreeCacheStats {
     pub entries: usize,
@@ -32,6 +33,7 @@ enum Key {
     Tree(ObjectId),
     Root(ObjectId),
     Blob(ObjectId),
+    Graph(ObjectId),
 }
 struct Entry {
     value: Value,
@@ -42,6 +44,7 @@ enum Value {
     Tree(Arc<Tree>),
     Root(ObjectId),
     Blob(Arc<Vec<u8>>),
+    Graph(Arc<GraphNode>),
     /// Cold point lookups retain only selected entries. Missing names are cached
     /// as well; the immutable object's full payload was validated before insert.
     Lookups(BTreeMap<String, Option<TreeEntry>>),
@@ -118,7 +121,7 @@ impl TreeCache {
             let value = match &entry.value {
                 Value::Tree(tree) => Some(tree.entries.get(name).cloned()),
                 Value::Lookups(entries) => entries.get(name).cloned(),
-                Value::Root(_) | Value::Blob(_) => None,
+                Value::Root(_) | Value::Blob(_) | Value::Graph(_) => None,
             }?;
             let old = std::mem::replace(&mut entry.stamp, stamp);
             Some((old, value))
@@ -145,7 +148,7 @@ impl TreeCache {
             .entries
             .get(&id)
             .is_some_and(|entry| match &entry.value {
-                Value::Tree(_) | Value::Root(_) | Value::Blob(_) => true,
+                Value::Tree(_) | Value::Root(_) | Value::Blob(_) | Value::Graph(_) => true,
                 Value::Lookups(entries) => entries.contains_key(name),
             })
         {
@@ -261,6 +264,46 @@ impl TreeCache {
             return;
         }
         self.insert_value(&mut state, id, Value::Blob(value), bytes);
+    }
+    pub(crate) fn graph(&self, revision: ObjectId) -> Option<Arc<GraphNode>> {
+        let id = Key::Graph(revision);
+        let mut state = self.state.lock();
+        let stamp = Self::tick(&mut state);
+        if let Some(entry) = state.entries.get_mut(&id)
+            && let Value::Graph(node) = &entry.value
+        {
+            let node = node.clone();
+            let old = std::mem::replace(&mut entry.stamp, stamp);
+            state.lru.remove(&(old, id));
+            state.lru.insert((stamp, id));
+            state.hits = state.hits.saturating_add(1);
+            Some(node)
+        } else {
+            state.misses = state.misses.saturating_add(1);
+            None
+        }
+    }
+    /// Call only after guarded membership/record decoding or acknowledged
+    /// publication. Each graph shares the same byte and entry budget as trees,
+    /// roots and blobs; spare allocations in all three arrays count as retained.
+    pub(crate) fn insert_graph(&self, revision: ObjectId, value: Arc<GraphNode>) {
+        let identifiers = value
+            .parents
+            .capacity()
+            .saturating_add(value.jumps.capacity())
+            .saturating_add(value.linear_jumps.capacity());
+        let bytes = identifiers
+            .saturating_mul(std::mem::size_of::<ObjectId>())
+            .saturating_add(512);
+        if bytes > self.capacity {
+            return;
+        }
+        let id = Key::Graph(revision);
+        let mut state = self.state.lock();
+        if state.entries.contains_key(&id) {
+            return;
+        }
+        self.insert_value(&mut state, id, Value::Graph(value), bytes);
     }
     fn insert_value(&self, state: &mut State, id: Key, value: Value, bytes: usize) {
         while state.bytes.saturating_add(bytes) > self.capacity || state.entries.len() >= 4096 {
@@ -467,6 +510,106 @@ mod tests {
         let disabled = TreeCache::new(0);
         disabled.insert_blob(id, Arc::new(Vec::new()));
         assert!(disabled.blob(id).is_none());
+        assert_eq!(disabled.stats().entries, 0);
+    }
+
+    fn root_graph() -> Arc<GraphNode> {
+        Arc::new(GraphNode {
+            parents: Vec::new(),
+            generation: 0,
+            first_parent_depth: 0,
+            jumps: Vec::new(),
+            linear_jumps: Vec::new(),
+        })
+    }
+
+    #[test]
+    fn graph_nodes_share_all_cache_limits_without_aliasing_other_value_kinds() {
+        const CAPACITY: usize = 8 * 1024 * 1024;
+        let cache = TreeCache::new(CAPACITY);
+        let id = ObjectId::hash(ObjectKind::Changeset, b"same typed key");
+        let lookup = ObjectId::hash(ObjectKind::Tree, b"point lookup");
+        let graph = root_graph();
+        cache.insert(id, Arc::new(Tree::default()));
+        cache.insert_root(id, lookup);
+        cache.insert_blob(id, Arc::new(Vec::new()));
+        cache.insert_graph(id, graph.clone());
+        cache.insert_entry(lookup, "name", None);
+        assert!(cache.get(id).is_some());
+        assert_eq!(cache.root(id), Some(lookup));
+        assert!(cache.blob(id).unwrap().is_empty());
+        assert!(Arc::ptr_eq(&cache.graph(id).unwrap(), &graph));
+        assert_eq!(cache.entry(lookup, "name"), Some(None));
+        assert_eq!(cache.stats().entries, 5);
+        assert!(cache.stats().estimated_bytes <= CAPACITY);
+        let held = cache.graph(id).unwrap();
+        cache.clear();
+        assert_eq!(*held, *graph);
+        assert_eq!(cache.stats().entries, 0);
+        assert_eq!(cache.stats().estimated_bytes, 0);
+
+        for number in 0u32..5000 {
+            let id = ObjectId::hash(ObjectKind::Changeset, &number.to_le_bytes());
+            match number % 5 {
+                0 => cache.insert_graph(id, root_graph()),
+                1 => cache.insert_root(id, lookup),
+                2 => cache.insert_blob(id, Arc::new(Vec::new())),
+                3 => cache.insert(id, Arc::new(Tree::default())),
+                _ => cache.insert_entry(id, "name", None),
+            }
+            assert!(cache.stats().estimated_bytes <= CAPACITY);
+            assert!(cache.stats().entries <= 4096);
+        }
+        assert_eq!(cache.stats().entries, 4096);
+        let first = ObjectId::hash(ObjectKind::Changeset, &0u32.to_le_bytes());
+        assert!(cache.graph(first).is_none());
+        cache.state.lock().clock = u64::MAX;
+        assert!(cache.graph(id).is_none());
+        assert_eq!(cache.stats().entries, 0);
+        assert_eq!(cache.stats().estimated_bytes, 0);
+    }
+
+    #[test]
+    fn graph_retention_counts_all_vector_capacities_and_obeys_byte_budget_and_disable() {
+        let id = ObjectId::hash(ObjectKind::Changeset, b"allocation budget");
+        let cache = TreeCache::new(4096);
+        for field in 0..3 {
+            let mut graph = (*root_graph()).clone();
+            let mut oversized = Vec::with_capacity(128);
+            oversized.push(id);
+            match field {
+                0 => graph.parents = oversized,
+                1 => graph.jumps = oversized,
+                _ => graph.linear_jumps = oversized,
+            }
+            cache.insert_graph(id, Arc::new(graph));
+            assert!(cache.graph(id).is_none());
+            assert_eq!(cache.stats().entries, 0);
+        }
+        let mut graph = (*root_graph()).clone();
+        graph.parents.reserve_exact(8);
+        graph.jumps.reserve_exact(16);
+        graph.linear_jumps.reserve_exact(16);
+        let expected = 512
+            + std::mem::size_of::<ObjectId>()
+                * (graph.parents.capacity()
+                    + graph.jumps.capacity()
+                    + graph.linear_jumps.capacity());
+        cache.insert_graph(id, Arc::new(graph));
+        assert!(cache.graph(id).is_some());
+        assert_eq!(cache.stats().estimated_bytes, expected);
+        for number in 0u32..32 {
+            cache.insert_graph(
+                ObjectId::hash(ObjectKind::Changeset, &number.to_le_bytes()),
+                root_graph(),
+            );
+            assert!(cache.stats().estimated_bytes <= 4096);
+        }
+        assert_eq!(cache.stats().entries, 8);
+        assert!(cache.graph(id).is_none());
+        let disabled = TreeCache::new(0);
+        disabled.insert_graph(id, root_graph());
+        assert!(disabled.graph(id).is_none());
         assert_eq!(disabled.stats().entries, 0);
     }
 }
