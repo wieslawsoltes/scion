@@ -4,13 +4,81 @@
 same generated repository. It checks every query result and saves individual
 samples, summary statistics, configurations, tool versions and source hashes.
 The comparison uses `LocalStore`, including SQLite and filesystem durability.
-The latest Git 2.56.0 results are in the [version follow-up](#git-2560-follow-up-25-october-2026),
-including a full default profile and every query on the 100,000-commit history.
-Earlier runs remain below as an optimization record.
+The latest complete results are the [optimized three-way comparison](#optimized-three-way-comparison-25-october-2026).
+The [Git 2.56.0 version follow-up](#git-2560-follow-up-25-october-2026) retains the
+earlier default and 100,000-commit histories as an optimization record.
 
 These measurements describe the specified workload and machine. They do not
 establish a general performance advantage over Git, distributed server throughput,
 or behavior under cold caches, concurrent writers or real monorepo contents.
+
+## Optimized three-way comparison: 25 October 2026
+
+This complete default-profile run uses clean published source
+[`3b3110c`](https://github.com/wieslawsoltes/scion/commit/3b3110cf4f9cbc286a64289917707342da8d11e2),
+the preserved earlier Scion executable, and Git 2.56.0. Each implementation runs
+31 samples after three warmups on the same logical workload: 100,000 file paths,
+a 10,000-commit trunk, and 1,000 commits on each divergent arm. The two Scion
+stores are constructed independently; all their changeset IDs and query outputs
+must agree. All six execution orders rotate through the sample schedule.
+
+The candidate is a verified static-CRT GNU/Linux x86_64 release build. The
+baseline is the exact earlier dynamic executable, SHA-256
+`ff6a44c736b135d4ec920f4d497a92fa3cac4a2936ff284a6c4abeb1ef6aa6c6`,
+verified against its unchanged clean-source report. Startup improvements from
+linkage are therefore included in fresh-process results, not presented as purely
+algorithmic gains. The JSON records compiler, host, source files, both executable
+identities, build command, flags, linkage, and original baseline provenance.
+
+| Operation | Scion p50 / p95, µs | Baseline p50, µs | Git p50, µs | Baseline / Scion | Git / Scion |
+|---|---:|---:|---:|---:|---:|
+| Prepared durable commit | 1,021.698 / 1,136.911 | 2,053.031 | 2,812.003 | 2.009× | 2.752× |
+| Positive ancestry | 1,162.399 / 1,433.547 | 1,507.950 | 3,282.029 | 1.297× | 2.823× |
+| Negative ancestry | 1,116.921 / 1,460.057 | 1,757.715 | 3,170.311 | 1.574× | 2.838× |
+| Ancestor merge base | 1,061.838 / 1,238.744 | 1,491.815 | 2,914.877 | 1.405× | 2.745× |
+| Divergent merge base | 1,200.617 / 1,497.303 | 1,785.717 | 1,561.130 | 1.487× | 1.300× |
+| Fresh file read, 1 KiB | 1,039.635 / 1,171.624 | 2,190.586 | 1,287.227 | 2.107× | 1.238× |
+| Fresh one-file text diff | 1,141.017 / 1,551.145 | 3,118.914 | 1,611.074 | 2.733× | 1.412× |
+| Resident spread file read | 17.116 / 35.143 | 38.208 | 47.241 | 2.232× | 2.760× |
+
+Ratios above one favor the current Scion build. All eight functional medians
+beat Git. Four reach the 2× improvement target against the earlier Scion build;
+the four graph-query rows remain below it. The durable-commit result is 2.009×,
+close to the threshold and subject to ordinary shared-host timing variation.
+It retains FULL-synchronous publication and the explicit reference CAS.
+
+### Controls
+
+| Operation | Scion p50 / p95, µs | Baseline p50, µs | Git p50, µs | Baseline / Scion | Git / Scion |
+|---|---:|---:|---:|---:|---:|
+| Process startup control | 535.656 / 676.448 | 867.596 | 837.911 | 1.620× | 1.564× |
+| Repository-open control | 942.859 / 1,717.755 | 1,405.415 | 1,124.342 | 1.491× | 1.192× |
+| Resident no-op control | 14.351 / 33.971 | 14.502 | 14.311 | 1.011× | 0.997× |
+
+These controls are measured and retained, never subtracted. The resident no-op
+is effectively equal and is slightly faster for Git in this run. None of the
+three controls improves by 2×. Fresh file/diff queries use the public consistent
+SQLite snapshot API; resident reads retain live visibility. This run does not use
+a frozen graph artifact.
+
+### Raw evidence and reproduction
+
+- [JSON report with every sample and provenance](benchmarks/git-comparison-2026-10-25-optimized-full.json)
+- [Raw CSV](benchmarks/git-comparison-2026-10-25-optimized-full.csv)
+- [Summary CSV, including all p95s and controls](benchmarks/git-comparison-2026-10-25-optimized-full-summary.csv)
+
+```sh
+PATH=/path/to/git-2.56.0/bin:$PATH CARGO_INCREMENTAL=0 \
+  python3 scripts/compare_git.py --static-crt --keep-workdir \
+  --baseline-driver /path/to/preserved/comparison_driver \
+  --baseline-report docs/benchmarks/git-comparison-2026-10-25-git-2.56-full.json \
+  --output target/git-comparison/optimized-full
+```
+
+Use the preserved executable matching the baseline report; compiling a current
+worker and relabeling it as the baseline is rejected by the hash check. These
+results describe one machine and fixture. Historical results below retain their
+original source, setup, and limitations.
 
 ## Run it
 
@@ -22,7 +90,11 @@ CARGO_INCREMENTAL=0 python3 scripts/compare_git.py \
   --output target/git-comparison/full
 ```
 
-The script builds the release example automatically. `--offline` asks Cargo to
+The script builds the release example automatically. On supported GNU/Linux
+x64/ARM64 hosts, `--static-crt` builds and verifies the static C runtime variant
+used by Linux release bundles; the [release guide](releases.md#reproducing-gnulinux-static-crt-builds)
+documents requirements, flags, paths, and runtime limitations. Reports identify
+the target, Rust flags, and observed linkage. `--offline` asks Cargo to
 use cached dependencies. `--no-build` uses an existing executable, whose SHA-256
 is recorded. `--driver PATH` selects another build. A default run uses:
 
@@ -62,6 +134,31 @@ controls and resident file reads. The Scion store opens read-only. The retained
 fixture is never deleted, and the output may not overwrite the original report or
 fixture marker. Only `--samples` and `--warmup` can override the saved dimensions.
 
+### Comparing an earlier Scion build
+
+`--baseline-driver PATH --baseline-report PATH` adds the earlier Scion executable
+to the same run. Its SHA-256 must match the report from its own clean checkout;
+copy the executable outside the candidate's Cargo output directory before
+building the candidate. Baseline provenance remains separate from candidate
+provenance. To make a new baseline, run the original harness from a clean checkout
+of the chosen baseline revision and retain that executable and JSON report.
+
+```sh
+python3 scripts/compare_git.py --static-crt --keep-workdir \
+  --baseline-driver /path/to/preserved/comparison_driver \
+  --baseline-report /path/to/baseline/results.json \
+  --output target/git-comparison/three-way
+```
+
+The candidate and Git keep alternating order, while the baseline rotates through
+all three positions. Full runs create independent Scion stores, send identical
+requests, and require identical changeset IDs after every edit and history chain.
+This also measures changes in physical storage layout without giving the old
+binary the new layout. Query replay preserves those separate stores and validates
+their original baseline provenance. A replay from an original two-way report
+explicitly uses its one retained Scion store for both binaries. Missing or
+mismatched independent baseline fixtures are errors.
+
 These reports explicitly declare `mode: queries_only`; they do not contain new
 prepared-commit or resident writer no-op timings. They record the source report's
 SHA-256, original Git/source/worker identities and the newly measured source,
@@ -90,10 +187,13 @@ Scion writes the blob, creates and publishes the immutable changeset and its
 derived metadata, then advances a reference with compare-and-swap. Its local
 backend uses SQLite WAL with `synchronous=FULL`, and syncs new object files and
 their parent directories on Unix. The reply follows successful reference update.
-With the publication-batching optimization below, small encoded objects live in
-SQLite: the prepared trees, changeset and commit metadata share a FULL-synchronous
-transaction. The blob upload and reference CAS retain their separate durable
-acknowledgements. Larger objects still use synced loose files.
+The current worker calls `create_commit_with_blobs`: staged blobs, prepared trees,
+changeset, derived metadata, membership, publication log, and the optional
+reference CAS share one FULL-synchronous transaction when objects fit the local
+inline tier. Previously uploaded blobs retain their independent durability
+contract. Larger objects still use synced loose files before membership is
+published. Earlier recorded workers used separate blob/ref acknowledgements;
+their source and executable hashes identify that implementation.
 
 Git receives a commit on `refs/heads/bench`, then `checkpoint` and `get-mark`.
 The checkpoint closes the pack and saves references; the subsequent mark response
@@ -143,8 +243,10 @@ Each query starts a new Scion example process or Git CLI process. Both include
 process creation, repository opening, computation, output and process shutdown.
 The Scion executable calls the local `Repository` API directly; it does not run an
 HTTP server. Git likewise operates on local repository storage. The current driver
-opens read queries through `LocalStore::open_read_only`, which uses an existing
-SQLite database and its live WAL without schema initialization. The fixture
+opens each fresh query through `LocalStore::open_read_snapshot`, which pins the
+committed database/WAL view at the first database query and retains it for the
+single operation. Resident readers use `open_read_only` and keep live visibility
+between requests. Neither mode initializes or implicitly migrates the schema. The fixture
 already contains the tree and graph indexes required by these queries. Arbitrary
 lazy index creation still requires a writable store.
 
@@ -194,8 +296,10 @@ Paths are spread deterministically through the fixture with index
 read once per warmup pass by each implementation. This intentionally measures
 warm process and filesystem caches, which matter for long-lived services. The
 raw report records the exact selected indices. Every returned body must match its
-expected bytes. The original baseline predates this additional row, so it has no
-before/after value for resident spread reads.
+expected bytes. Current repository caches retain verified roots, trees, point
+lookups and small blob contents within one shared byte/entry budget. The earliest
+historical baseline predates this additional row; three-way runs record it for
+both preserved and candidate workers.
 
 ## Cache, sampling and reproducibility
 
@@ -217,7 +321,9 @@ same storage and toolchain. Keep raw samples alongside any summarized claim.
 
 `.github/workflows/performance.yml` runs the quick profile on relevant pull
 requests, supports manual quick/full runs and schedules the full profile weekly.
-It uploads raw JSON and CSV artifacts. CI fails for incorrect results or harness
+It builds the supported static Linux worker and uploads raw JSON and CSV
+artifacts. Separate all-feature CI gates test static Linux x64 and ARM64 builds.
+CI fails for incorrect results or harness
 errors; it deliberately has no timing threshold on shared hosted runners.
 
 The example executable avoids registering another Cargo benchmark target, so

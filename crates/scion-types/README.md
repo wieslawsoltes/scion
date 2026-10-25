@@ -15,4 +15,12 @@ assert_eq!(id.to_string().len(), 64);
 
 Canonical encoding uses fixed-order Rust structures and ordered maps serialized to JSON. Object identity is calculated from uncompressed bytes, independent of transport compression. Path validation runs during deserialization, not only during construction. The portable UTF-8 path format excludes traversal, metadata directories, Windows drive syntax and device names.
 
+`Tree::canonical_bytes()` emits the same bytes as `canonical(&tree)` while writing
+fixed JSON fields and hexadecimal IDs directly. Arbitrary UTF-8 name escaping and
+integer formatting retain Serde's behavior. `Tree::from_json()` and
+`Tree::entry_from_json()` provide compatible complete-tree and validated point
+reads. Encoding and complete decoding keep tree-name validation separate through
+`Tree::validate()`; point lookup validates all names and sibling payloads before
+returning an entry. These paths preserve the established version 1 content IDs.
+
 See the repository documentation for the version 1 format. This format is independently specified and does not claim compatibility with Anthropic's private protocol. Licensed under MIT OR Apache-2.0.

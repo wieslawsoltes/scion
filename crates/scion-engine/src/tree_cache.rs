@@ -87,6 +87,29 @@ impl TreeCache {
             None
         }
     }
+    /// Transfer the cache's ownership to an editor. Other readers keep their
+    /// Arc snapshots; the editor must unwrap-or-clone before making any change.
+    /// Partial directory lookups cannot provide an owned tree and remain cached.
+    pub(crate) fn take_tree(&self, object: ObjectId) -> Option<Arc<Tree>> {
+        let id = Key::Tree(object);
+        let mut state = self.state.lock();
+        if !state
+            .entries
+            .get(&id)
+            .is_some_and(|entry| matches!(entry.value, Value::Tree(_)))
+        {
+            state.misses = state.misses.saturating_add(1);
+            return None;
+        }
+        let entry = state.entries.remove(&id).expect("checked full tree");
+        state.lru.remove(&(entry.stamp, id));
+        state.bytes -= entry.bytes;
+        state.hits = state.hits.saturating_add(1);
+        let Value::Tree(tree) = entry.value else {
+            unreachable!("checked full tree")
+        };
+        Some(tree)
+    }
     pub(crate) fn entry(&self, id: ObjectId, name: &str) -> Option<Option<TreeEntry>> {
         let id = Key::Tree(id);
         let mut state = self.state.lock();
@@ -296,6 +319,50 @@ mod tests {
         assert_eq!(cache.stats().entries, 2);
         cache.clear();
         assert!(held.entries.is_empty());
+        assert_eq!(cache.stats().entries, 0);
+    }
+
+    #[test]
+    fn taking_full_trees_transfers_ownership_and_preserves_other_cache_entries() {
+        let cache = TreeCache::new(4096);
+        let id = ObjectId::hash(ObjectKind::Tree, b"editable");
+        let partial = ObjectId::hash(ObjectKind::Tree, b"partial");
+        let tree = Tree {
+            entries: BTreeMap::from([("a".into(), TreeEntry::Directory { id })]),
+        };
+        let original = Arc::new(tree.clone());
+        cache.insert(id, original.clone());
+        cache.insert_root(id, partial);
+        cache.insert_blob(id, Arc::new(vec![1]));
+        cache.insert_entry(partial, "known", None);
+        let before = cache.stats();
+        let taken = cache.take_tree(id).unwrap();
+        assert!(Arc::ptr_eq(&taken, &original));
+        assert_eq!(cache.stats().entries, before.entries - 1);
+        assert_eq!(cache.stats().estimated_bytes, before.estimated_bytes - 705);
+        assert!(cache.get(id).is_none());
+        assert_eq!(cache.root(id), Some(partial));
+        assert_eq!(cache.blob(id).unwrap().as_slice(), &[1]);
+        let before_partial = cache.stats().estimated_bytes;
+        assert!(cache.take_tree(partial).is_none());
+        assert_eq!(cache.entry(partial, "known"), Some(None));
+        assert_eq!(cache.stats().estimated_bytes, before_partial);
+        let mut edited = Arc::unwrap_or_clone(taken);
+        edited.entries.clear();
+        assert_eq!(*original, tree);
+        cache.clear();
+        assert_eq!(cache.stats().estimated_bytes, 0);
+        assert_eq!(cache.stats().entries, 0);
+
+        let unique = Arc::new(tree);
+        let weak = Arc::downgrade(&unique);
+        cache.insert(id, unique);
+        let taken = cache.take_tree(id).unwrap();
+        assert_eq!(Arc::strong_count(&taken), 1);
+        let owned = Arc::unwrap_or_clone(taken);
+        assert!(weak.upgrade().is_none());
+        assert_eq!(owned.entries.len(), 1);
+        assert_eq!(cache.stats().estimated_bytes, 0);
         assert_eq!(cache.stats().entries, 0);
     }
 

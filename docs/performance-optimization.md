@@ -60,6 +60,13 @@ storage implementations. Repository membership, object identity, and changeset
 validation remain required. Repeated unrelated lookups do not re-probe the same
 revision.
 
+Verified blobs of at most 64 KiB now share the existing bounded repository cache.
+Repeated file reads and text diffs can reuse their content after membership and
+path checks. Capacity, clearing, and entry limits include every retained kind;
+direct storage reads and commit validation remain uncached. Cache hits use bytes
+verified on insertion, with later physical corruption observable on a fresh
+storage read or after clearing/eviction.
+
 ## Measurement-driven decisions
 
 SQLite mapping is configurable, but the default remains disabled. The initial
@@ -76,13 +83,31 @@ runs use independent stores and verify identical Scion changeset IDs; query
 replays use the same retained logical fixture. The previous two-way mode remains
 available.
 
+## Recorded result
+
+The [clean three-way default-profile run](git-comparison.md#optimized-three-way-comparison-25-october-2026)
+uses public commit `3b3110cf4f9cbc286a64289917707342da8d11e2`, independent baseline
+and candidate stores, Git 2.56.0, and verified static C runtime linkage. All eight
+functional medians beat Git. Against the preserved Scion baseline, prepared
+commits improve 2.009×, fresh reads 2.107×, resident reads 2.232×, and diffs 2.733×.
+Graph rows improve 1.297–1.574× and remain below the requested 2× target. Controls
+remain visible and below 2×; the resident no-op is effectively equal to Git.
+
+The final CPU optimizations use a byte-equivalent canonical tree writer, reuse
+verified prepared-object IDs during encoding, use reusable level-one Zstandard
+contexts for metadata (blobs retain level three), and take unique cached tree
+ownership during edits. Object IDs, canonical bytes, immutable validation,
+publication atomicity, and durable acknowledgements remain unchanged. Tests
+compare the new writer with the original canonical oracle and exercise held
+readers, failures, and cache bounds. Envelope decoders continue accepting prior
+standard Zstandard frames.
+
 ## Remaining investigation
 
-1. Validate Linux static C runtime builds and their startup impact, including
-   platform-specific compatibility and release documentation.
-2. Measure optimized release code and preserve all performance losses alongside
-   wins; source changes must pass the existing build, test, packaging, and
-   integration gates before merge.
-
-Results will be added after the implementation and independent comparison are
-complete. Existing measurements remain in [Git comparison](git-comparison.md).
+1. Reduce graph-query repository-opening cost through an explicit frozen graph
+   artifact with validated source identity, bounded reads and caches, and visible
+   preparation/storage costs. Live queries must retain their existing semantics.
+2. Repeat the larger-history comparison with sufficient local disk capacity and
+   publish only runs whose correctness checks finish successfully.
+3. Keep every remaining target and control visible; these local measurements do
+   not establish arbitrary-workload or distributed-service speedups.

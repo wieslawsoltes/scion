@@ -13,11 +13,12 @@ pub const MAX_OBJECT_SIZE: usize = 256 * 1024 * 1024;
 const BULK_LIMIT: usize = 1024 * 1024;
 #[derive(Default)]
 struct Codecs {
-    encoder: Option<zstd::bulk::Compressor<'static>>,
+    blob_encoder: Option<zstd::bulk::Compressor<'static>>,
+    metadata_encoder: Option<zstd::bulk::Compressor<'static>>,
     decoder: Option<zstd::bulk::Decompressor<'static>>,
 }
 thread_local! {
-    static CODECS: RefCell<Codecs> = const { RefCell::new(Codecs { encoder: None, decoder: None }) };
+    static CODECS: RefCell<Codecs> = const { RefCell::new(Codecs { blob_encoder: None, metadata_encoder: None, decoder: None }) };
 }
 
 fn tag(kind: ObjectKind) -> u8 {
@@ -29,22 +30,43 @@ fn tag(kind: ObjectKind) -> u8 {
     }
 }
 
+fn compression_level(kind: ObjectKind) -> i32 {
+    match kind {
+        ObjectKind::Blob => 3,
+        ObjectKind::Tree | ObjectKind::Changeset | ObjectKind::Derived => 1,
+    }
+}
+
 /// Encode the same compressed representation used on disk and over the wire.
 pub fn encode_object(kind: ObjectKind, bytes: &[u8]) -> Result<Vec<u8>> {
     if bytes.len() > MAX_OBJECT_SIZE {
         return Err(Error::Limit("object exceeds 256 MiB".into()));
     }
     let id = ObjectId::hash(kind, bytes);
+    encode_with_id(kind, id, bytes)
+}
+
+// Only PreparedObject can supply a precomputed identifier. Its private fields
+// and immutable byte view retain the size/hash guarantee from construction.
+pub(crate) fn encode_prepared(object: &crate::PreparedObject) -> Result<Vec<u8>> {
+    encode_with_id(object.kind(), object.id(), object.bytes())
+}
+
+fn encode_with_id(kind: ObjectKind, id: ObjectId, bytes: &[u8]) -> Result<Vec<u8>> {
     let mut encoded = if bytes.len() <= BULK_LIMIT {
         CODECS.with(|codecs| -> Result<Vec<u8>> {
             let mut codecs = codecs.borrow_mut();
-            if codecs.encoder.is_none() {
-                codecs.encoder = Some(zstd::bulk::Compressor::new(3)?);
+            let encoder = if kind == ObjectKind::Blob {
+                &mut codecs.blob_encoder
+            } else {
+                &mut codecs.metadata_encoder
+            };
+            if encoder.is_none() {
+                *encoder = Some(zstd::bulk::Compressor::new(compression_level(kind))?);
             }
             let mut encoded =
                 Vec::with_capacity(HEADER + zstd::zstd_safe::compress_bound(bytes.len()));
-            codecs
-                .encoder
+            encoder
                 .as_mut()
                 .expect("initialized encoder")
                 .compress_to_buffer(bytes, &mut encoded)?;
@@ -58,7 +80,7 @@ pub fn encode_object(kind: ObjectKind, bytes: &[u8]) -> Result<Vec<u8>> {
     } else {
         let mut encoded = Vec::with_capacity(HEADER + BULK_LIMIT);
         encoded.resize(HEADER, 0);
-        zstd::stream::copy_encode(bytes, &mut encoded, 3)?;
+        zstd::stream::copy_encode(bytes, &mut encoded, compression_level(kind))?;
         encoded
     };
     encoded[..8].copy_from_slice(MAGIC);
@@ -186,12 +208,78 @@ mod tests {
             let data: Vec<_> = (0..length)
                 .map(|i| (i.wrapping_mul(17) ^ (i >> 9)) as u8)
                 .collect();
-            let id = ObjectId::hash(ObjectKind::Blob, &data);
-            let old = stream_encoded(ObjectKind::Blob, &data);
-            let new = encode_object(ObjectKind::Blob, &data).unwrap();
-            assert_eq!(decode_object(ObjectKind::Blob, id, &old).unwrap(), data);
-            assert_eq!(decode_object(ObjectKind::Blob, id, &new).unwrap(), data);
-            assert_eq!(stream_decoded(&new, data.len()).unwrap(), data);
+            for kind in [
+                ObjectKind::Blob,
+                ObjectKind::Tree,
+                ObjectKind::Changeset,
+                ObjectKind::Derived,
+            ] {
+                let id = ObjectId::hash(kind, &data);
+                let old = stream_encoded(kind, &data);
+                let new = encode_object(kind, &data).unwrap();
+                let prepared = crate::PreparedObject::new(kind, data.clone()).unwrap();
+                assert_eq!(prepared.id(), id);
+                assert_eq!(prepared.encode().unwrap(), new);
+                assert_eq!(prepared.clone().encode().unwrap(), new);
+                assert_eq!(decode_object(kind, id, &old).unwrap(), data);
+                assert_eq!(decode_object(kind, id, &new).unwrap(), data);
+                assert_eq!(stream_decoded(&new, data.len()).unwrap(), data);
+            }
+        }
+    }
+
+    #[test]
+    fn interleaved_metadata_and_blob_encoders_keep_independent_levels() {
+        let data: Vec<_> = (0usize..65_537)
+            .map(|index| (index.wrapping_mul(17) ^ (index >> 9)) as u8)
+            .collect();
+        let blob = zstd::bulk::compress(&data, 3).unwrap();
+        let metadata = zstd::bulk::compress(&data, 1).unwrap();
+        assert_ne!(blob, metadata, "fixture must distinguish encoder levels");
+        for kind in [
+            ObjectKind::Tree,
+            ObjectKind::Blob,
+            ObjectKind::Changeset,
+            ObjectKind::Blob,
+            ObjectKind::Derived,
+            ObjectKind::Blob,
+            ObjectKind::Tree,
+        ] {
+            let object = crate::PreparedObject::new(kind, data.clone()).unwrap();
+            let encoded = object.encode().unwrap();
+            assert_eq!(
+                &encoded[HEADER..],
+                if kind == ObjectKind::Blob {
+                    &blob
+                } else {
+                    &metadata
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn prepared_encoding_does_not_bypass_stored_payload_hash_verification() {
+        for kind in [
+            ObjectKind::Blob,
+            ObjectKind::Tree,
+            ObjectKind::Changeset,
+            ObjectKind::Derived,
+        ] {
+            let object = crate::PreparedObject::new(kind, vec![b'a'; 1024]).unwrap();
+            let original = object.encode().unwrap();
+            let mut corrupt = encode_object(kind, &[b'b'; 1024]).unwrap();
+            // A valid alternate Zstd frame with the expected envelope fields
+            // can only be rejected by checking its decoded content hash.
+            corrupt[..HEADER].copy_from_slice(&original[..HEADER]);
+            assert!(matches!(
+                decode_object(kind, object.id(), &corrupt),
+                Err(Error::Corrupt(_))
+            ));
+            assert_eq!(
+                decode_object(kind, object.id(), &original).unwrap(),
+                object.bytes()
+            );
         }
     }
 

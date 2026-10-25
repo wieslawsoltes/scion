@@ -73,6 +73,12 @@ impl PreparedObject {
     pub fn bytes(&self) -> &[u8] {
         &self.bytes
     }
+    /// Encode this immutable object's version 1 envelope using the identifier
+    /// verified at construction. Private fields prevent changing the bytes or
+    /// injecting an identifier; decoding still verifies the complete content.
+    pub fn encode(&self) -> Result<Vec<u8>> {
+        codec::encode_prepared(self)
+    }
 }
 
 /// Validate an immutable publication batch before performing any writes. Custom

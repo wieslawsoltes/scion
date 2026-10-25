@@ -27,6 +27,18 @@ impl Repository {
         Ok((*self.shared_tree(id)?).clone())
     }
 
+    // Editing can reuse a fully cached allocation when no reader holds it.
+    // A miss loads a verified owned tree without retaining an unchanged copy;
+    // failed edits may evict the old cache entry but never change stored data.
+    fn tree_for_update(&self, id: ObjectId) -> Result<Tree> {
+        if let Some(tree) = self.trees.take_tree(id) {
+            return Ok(Arc::unwrap_or_clone(tree));
+        }
+        let tree = Tree::from_json(&self.store().get_object(ObjectKind::Tree, id)?)?;
+        tree.validate()?;
+        Ok(tree)
+    }
+
     /// A verified immutable tree shared without cloning sibling entries. Service
     /// authorization remains the caller's responsibility, as with `tree`.
     pub fn shared_tree(&self, id: ObjectId) -> Result<std::sync::Arc<Tree>> {
@@ -43,7 +55,7 @@ impl Repository {
     fn store_tree(&self, tree: Tree) -> Result<ObjectId> {
         let id = self
             .store()
-            .put_object(ObjectKind::Tree, &canonical(&tree)?)?;
+            .put_object(ObjectKind::Tree, &tree.canonical_bytes()?)?;
         self.trees.insert(id, std::sync::Arc::new(tree));
         Ok(id)
     }
@@ -118,7 +130,7 @@ impl Repository {
         let mut seen = std::collections::HashSet::new();
         let mut bytes = 0;
         let root = self.apply_tree_with(base, changes, &mut |tree| {
-            let object = PreparedObject::new(ObjectKind::Tree, canonical(&tree)?)?;
+            let object = PreparedObject::new(ObjectKind::Tree, tree.canonical_bytes()?)?;
             let id = object.id();
             if seen.contains(&id) {
                 return Ok(id);
@@ -161,7 +173,7 @@ impl Repository {
             node.change = Some(change);
         }
         let mut root = match base {
-            Some(id) => self.tree(id)?,
+            Some(id) => self.tree_for_update(id)?,
             None => Tree::default(),
         };
         for (name, change) in &delta.children {
@@ -205,7 +217,7 @@ impl Repository {
             };
         }
         let mut directory = match old {
-            Some(TreeEntry::Directory { id }) => self.tree(id)?,
+            Some(TreeEntry::Directory { id }) => self.tree_for_update(id)?,
             Some(TreeEntry::File { .. }) => {
                 return Err(Error::Conflict(format!("file blocks directory {path}")));
             }

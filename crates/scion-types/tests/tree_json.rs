@@ -1,5 +1,121 @@
 //! The stored-tree fast path must preserve the public derived Serde contract.
-use scion_types::{ObjectId, ObjectKind, RepoPath, Tree, canonical};
+use scion_types::{
+    FileEntry, FileKind, ObjectId, ObjectKind, RepoPath, Tree, TreeEntry, canonical,
+};
+use std::collections::BTreeMap;
+
+fn compare_encoding(tree: &Tree) {
+    let expected = canonical(tree).unwrap();
+    let actual = tree.canonical_bytes().unwrap();
+    assert_eq!(actual, expected);
+    assert_eq!(Tree::from_json(&actual).unwrap(), *tree);
+    assert_eq!(serde_json::from_slice::<Tree>(&actual).unwrap(), *tree);
+    assert_eq!(
+        ObjectId::hash(ObjectKind::Tree, &actual),
+        ObjectId::hash(ObjectKind::Tree, &expected)
+    );
+}
+
+#[test]
+fn canonical_tree_writer_preserves_names_modes_identifiers_and_integer_boundaries() {
+    assert_eq!(
+        Tree::default().canonical_bytes().unwrap(),
+        br#"{"entries":{}}"#
+    );
+    let mut names: Vec<String> = (0u8..=127)
+        .map(|byte| format!("before{}after", char::from(byte)))
+        .collect();
+    names.extend([
+        "".into(),
+        "quote\"slash\\newline\n\r\ttab".into(),
+        "日本語/é/☃/🦀".into(),
+        "e\u{301}".into(),
+        "\u{80}\u{7ff}\u{800}\u{d7ff}\u{e000}\u{ffff}\u{10000}\u{10ffff}".into(),
+        "long".repeat(4096),
+    ]);
+    let modes = [
+        FileKind::Regular,
+        FileKind::Executable,
+        FileKind::Symlink,
+        FileKind::Submodule,
+    ];
+    let mut sizes = vec![0, u64::MAX, i64::MAX as u64, i64::MAX as u64 + 1];
+    for power in 0..=19 {
+        let boundary = 10u64.pow(power);
+        sizes.extend([boundary - 1, boundary, boundary + 1]);
+    }
+    for byte in 0u8..=255 {
+        let id = ObjectId([byte; 32]);
+        for (mode_index, kind) in modes.into_iter().enumerate() {
+            let entries = names
+                .iter()
+                .enumerate()
+                .rev()
+                .map(|(index, name)| {
+                    let entry = if index % 7 == 0 {
+                        TreeEntry::Directory { id }
+                    } else {
+                        TreeEntry::File {
+                            entry: FileEntry {
+                                id,
+                                size: sizes[(index + byte as usize + mode_index) % sizes.len()],
+                                kind,
+                            },
+                        }
+                    };
+                    (name.clone(), entry)
+                })
+                .collect();
+            // Canonical serialization also accepts unvalidated Tree values;
+            // escaping must match even for names that paths would reject.
+            compare_encoding(&Tree { entries });
+        }
+    }
+}
+
+#[test]
+fn canonical_tree_writer_matches_serde_for_generated_and_wide_trees() {
+    fn next(state: &mut u64) -> u64 {
+        *state ^= *state << 13;
+        *state ^= *state >> 7;
+        *state ^= *state << 17;
+        *state
+    }
+    let mut state = 0x6373_696f_6e74_7265;
+    for case in 0..256 {
+        let mut entries = BTreeMap::new();
+        let count = if case == 255 {
+            10_000
+        } else {
+            (next(&mut state) % 96) as usize
+        };
+        for index in 0..count {
+            let mut name = format!("{index:08}-");
+            for _ in 0..(next(&mut state) % 12) {
+                let value = (next(&mut state) % 0x11_0000) as u32;
+                name.push(char::from_u32(value).unwrap_or('\0'));
+            }
+            let id = ObjectId(std::array::from_fn(|_| next(&mut state) as u8));
+            let entry = match next(&mut state) % 5 {
+                0 => TreeEntry::Directory { id },
+                mode => TreeEntry::File {
+                    entry: FileEntry {
+                        id,
+                        size: next(&mut state),
+                        kind: [
+                            FileKind::Regular,
+                            FileKind::Executable,
+                            FileKind::Symlink,
+                            FileKind::Submodule,
+                        ][mode as usize - 1],
+                    },
+                },
+            };
+            entries.insert(name, entry);
+        }
+        compare_encoding(&Tree { entries });
+    }
+}
 
 fn compare(input: &str) {
     let reference = serde_json::from_str::<Tree>(input);

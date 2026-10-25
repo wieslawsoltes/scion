@@ -159,27 +159,32 @@ All product crates carry package metadata and versioned internal dependencies. C
 
 ## Measured performance
 
-The recorded comparison uses **Git 2.56.0**, 100,000 file paths, durable writes,
-warm operating-system caches, and 31 samples per operation. Graph rows use a
-100,000-commit trunk and 10,000 commits per divergent arm; both implementations
-run each graph query in a fresh process. The prepared-commit row is measured
-before extending history, with both writers resident.
+The latest complete three-way run compares the optimized build, the preserved
+Scion baseline, and **Git 2.56.0**. It uses 100,000 file paths, a 10,000-commit
+trunk, 1,000 commits per divergent arm, 31 samples per operation, and warm
+operating-system caches. Both systems retain their documented durable-write
+settings. Fresh queries include process startup and shutdown; prepared commits
+and spread reads use resident workers.
 
-| Operation | Scion median | Git median | Within-run result |
-|---|---:|---:|---|
-| Prepared durable commit | 2.279 ms | 2.879 ms | Scion 1.26× faster |
-| Positive ancestry | 2.342 ms | 43.704 ms | Scion 18.66× faster |
-| Negative ancestry | 3.017 ms | 42.148 ms | Scion 13.97× faster |
-| Ancestor merge base | 2.307 ms | 30.971 ms | Scion 13.42× faster |
-| Divergent merge base | 2.258 ms | 6.081 ms | Scion 2.69× faster |
-| Fresh file read, 1 KiB | 2.313 ms | 1.296 ms | Git 1.78× faster |
-| Fresh one-file text diff | 3.326 ms | 1.562 ms | Git 2.13× faster |
+| Operation | Scion median | Git median | Scion improvement | Against Git |
+|---|---:|---:|---:|---:|
+| Prepared durable commit | 1,021.698 µs | 2,812.003 µs | 2.01× | 2.75× faster |
+| Positive ancestry | 1,162.399 µs | 3,282.029 µs | 1.30× | 2.82× faster |
+| Negative ancestry | 1,116.921 µs | 3,170.311 µs | 1.57× | 2.84× faster |
+| Ancestor merge base | 1,061.838 µs | 2,914.877 µs | 1.40× | 2.75× faster |
+| Divergent merge base | 1,200.617 µs | 1,561.130 µs | 1.49× | 1.30× faster |
+| Fresh file read, 1 KiB | 1,039.635 µs | 1,287.227 µs | 2.11× | 1.24× faster |
+| Fresh one-file text diff | 1,141.017 µs | 1,611.074 µs | 2.73× | 1.41× faster |
+| Resident spread file read | 17.116 µs | 47.241 µs | 2.23× | 2.76× faster |
 
-These results support a substantial advantage for the measured long-history
-graph queries. Read and diff costs still favor Git. The [complete comparison](docs/git-comparison.md)
-includes p95, every raw sample, smaller-history results, exact source and binary
-hashes, Git build instructions, and the shared-host limitations. It does not
-establish fleet throughput or a universal speedup over Git.
+Every functional median in this fixture beats Git. Reads, diffs, and durable
+commits improved by at least 2× against the preserved Scion build in the same
+run. Graph-query improvements are **1.30–1.57×**, below the 2× optimization target.
+Process, repository-open, and resident no-op controls remain in the
+[complete comparison](docs/git-comparison.md#optimized-three-way-comparison-25-october-2026),
+alongside p95s, raw samples, source/build identities, and historical large-history
+results. These measurements do not establish a universal speedup or fleet
+throughput.
 
 ## Documentation
 
@@ -216,7 +221,7 @@ cargo package --workspace --all-features --locked
 
 CI exercises Linux, macOS, and Windows; verifies Rust 1.88 and every crate archive; and runs PostgreSQL, three-tier container, real Linux FUSE, MinIO, and official Spanner emulator integration tests. Fuzz targets cover paths, canonical objects, and compressed envelopes. The Git comparison workflow verifies equivalent outputs and retains raw timing samples. [Testing](docs/testing.md) links completed runs and explains what each gate establishes.
 
-Performance is workload-specific. The checked-in comparisons show improvements in durable commit publication and graph queries, while some read, diff, and tail-latency cases still favor Git. Fleet throughput, availability, and Anthropic's reported infrastructure ratios are not established by these local measurements.
+Performance is workload-specific. The latest complete fixture improves every functional median over Git, while the controls, latency tails, historical losses, and unmet 2× graph-query target remain documented. Fleet throughput, availability, and Anthropic's reported infrastructure ratios are not established by these local measurements.
 
 ## License
 

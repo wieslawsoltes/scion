@@ -25,6 +25,10 @@ Objects are limited to 256 MiB uncompressed. Changeset publication atomically ad
 ## Durable publication batches
 
 `PreparedObject::new(kind, bytes)` validates size and computes a content ID.
+Its immutable `encode()` method reuses that computed ID when producing the
+version 1 envelope. Private fields and read-only byte access prevent changing
+the content or supplying an unchecked ID. Stored-object reads and duplicate
+publication still verify the entire decoded content hash.
 `Storage::publish_commit_with_objects` accepts these immutable objects alongside
 the existing `ImmutableRecord` batch. Its portable default writes objects through
 the backend's own `put_object` method before publishing metadata and membership;
@@ -85,6 +89,15 @@ limits and integrity validation are unchanged. Old streaming frames, concatenate
 frames and valid skippable frames remain readable; emitted frames remain readable
 by the previous streaming decoder. Compression bytes can differ while content
 identities remain identical.
+
+Trees, changesets and derived metadata use Zstd level 1 to reduce publication
+CPU cost; file blobs retain level 3. The two small-object encoder contexts are
+separate, so interleaved metadata and blob writes keep their configured policy.
+Large objects use the same per-kind levels through the streaming path. Compression
+ratio depends on content: level 1 can produce larger or smaller metadata frames,
+while object identities, size limits and decoding checks remain unchanged.
+Previously written level 3 metadata and new level 1 frames interoperate through
+the same version 1 envelope and standard Zstd decoder.
 
 ## Metadata layout and explicit upgrades
 
