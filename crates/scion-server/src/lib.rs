@@ -306,7 +306,7 @@ async fn upload(
         Ok(a) => a,
         Err(e) => return fail(e, &state),
     };
-    if !access.permissions.write {
+    if !access.permissions.allows_any(true) {
         return fail(Error::Permission("repository upload denied".into()), &state);
     }
     let s = state.clone();
@@ -447,7 +447,7 @@ fn tree_at(repo: &Repository, commit: ObjectId, path: &RepoPath) -> Result<Objec
 }
 
 fn check_commit(repo: &Repository, a: &Access, c: &scion_types::Changeset) -> Result<()> {
-    if !a.permissions.write {
+    if !a.permissions.allows_any(true) {
         return Err(Error::Permission("repository commit denied".into()));
     }
     for (path, change) in &c.changes {
@@ -535,13 +535,13 @@ fn visible_page(
 
 fn dispatch(state: &ServerState, name: &str, a: &Access, request: RpcRequest) -> Result<RpcReply> {
     let repo = state.repository(name)?;
-    if !a.permissions.read && !a.permissions.write {
+    if !a.permissions.allows_any(false) && !a.permissions.allows_any(true) && !a.permissions.admin {
         return Err(Error::Permission("repository access denied".into()));
     }
     let bounded = |limit: usize| limit.clamp(1, 10_000);
     match request {
         RpcRequest::PutBlob { data } => {
-            if !a.permissions.write {
+            if !a.permissions.allows_any(true) {
                 return Err(Error::Permission("repository upload denied".into()));
             }
             let bytes = STANDARD
@@ -560,19 +560,19 @@ fn dispatch(state: &ServerState, name: &str, a: &Access, request: RpcRequest) ->
             RpcReply::success(repo.get_changeset(id)?)
         }
         RpcRequest::Resolve { revision } => {
-            if !a.permissions.read {
+            if !a.permissions.allows_any(false) {
                 return Err(Error::Permission("read access required".into()));
             }
             RpcReply::success(repo.resolve(&revision)?)
         }
         RpcRequest::GetRef { name } => {
-            if !a.permissions.read {
+            if !a.permissions.allows_any(false) {
                 return Err(Error::Permission("read access required".into()));
             }
             RpcReply::success(repo.resolve_ref(&name)?)
         }
         RpcRequest::ListRefs => {
-            if !a.permissions.read {
+            if !a.permissions.allows_any(false) {
                 return Err(Error::Permission("read access required".into()));
             }
             RpcReply::success(repo.list_refs()?)

@@ -56,6 +56,12 @@ binding may belong to only one principal. Each principal must have at least one
 identity binding or a static token hash. A principal can have both, supporting
 an explicit transition between credential types.
 
+Repository `read` and `write` values are path defaults. A policy can deny both by
+default and grant access only under an explicit directory rule. Such a principal
+can resolve references, obtain a filtered manifest, read permitted files, upload
+content, and commit changes to permitted paths. Whole-repository history/tree
+operations still require full access, and moving references requires `admin`.
+
 Without `jwks_url`, Scion retrieves
 `ISSUER/.well-known/openid-configuration`, requires its `issuer` to match exactly,
 and uses its `jwks_uri`. An administrator can instead configure `jwks_url`

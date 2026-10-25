@@ -249,6 +249,116 @@ async fn live_policy_replacement_revokes_credentials_and_authenticates_before_bo
             .starts_with("HTTP/1.1 403")
     );
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn directory_grants_work_with_denied_repository_defaults() {
+    let storage: SharedStore = Arc::new(MemoryStore::new());
+    let admin = start(storage.clone(), dev()).await;
+    let administrator = client(&admin, "demo", None);
+    let base = commit(
+        &administrator,
+        None,
+        &[("allowed/a", b"visible"), ("secret/b", b"hidden")],
+        "base",
+    )
+    .await;
+    administrator
+        .rpc::<bool>(RpcRequest::SetRef {
+            name: "main".into(),
+            expected: None,
+            target: Some(base),
+        })
+        .await
+        .unwrap();
+    let token = "directory-only-credential";
+    let policy = Policy {
+        principals: vec![Principal {
+            name: "limited".into(),
+            token_hash: blake3::hash(token.as_bytes()).to_hex().to_string(),
+            repositories: BTreeMap::from([(
+                "demo".into(),
+                Permissions {
+                    rules: vec![PathRule {
+                        prefix: RepoPath::new("allowed").unwrap(),
+                        read: Some(true),
+                        write: Some(true),
+                    }],
+                    ..Default::default()
+                },
+            )]),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let service = start(
+        storage,
+        ServerConfig {
+            policy,
+            capability_key: [3; 32],
+            ..Default::default()
+        },
+    )
+    .await;
+    let limited = client(&service, "demo", Some(token));
+    assert_eq!(limited.resolve("main").await.unwrap(), base);
+    let manifest = limited.manifest(base, &[]).await.unwrap();
+    assert_eq!(manifest.len(), 1);
+    assert!(manifest.contains_key(&RepoPath::new("allowed/a").unwrap()));
+    assert_eq!(
+        limited
+            .read_file(base, RepoPath::new("allowed/a").unwrap())
+            .await
+            .unwrap(),
+        b"visible"
+    );
+    assert!(
+        limited
+            .read_file(base, RepoPath::new("secret/b").unwrap())
+            .await
+            .is_err()
+    );
+    assert!(
+        limited
+            .rpc::<Changeset>(RpcRequest::GetChangeset { id: base })
+            .await
+            .is_err()
+    );
+    let added = commit(
+        &limited,
+        Some(base),
+        &[("allowed/new", b"permitted edit")],
+        "scoped write",
+    )
+    .await;
+    let blob = limited.put_blob(b"denied edit").await.unwrap();
+    let forbidden = Changeset {
+        parents: vec![added],
+        author: "Limited".into(),
+        committer: None,
+        timestamp_ms: 2,
+        message: "forbidden".into(),
+        changes: BTreeMap::from([(
+            RepoPath::new("secret/b").unwrap(),
+            FileChange::put(FileEntry {
+                id: blob,
+                size: 11,
+                kind: FileKind::Regular,
+            }),
+        )]),
+        metadata: BTreeMap::new(),
+    };
+    assert!(limited.create_commit(forbidden).await.is_err());
+    assert!(
+        limited
+            .rpc::<bool>(RpcRequest::SetRef {
+                name: "main".into(),
+                expected: Some(base),
+                target: Some(added)
+            })
+            .await
+            .is_err()
+    );
+}
 async fn commit(
     c: &Client,
     parent: Option<ObjectId>,

@@ -296,3 +296,43 @@ fn provider_trust_rejects_unbounded_or_insecure_configuration() {
     bad.issuer = "http://192.0.2.1".into();
     assert!(bad.validate().is_err());
 }
+
+#[tokio::test]
+async fn rsa_default_algorithm_is_verified_and_ambiguous_key_algorithms_fail() {
+    let fixture = Fixture::start().await;
+    let key: Value = serde_json::from_str(include_str!("../tests/fixtures/rsa.json")).unwrap();
+    let signing =
+        EncodingKey::from_rsa_der(&STANDARD.decode(key["der"].as_str().unwrap()).unwrap());
+    let mut header = Header::new(Algorithm::RS256);
+    header.kid = Some("rsa".into());
+    let valid = encode(&header, &fixture.claims(), &signing).unwrap();
+    let public = json!({"kty":"RSA","kid":"rsa","n":key["n"],"e":key["e"]});
+    *fixture.state.keys.write().unwrap() = json!({"keys":[public.clone()]});
+    let mut config = fixture.config();
+    config.algorithms = vec![Algorithm::RS256];
+    Verifier::new(&[config.clone()])
+        .unwrap()
+        .verify(&valid)
+        .await
+        .unwrap();
+    config.algorithms.push(Algorithm::RS384);
+    assert!(
+        Verifier::new(&[config.clone()])
+            .unwrap()
+            .verify(&valid)
+            .await
+            .is_err()
+    );
+    let mut public = public;
+    public["alg"] = json!("RS256");
+    *fixture.state.keys.write().unwrap() = json!({"keys":[public]});
+    let verifier = Verifier::new(&[config]).unwrap();
+    verifier.verify(&valid).await.unwrap();
+    header.crit = Some(vec!["unsupported-extension".into()]);
+    let critical = encode(&header, &fixture.claims(), &signing).unwrap();
+    assert!(verifier.verify(&critical).await.is_err());
+    header.crit = None;
+    header.extras.insert("b64", json!(false));
+    let unencoded = encode(&header, &fixture.claims(), &signing).unwrap();
+    assert!(verifier.verify(&unencoded).await.is_err());
+}

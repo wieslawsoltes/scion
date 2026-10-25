@@ -69,6 +69,15 @@ pub struct Access {
 }
 
 impl Permissions {
+    /// Whether any path grants this permission. This admits a directory-only
+    /// principal to repository transport without granting access to other paths.
+    pub fn allows_any(&self, write: bool) -> bool {
+        self.allows(&RepoPath::root(), write)
+            || self
+                .rules
+                .iter()
+                .any(|rule| self.allows(&rule.prefix, write))
+    }
     pub fn allows(&self, path: &RepoPath, write: bool) -> bool {
         let mut result = if write { self.write } else { self.read };
         let mut specificity = 0;

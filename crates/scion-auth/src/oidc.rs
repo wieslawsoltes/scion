@@ -181,6 +181,9 @@ impl Verifier {
             .crit
             .as_ref()
             .is_some_and(|critical| !critical.is_empty())
+            || header.enc.is_some()
+            || header.zip.is_some()
+            || header.extras.get::<bool>("b64").map_err(|_| denied())? == Some(false)
         {
             return Err(denied());
         }
