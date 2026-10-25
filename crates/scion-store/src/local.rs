@@ -611,7 +611,7 @@ impl Storage for LocalStore {
             if !seen.insert((object.kind(), object.id())) {
                 continue;
             }
-            let encoded = encode_object(object.kind(), object.bytes())?;
+            let encoded = object.encode()?;
             if encoded.len() > INLINE_OBJECT_LIMIT {
                 // Encoding choice is not identity: another valid compression
                 // may already occupy the inline tier. Reject corrupt content

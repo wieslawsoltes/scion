@@ -35,6 +35,9 @@ fuzz_target!(|input: &[u8]| {
     }
     if let Ok(tree) = reference {
         let bytes = canonical(&tree).unwrap();
+        let optimized = tree.canonical_bytes().unwrap();
+        assert_eq!(optimized, bytes);
+        assert_eq!(optimized, serde_json::to_vec(&tree).unwrap());
         let roundtrip: Tree = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(tree, roundtrip);
         assert_eq!(tree.validate().is_ok(), roundtrip.validate().is_ok());

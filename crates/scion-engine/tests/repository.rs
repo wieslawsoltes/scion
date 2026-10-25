@@ -553,6 +553,201 @@ fn warm_blob_cache_keeps_immutable_revisions_and_observes_new_reference_values()
 }
 
 #[test]
+fn edits_preserve_external_tree_snapshots_and_reloading_old_revisions() {
+    let repo = repo();
+    let before = commit(
+        &repo,
+        &[],
+        &[("dir/a", Some(b"old")), ("dir/b", Some(b"unchanged"))],
+        "original",
+    );
+    let root = repo.root_tree(before).unwrap();
+    let held_root = repo.shared_tree(root).unwrap();
+    let directory = match held_root.entries["dir"] {
+        TreeEntry::Directory { id } => id,
+        _ => panic!("expected directory"),
+    };
+    let held_directory = repo.shared_tree(directory).unwrap();
+    let root_snapshot = (*held_root).clone();
+    let directory_snapshot = (*held_directory).clone();
+    let after = commit(
+        &repo,
+        &[before],
+        &[("dir/a", Some(b"new")), ("dir/c", Some(b"added"))],
+        "edit",
+    );
+    assert_eq!(*held_root, root_snapshot);
+    assert_eq!(*held_directory, directory_snapshot);
+    assert_eq!(repo.tree(root).unwrap(), root_snapshot);
+    assert_eq!(repo.tree(directory).unwrap(), directory_snapshot);
+    assert_eq!(repo.read_file(before, &path("dir/a")).unwrap(), b"old");
+    assert_eq!(repo.read_file(after, &path("dir/a")).unwrap(), b"new");
+    assert_eq!(repo.read_file(after, &path("dir/b")).unwrap(), b"unchanged");
+    assert!(repo.file(before, &path("dir/c")).unwrap().is_none());
+    assert_eq!(
+        repo.store().get_object(ObjectKind::Tree, root).unwrap(),
+        canonical(&root_snapshot).unwrap()
+    );
+    assert!(repo.tree_cache_stats().estimated_bytes <= 8 * 1024 * 1024);
+}
+
+#[test]
+fn concurrent_branch_edits_of_one_cached_parent_keep_both_results_and_parent() {
+    let repo = repo();
+    let parent = commit(
+        &repo,
+        &[],
+        &[("dir/a", Some(b"parent")), ("dir/b", Some(b"stable"))],
+        "parent",
+    );
+    let before = repo.list_files(parent, &path("")).unwrap();
+    let barrier = Arc::new(std::sync::Barrier::new(3));
+    let workers: Vec<_> = ["left", "right"]
+        .into_iter()
+        .map(|name| {
+            let repo = repo.clone();
+            let barrier = barrier.clone();
+            std::thread::spawn(move || {
+                barrier.wait();
+                let revision = commit(
+                    &repo,
+                    &[parent],
+                    &[("dir/a", Some(name.as_bytes())), (name, Some(b"branch"))],
+                    name,
+                );
+                (name, revision)
+            })
+        })
+        .collect();
+    barrier.wait();
+    for worker in workers {
+        let (name, revision) = worker.join().unwrap();
+        assert_eq!(
+            repo.read_file(revision, &path("dir/a")).unwrap(),
+            name.as_bytes()
+        );
+        assert_eq!(repo.read_file(revision, &path("dir/b")).unwrap(), b"stable");
+        assert_eq!(repo.read_file(revision, &path(name)).unwrap(), b"branch");
+        let other = if name == "left" { "right" } else { "left" };
+        assert!(repo.file(revision, &path(other)).unwrap().is_none());
+    }
+    assert_eq!(repo.list_files(parent, &path("")).unwrap(), before);
+    assert_eq!(repo.read_file(parent, &path("dir/a")).unwrap(), b"parent");
+    assert!(repo.tree_cache_stats().estimated_bytes <= 8 * 1024 * 1024);
+    repo.clear_tree_cache();
+    assert_eq!(repo.tree_cache_stats().estimated_bytes, 0);
+}
+
+#[test]
+fn edits_from_partial_or_disabled_caches_load_complete_verified_parent_trees() {
+    for capacity in [0, 4096] {
+        let repo = repo().with_tree_cache_capacity(capacity);
+        let changes = (0..32)
+            .map(|index| {
+                (
+                    path(&format!("dir/file{index:02}")),
+                    FileChange::put(entry(&repo, format!("original {index}").as_bytes())),
+                )
+            })
+            .collect();
+        let parent = repo
+            .create_commit(Changeset {
+                parents: vec![],
+                author: "A".into(),
+                committer: None,
+                timestamp_ms: 0,
+                message: "wide directory".into(),
+                changes,
+                metadata: BTreeMap::new(),
+            })
+            .unwrap()
+            .id()
+            .unwrap();
+        repo.clear_tree_cache();
+        assert!(repo.entry(parent, &path("dir/file00")).unwrap().is_some());
+        let edited = commit(
+            &repo,
+            &[parent],
+            &[("dir/file00", Some(b"changed"))],
+            "point-cache edit",
+        );
+        for index in 0..32 {
+            let file = path(&format!("dir/file{index:02}"));
+            let original = format!("original {index}").into_bytes();
+            assert_eq!(repo.read_file(parent, &file).unwrap(), original);
+            assert_eq!(
+                repo.read_file(edited, &file).unwrap(),
+                if index == 0 {
+                    b"changed".to_vec()
+                } else {
+                    original
+                }
+            );
+        }
+        assert!(repo.tree_cache_stats().estimated_bytes <= capacity);
+        if capacity == 0 {
+            assert_eq!(repo.tree_cache_stats().entries, 0);
+        }
+    }
+}
+
+#[test]
+fn failed_edits_and_publication_leave_evicted_parent_data_unchanged() {
+    let store = Arc::new(CountingStore::default());
+    let repo = Repository::new("test", store.clone()).unwrap();
+    let parent = commit(
+        &repo,
+        &[],
+        &[("dir/a", Some(b"nested")), ("flat", Some(b"parent"))],
+        "parent",
+    );
+    let root = repo.root_tree(parent).unwrap();
+    let original = repo.store().get_object(ObjectKind::Tree, root).unwrap();
+    let original_files = repo.list_files(parent, &path("")).unwrap();
+    for (changed_path, change, fail_publication) in [
+        (
+            "flat/child",
+            FileChange::put(entry(&repo, b"blocked")),
+            false,
+        ),
+        ("dir", FileChange::Delete, false),
+        ("flat", FileChange::put(entry(&repo, b"new value")), true),
+    ] {
+        // Leave the old tree cached with one owner so the edit takes it.
+        repo.shared_tree(root).unwrap();
+        let request = Changeset {
+            parents: vec![parent],
+            author: "A".into(),
+            committer: None,
+            timestamp_ms: 0,
+            message: format!("failing {changed_path}"),
+            changes: BTreeMap::from([(path(changed_path), change)]),
+            metadata: BTreeMap::new(),
+        };
+        let unpublished = request.id().unwrap();
+        store
+            .fail_tree_writes
+            .store(fail_publication, Ordering::Relaxed);
+        assert!(repo.create_commit(request).is_err());
+        store.fail_tree_writes.store(false, Ordering::Relaxed);
+        assert!(matches!(
+            repo.get_changeset(unpublished),
+            Err(Error::NotFound(_))
+        ));
+        assert_eq!(store.read_log("test", 0, 10).unwrap().len(), 1);
+        assert_eq!(
+            repo.store().get_object(ObjectKind::Tree, root).unwrap(),
+            original
+        );
+        assert_eq!(repo.list_files(parent, &path("")).unwrap(), original_files);
+        assert_eq!(repo.read_file(parent, &path("flat")).unwrap(), b"parent");
+        assert!(repo.tree_cache_stats().estimated_bytes <= 8 * 1024 * 1024);
+        repo.clear_tree_cache();
+        assert_eq!(repo.tree_cache_stats().estimated_bytes, 0);
+    }
+}
+
+#[test]
 fn failed_publication_does_not_cache_or_expose_prepared_trees() {
     let store = Arc::new(CountingStore::default());
     let repo = Repository::new("test", store.clone()).unwrap();

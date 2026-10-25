@@ -1,13 +1,50 @@
-//! Allocation-light decoder for the shape emitted by `canonical(Tree)`.
+//! Allocation-light encoding and decoding for `canonical(Tree)`.
 //!
 //! An internally tagged enum normally buffers all fields before deserializing
 //! the selected variant. Here the canonical fields stream directly into their
 //! final types. Unknown or incompatible shapes are rejected so `Tree::from_json`
 //! can use the existing derived decoder, preserving its compatibility contract.
 
-use crate::{FileEntry, FileKind, ObjectId, TreeEntry, validate_path};
+use crate::{FileEntry, FileKind, ObjectId, Tree, TreeEntry, validate_path};
 use serde::{Deserialize, Deserializer, de};
 use std::{borrow::Cow, collections::BTreeMap, fmt};
+
+/// Emit the established canonical representation. Serde still handles arbitrary
+/// UTF-8 names and integers; fixed field names and known hex digits need no
+/// repeated JSON escaping scans. The derived encoder remains the test oracle.
+pub(crate) fn encode(tree: &Tree) -> serde_json::Result<Vec<u8>> {
+    let mut output = Vec::with_capacity(tree.entries.len().saturating_mul(160).saturating_add(16));
+    output.extend_from_slice(b"{\"entries\":{");
+    for (index, (name, entry)) in tree.entries.iter().enumerate() {
+        if index != 0 {
+            output.push(b',');
+        }
+        serde_json::to_writer(&mut output, name)?;
+        match entry {
+            TreeEntry::Directory { id } => {
+                output.extend_from_slice(b":{\"type\":\"directory\",\"id\":\"");
+                output.extend_from_slice(&id.hex());
+                output.extend_from_slice(b"\"}");
+            }
+            TreeEntry::File { entry } => {
+                output.extend_from_slice(b":{\"type\":\"file\",\"entry\":{\"id\":\"");
+                output.extend_from_slice(&entry.id.hex());
+                output.extend_from_slice(b"\",\"size\":");
+                serde_json::to_writer(&mut output, &entry.size)?;
+                output.extend_from_slice(b",\"kind\":\"");
+                output.extend_from_slice(match entry.kind {
+                    FileKind::Regular => b"regular",
+                    FileKind::Executable => b"executable",
+                    FileKind::Symlink => b"symlink",
+                    FileKind::Submodule => b"submodule",
+                });
+                output.extend_from_slice(b"\"}}");
+            }
+        }
+    }
+    output.extend_from_slice(b"}}");
+    Ok(output)
+}
 
 /// Stream every entry and validate every name, retaining only the requested
 /// value. Unlike `IgnoredAny`, this still checks ignored sibling payloads.

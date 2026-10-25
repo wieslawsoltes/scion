@@ -442,6 +442,13 @@ pub struct Tree {
     pub entries: BTreeMap<String, TreeEntry>,
 }
 impl Tree {
+    /// Encode the exact bytes produced by [`canonical`], including field order,
+    /// escaping and lowercase IDs, without general enum/string serialization.
+    /// Names remain subject to the separate [`Self::validate`] operation.
+    pub fn canonical_bytes(&self) -> Result<Vec<u8>> {
+        Ok(tree_json::encode(self)?)
+    }
+
     /// Decode stored tree JSON with a streaming path for the canonical shape.
     ///
     /// The accepted inputs and resulting values are identical to the derived
