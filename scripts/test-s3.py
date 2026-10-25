@@ -25,9 +25,12 @@ import urllib.parse
 import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
+# The fixture always addresses its own loopback server. An ambient HTTP proxy
+# must not receive its temporary credentials or alter startup responses.
+OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
-def create_bucket(endpoint: str, bucket: str, access: str, secret: str) -> None:
+def create_bucket(endpoint: str, bucket: str, access: str, secret: str, timeout: float = 10) -> None:
     now = datetime.now(timezone.utc)
     date, timestamp = now.strftime("%Y%m%d"), now.strftime("%Y%m%dT%H%M%SZ")
     host = urllib.parse.urlparse(endpoint).netloc
@@ -46,9 +49,33 @@ def create_bucket(endpoint: str, bucket: str, access: str, secret: str) -> None:
         "x-amz-date": timestamp,
         "Authorization": f"AWS4-HMAC-SHA256 Credential={access}/{scope}, SignedHeaders={signed_headers}, Signature={signature}",
     })
-    with urllib.request.urlopen(request, timeout=10) as response:
+    with OPENER.open(request, timeout=timeout) as response:
         if response.status not in (200, 201):
             raise RuntimeError("MinIO bucket creation did not succeed")
+
+
+def create_bucket_when_ready(endpoint: str, bucket: str, access: str, secret: str, timeout: float = 30) -> None:
+    """Readiness can precede MinIO's S3/IAM initialization on a busy runner."""
+    deadline = time.monotonic() + timeout
+    delay = 0.1
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise RuntimeError("MinIO S3 initialization exceeded its startup deadline")
+        try:
+            create_bucket(endpoint, bucket, access, secret, timeout=min(5, remaining))
+            return
+        except urllib.error.HTTPError as error:
+            # Authorization failures, signature errors, and other API errors
+            # are fatal. Only the observed transient startup status is retried.
+            if error.code != 503:
+                raise
+            error.close()
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise RuntimeError("MinIO S3 initialization exceeded its startup deadline")
+        time.sleep(min(delay, remaining))
+        delay = min(delay * 2, 1.0)
 
 
 def main() -> None:
@@ -72,7 +99,8 @@ def main() -> None:
     # role configuration, alternate endpoint, or ambient proxy for loopback.
     for key in ("AWS_SESSION_TOKEN", "AWS_WEB_IDENTITY_TOKEN_FILE", "AWS_ROLE_ARN", "AWS_ENDPOINT", "AWS_ENDPOINT_URL", "AWS_ENDPOINT_URL_S3", "AWS_PROFILE"):
         environment.pop(key, None)
-    environment["NO_PROXY"] = environment.get("NO_PROXY", "") + ",127.0.0.1,localhost"
+    for key in ("NO_PROXY", "no_proxy"):
+        environment[key] = environment.get(key, "") + ",127.0.0.1,localhost"
     with tempfile.TemporaryDirectory(prefix="scion-s3-") as temporary:
         directory = Path(temporary)
         with (directory / "minio.log").open("w+b") as log:
@@ -85,14 +113,14 @@ def main() -> None:
                     if process.poll() is not None:
                         raise RuntimeError("MinIO exited before becoming ready")
                     try:
-                        with urllib.request.urlopen(endpoint + "/minio/health/ready", timeout=1) as response:
+                        with OPENER.open(endpoint + "/minio/health/ready", timeout=1) as response:
                             if response.status == 200:
                                 break
                     except (OSError, urllib.error.HTTPError):
                         time.sleep(0.25)
                 else:
                     raise RuntimeError("MinIO did not become ready within 30 seconds")
-                create_bucket(endpoint, "scion-test", access, secret)
+                create_bucket_when_ready(endpoint, "scion-test", access, secret)
                 command = [args.cargo, "test", "-p", "scion-store-cloud", "--all-features", "--test", "s3_live", "--locked"]
                 if args.offline:
                     command.append("--offline")

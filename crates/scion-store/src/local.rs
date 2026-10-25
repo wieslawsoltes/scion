@@ -2,6 +2,7 @@ use crate::{ImmutableRecord, Storage, decode_object, encode_object, validate_pub
 use parking_lot::Mutex;
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use scion_types::{Error, LogEntry, ObjectId, ObjectKind, Result};
+use std::collections::HashSet;
 use std::{
     fs,
     io::Write,
@@ -18,6 +19,9 @@ fn db_error(e: rusqlite::Error) -> Error {
 pub struct LocalStore {
     root: PathBuf,
     db: Mutex<Connection>,
+    #[cfg(unix)]
+    durable_directories: Mutex<HashSet<PathBuf>>,
+    durable_objects: Mutex<HashSet<(ObjectKind, ObjectId)>>,
 }
 impl LocalStore {
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
@@ -32,6 +36,9 @@ impl LocalStore {
         Ok(Self {
             root,
             db: Mutex::new(db),
+            #[cfg(unix)]
+            durable_directories: Default::default(),
+            durable_objects: Default::default(),
         })
     }
     pub fn root(&self) -> &Path {
@@ -48,7 +55,7 @@ impl LocalStore {
     fn write_encoded(&self, kind: ObjectKind, id: ObjectId, encoded: &[u8]) -> Result<()> {
         let path = self.path(kind, id);
         if path.is_file() {
-            return Ok(());
+            return self.establish_durability(kind, id, &path);
         }
         let parent = path
             .parent()
@@ -62,19 +69,59 @@ impl LocalStore {
             Err(e) if e.error.kind() == std::io::ErrorKind::AlreadyExists => {}
             Err(e) => return Err(e.error.into()),
         }
-        #[cfg(unix)]
-        // A newly-created shard also needs its directory entries persisted in
-        // each ancestor before a changeset may make the object reachable.
-        for ancestor in parent.ancestors().take_while(|p| p.starts_with(&self.root)) {
-            fs::File::open(ancestor)?.sync_all()?;
+        self.establish_durability(kind, id, &path)
+    }
+    fn establish_durability(&self, kind: ObjectKind, id: ObjectId, path: &Path) -> Result<()> {
+        if self.durable_objects.lock().contains(&(kind, id)) {
+            return Ok(());
         }
+        #[cfg(unix)]
+        let parent = path
+            .parent()
+            .ok_or_else(|| Error::Storage("object parent absent".into()))?;
+        #[cfg(unix)]
+        {
+            // Each process establishes durability on its first visit. A directory
+            // merely existing is insufficient: another writer may just have
+            // created it. Cache only after synchronizing all uncached ancestors.
+            let mut durable = self.durable_directories.lock();
+            let unsynced: Vec<_> = parent
+                .ancestors()
+                .take_while(|path| path.starts_with(&self.root) && !durable.contains(*path))
+                .map(Path::to_path_buf)
+                .collect();
+            for directory in &unsynced {
+                fs::File::open(directory)?.sync_all()?;
+            }
+            durable.extend(unsynced);
+        }
+        #[cfg(unix)]
+        // Every new object name still requires its immediate directory barrier.
+        // Already-durable ancestors need not be flushed for unrelated new files.
+        fs::File::open(parent)?.sync_all()?;
+        #[cfg(not(unix))]
+        fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(path)?
+            .sync_all()?;
+        // An existing name can be another writer's not-yet-acknowledged rename.
+        // Cache it only after this process has established the durability barrier.
+        let mut durable = self.durable_objects.lock();
+        if durable.len() >= 32_768 {
+            durable.clear();
+        }
+        durable.insert((kind, id));
         Ok(())
     }
 }
 impl Storage for LocalStore {
     fn put_object(&self, kind: ObjectKind, bytes: &[u8]) -> Result<ObjectId> {
         let id = ObjectId::hash(kind, bytes);
-        if !self.path(kind, id).is_file() {
+        let path = self.path(kind, id);
+        if path.is_file() {
+            self.establish_durability(kind, id, &path)?;
+        } else {
             self.write_encoded(kind, id, &encode_object(kind, bytes)?)?;
         }
         Ok(id)

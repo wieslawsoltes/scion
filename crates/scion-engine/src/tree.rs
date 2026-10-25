@@ -10,9 +10,28 @@ struct DeltaNode<'a> {
 
 impl Repository {
     pub fn tree(&self, id: ObjectId) -> Result<Tree> {
+        Ok((*self.shared_tree(id)?).clone())
+    }
+
+    /// A verified immutable tree shared without cloning sibling entries. Service
+    /// authorization remains the caller's responsibility, as with `tree`.
+    pub fn shared_tree(&self, id: ObjectId) -> Result<std::sync::Arc<Tree>> {
+        if let Some(tree) = self.trees.get(id) {
+            return Ok(tree);
+        }
         let result: Tree = serde_json::from_slice(&self.store().get_object(ObjectKind::Tree, id)?)?;
         result.validate()?;
+        let result = std::sync::Arc::new(result);
+        self.trees.insert(id, result.clone());
         Ok(result)
+    }
+
+    fn store_tree(&self, tree: Tree) -> Result<ObjectId> {
+        let id = self
+            .store()
+            .put_object(ObjectKind::Tree, &canonical(&tree)?)?;
+        self.trees.insert(id, std::sync::Arc::new(tree));
+        Ok(id)
     }
 
     pub fn root_tree(&self, revision: ObjectId) -> Result<ObjectId> {
@@ -57,8 +76,7 @@ impl Repository {
                 root.entries.insert((*name).to_owned(), entry);
             }
         }
-        self.store()
-            .put_object(ObjectKind::Tree, &canonical(&root)?)
+        self.store_tree(root)
     }
 
     fn apply_node(
@@ -122,9 +140,7 @@ impl Repository {
             return Ok(None);
         }
         Ok(Some(TreeEntry::Directory {
-            id: self
-                .store()
-                .put_object(ObjectKind::Tree, &canonical(&directory)?)?,
+            id: self.store_tree(directory)?,
         }))
     }
 
@@ -137,7 +153,7 @@ impl Repository {
         let mut current = root;
         let parts: Vec<_> = path.components().collect();
         for (i, part) in parts.iter().enumerate() {
-            let entry = self.tree(current)?.entries.remove(*part);
+            let entry = self.shared_tree(current)?.entries.get(*part).cloned();
             if i + 1 == parts.len() {
                 return Ok(entry);
             }
@@ -308,14 +324,23 @@ impl Repository {
             if before == after {
                 continue;
             }
-            let old_dir = match &before {
-                Some(TreeEntry::Directory { id }) => self.tree(*id)?.entries,
-                _ => BTreeMap::new(),
+            let old_tree = match &before {
+                Some(TreeEntry::Directory { id }) => Some(self.shared_tree(*id)?),
+                _ => None,
             };
-            let new_dir = match &after {
-                Some(TreeEntry::Directory { id }) => self.tree(*id)?.entries,
-                _ => BTreeMap::new(),
+            let new_tree = match &after {
+                Some(TreeEntry::Directory { id }) => Some(self.shared_tree(*id)?),
+                _ => None,
             };
+            let empty = BTreeMap::new();
+            let old_dir = old_tree
+                .as_ref()
+                .map(|tree| &tree.entries)
+                .unwrap_or(&empty);
+            let new_dir = new_tree
+                .as_ref()
+                .map(|tree| &tree.entries)
+                .unwrap_or(&empty);
             let old_file = match before {
                 Some(TreeEntry::File { entry }) => Some(entry),
                 _ => None,
@@ -329,8 +354,8 @@ impl Repository {
             }
             // Merge already-sorted maps in linear time. Equal entries require no
             // cloned name, full path allocation, tree read or traversal frame.
-            let mut old = old_dir.into_iter().peekable();
-            let mut new = new_dir.into_iter().peekable();
+            let mut old = old_dir.iter().peekable();
+            let mut new = new_dir.iter().peekable();
             loop {
                 let entry = match (old.peek(), new.peek()) {
                     (Some((a, _)), Some((b, _))) => match a.cmp(b) {
@@ -352,7 +377,7 @@ impl Repository {
                 if let Some((name, before, after)) = entry
                     && before != after
                 {
-                    pending.push((path.join(&name)?, before, after));
+                    pending.push((path.join(name)?, before.cloned(), after.cloned()));
                 }
             }
         }

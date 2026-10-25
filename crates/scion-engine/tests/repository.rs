@@ -376,6 +376,7 @@ fn one_file_commit_does_not_read_or_rewrite_unrelated_subtrees() {
         metadata: BTreeMap::new(),
     };
     let root = repo.create_commit(initial).unwrap().id().unwrap();
+    repo.clear_tree_cache();
     store.tree_reads.store(0, Ordering::Relaxed);
     store.tree_writes.store(0, Ordering::Relaxed);
     let edited = commit(
@@ -386,6 +387,7 @@ fn one_file_commit_does_not_read_or_rewrite_unrelated_subtrees() {
     );
     assert_eq!(store.tree_reads.load(Ordering::Relaxed), 2);
     assert_eq!(store.tree_writes.load(Ordering::Relaxed), 2);
+    repo.clear_tree_cache();
     store.tree_reads.store(0, Ordering::Relaxed);
     let diff = repo.diff(root, edited).unwrap();
     assert_eq!(diff.len(), 1);

@@ -9,9 +9,11 @@ mod derived;
 mod history;
 mod merge;
 mod tree;
+mod tree_cache;
 mod virtual_base;
 pub use derived::{DerivedData, DerivedPolicy};
 pub use merge::RebaseResult;
+pub use tree_cache::TreeCacheStats;
 
 /// A namespaced repository over an independently reusable storage backend.
 #[derive(Clone)]
@@ -19,6 +21,7 @@ pub struct Repository {
     name: String,
     store: SharedStore,
     flights: std::sync::Arc<derived::Flights>,
+    trees: std::sync::Arc<tree_cache::TreeCache>,
 }
 
 impl Repository {
@@ -35,6 +38,7 @@ impl Repository {
             name,
             store,
             flights: Default::default(),
+            trees: Default::default(),
         })
     }
     pub fn name(&self) -> &str {
@@ -42,6 +46,19 @@ impl Repository {
     }
     pub fn store(&self) -> &SharedStore {
         &self.store
+    }
+    /// Configure decoded immutable-tree retention; zero disables it. The default
+    /// is 8 MiB of conservative accounting, shared by clones of this repository.
+    pub fn with_tree_cache_capacity(mut self, bytes: usize) -> Self {
+        self.trees = std::sync::Arc::new(tree_cache::TreeCache::new(bytes));
+        self
+    }
+    /// Discard retained trees; existing readers retain their immutable snapshots.
+    pub fn clear_tree_cache(&self) {
+        self.trees.clear();
+    }
+    pub fn tree_cache_stats(&self) -> TreeCacheStats {
+        self.trees.stats()
     }
     pub(crate) fn namespace(&self, suffix: &str) -> String {
         format!("repo/{}/{suffix}", self.name)
