@@ -256,7 +256,84 @@ def host_metadata(workdir):
     }
 
 
-def retained_fixture(report_path):
+def validate_baseline_build(source, build):
+    """Validate the clean-source evidence shared by original and replay reports."""
+    commit = source["commit"]
+    if not isinstance(commit, str) or len(commit) not in (40, 64) or any(c not in "0123456789abcdef" for c in commit):
+        raise ValueError("baseline report has an invalid source commit")
+    if source["dirty"] is not False or source["status"] != "" or build["source_changed_during_build"] is not False:
+        raise ValueError("baseline report must identify unchanged, clean source")
+    hashes = source["source_sha256"]
+    if not isinstance(hashes, dict) or not hashes or any(not isinstance(path, str) or not isinstance(digest, str) or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest) for path, digest in hashes.items()):
+        raise ValueError("baseline report has invalid source hashes")
+    expected = build["driver_sha256"]
+    if not isinstance(expected, str) or len(expected) != 64 or any(c not in "0123456789abcdef" for c in expected):
+        raise ValueError("baseline report has an invalid executable hash")
+    return expected
+
+
+def retained_baseline(report, work, baseline_info):
+    """Preserve the source run's physical stores instead of changing its baseline."""
+    candidate = work / "scion"
+    stored = report.get("baseline")
+    if stored is None:
+        previous_reuse = report.get("reuse", {})
+        if not isinstance(previous_reuse, dict):
+            raise ValueError("source report has invalid fixture reuse provenance")
+        stored = previous_reuse.get("baseline_fixture_provenance")
+    fixture = report["fixture"]
+    shared = {
+        "store_layout": "shared_retained_store",
+        "baseline_store_directory": str(candidate),
+        "baseline_fixture_scope": "same retained Scion fixture, read-only",
+    }
+    if stored is None:
+        if "scion_baseline" in fixture:
+            raise ValueError("retained baseline fixture is missing its source baseline provenance")
+        return shared
+    if stored["implementation"] != "scion_baseline":
+        raise ValueError("source report has an invalid baseline implementation")
+    for key in ("driver", "source_report"):
+        if not isinstance(stored[key], str) or not stored[key]:
+            raise ValueError(f"source baseline has an invalid provenance path: {key}")
+    if validate_baseline_build(stored["source"], stored["build"]) != stored["driver_sha256"]:
+        raise ValueError("source baseline executable hash differs from its build provenance")
+    report_hash = stored["source_report_sha256"]
+    if not isinstance(report_hash, str) or len(report_hash) != 64 or any(c not in "0123456789abcdef" for c in report_hash):
+        raise ValueError("source baseline has an invalid provenance report hash")
+    directory = Path(stored["store_directory"]).resolve()
+    if directory == candidate.resolve():
+        if "scion_baseline" in fixture or report.get("mode") != "queries_only":
+            raise ValueError("source report aliases an independent baseline fixture to the candidate store")
+        return shared
+    expected = work / "scion-baseline"
+    if directory != expected.resolve():
+        raise ValueError("source baseline store must be the retained work/scion-baseline directory")
+    if fixture.get("scion_baseline") != fixture["scion"]:
+        raise ValueError("retained baseline fixture IDs differ from the candidate fixture")
+    if not expected.is_dir() or not (expected / "metadata.sqlite3").is_file():
+        raise ValueError("independent baseline fixture was not retained; expected work/scion-baseline/metadata.sqlite3")
+    if (expected / "metadata.sqlite3").samefile(candidate / "metadata.sqlite3"):
+        raise ValueError("independent baseline metadata aliases the candidate database")
+    if baseline_info is not None:
+        for key in ("driver_sha256", "source_report_sha256", "source", "build", "reported_host"):
+            if stored[key] != baseline_info[key]:
+                raise ValueError(f"retained baseline provenance differs from the supplied baseline: {key}")
+    return {
+        "store_layout": "independent_retained_stores",
+        "baseline_store_directory": str(expected),
+        "baseline_fixture_scope": "independent retained candidate and baseline stores, read-only; verified identical Scion IDs",
+        "original_baseline_driver_sha256": stored["driver_sha256"],
+        "original_baseline_report_sha256": report_hash,
+        "original_baseline_source_commit": stored["source"]["commit"],
+        # A candidate/Git-only replay does not have a measured `baseline`
+        # section. Preserve its original fixture evidence so another replay
+        # can still select and verify the independently retained baseline.
+        "baseline_fixture_provenance": stored.copy(),
+    }
+
+
+def retained_fixture(report_path, baseline_info=None):
     """Load only a retained fixture that matches its report's exact marker."""
     raw = report_path.read_bytes()
     report = json.loads(raw)
@@ -291,6 +368,7 @@ def retained_fixture(report_path):
         "original_driver_sha256": report["build"]["driver_sha256"],
         "scope": "queries only; no prepared commits or resident writer no-ops are measured",
     }
+    provenance.update(retained_baseline(report, work, baseline_info))
     return dimensions.copy(), fixture, work, provenance
 
 
@@ -301,17 +379,7 @@ def baseline_metadata(driver, report_path):
     if report["schema"] != 1:
         raise ValueError("unsupported baseline-report schema")
     source, build = report["source"], report["build"]
-    commit = source["commit"]
-    if not isinstance(commit, str) or len(commit) not in (40, 64) or any(c not in "0123456789abcdef" for c in commit):
-        raise ValueError("baseline report has an invalid source commit")
-    if source["dirty"] is not False or source["status"] != "" or build["source_changed_during_build"] is not False:
-        raise ValueError("baseline report must identify unchanged, clean source")
-    hashes = source["source_sha256"]
-    if not isinstance(hashes, dict) or not hashes or any(not isinstance(path, str) or not isinstance(digest, str) or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest) for path, digest in hashes.items()):
-        raise ValueError("baseline report has invalid source hashes")
-    expected = build["driver_sha256"]
-    if not isinstance(expected, str) or len(expected) != 64 or any(c not in "0123456789abcdef" for c in expected):
-        raise ValueError("baseline report has an invalid executable hash")
+    expected = validate_baseline_build(source, build)
     actual = hashlib.sha256(driver.read_bytes()).hexdigest()
     if actual != expected:
         raise ValueError(f"baseline executable SHA-256 differs from its report: {actual} != {expected}")
@@ -429,10 +497,13 @@ def main():
         if args.quick or args.work_root is not None or any(value is not None for value in (args.files, args.commits, args.branch_commits, args.fanout, args.blob_bytes, args.variants)):
             parser.error("--reuse-report keeps fixture dimensions; only --samples and --warmup may override them")
         try:
-            dimensions, fixture, retained_work, reused = retained_fixture(args.reuse_report)
+            dimensions, fixture, retained_work, reused = retained_fixture(args.reuse_report, baseline_info)
         except (OSError, ValueError, KeyError, TypeError) as error:
             parser.error(f"cannot reuse fixture: {error}")
         protected.update((args.reuse_report.resolve(), (retained_work / "fixture.json").resolve()))
+        if "baseline_fixture_provenance" in reused:
+            preserved = reused["baseline_fixture_provenance"]
+            protected.update(Path(preserved[key]).resolve() for key in ("driver", "source_report"))
         if args.samples is not None: dimensions["samples"] = args.samples
         if args.warmup is not None: dimensions["warmup"] = args.warmup
     else:
@@ -470,7 +541,7 @@ def main():
         parser.error("baseline executable changed while building the candidate")
     work = retained_work if reused is not None else Path(tempfile.mkdtemp(prefix="scion-git-comparison-", dir=args.work_root))
     git_dir, scion_dir = work / "git", work / "scion"
-    baseline_dir = scion_dir if reused is not None else work / "scion-baseline"
+    baseline_dir = Path(reused["baseline_store_directory"]) if reused is not None else work / "scion-baseline"
     result = {
         "schema": 1, "mode": "queries_only" if reused is not None else "full", "dimensions": dimensions, "host": host_metadata(work), "source": source_after,
         "build": {"command": build, "performed": not args.no_build, "incremental": False, "source_changed_during_build": source_before["source_sha256"] != source_after["source_sha256"], "driver": str(driver), "driver_sha256": hashlib.sha256(driver.read_bytes()).hexdigest(), "target": build_target, "static_crt_requested": args.static_crt, "rustflags": rustflags(build_environment), "rustflags_provenance": "build environment used by this invocation" if not args.no_build else "requested build environment; original flags cannot be recovered from the executable", "linkage": linkage},
@@ -482,7 +553,7 @@ def main():
     if baseline_info is not None:
         result["baseline"] = baseline_info
         result["baseline"]["store_directory"] = str(baseline_dir)
-        result["baseline"]["fixture_scope"] = "same retained Scion fixture, read-only" if reused is not None else "independent store with identical logical requests and verified identical Scion IDs"
+        result["baseline"]["fixture_scope"] = reused["baseline_fixture_scope"] if reused is not None else "independent store with identical logical requests and verified identical Scion IDs"
         result["configuration"]["sample_order"] += "; baseline insertion rotates through positions 0, 1, 2 (all six permutations every six iterations)"
     rows = result["samples"]
     scion = git = reader = baseline = None
