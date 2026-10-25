@@ -60,6 +60,7 @@ impl Repository {
             vec![ours, theirs],
             changes,
             conflicts,
+            None,
             author,
             message,
             timestamp_ms,
@@ -77,14 +78,24 @@ impl Repository {
                 .store()
                 .put_object(ObjectKind::Tree, &canonical(&Tree::default())?)?,
         };
-        let (changes, conflicts) =
+        let (mut changes, conflicts) =
             self.merge_trees(base, self.root_tree(onto)?, self.root_tree(revision)?)?;
+        for (path, change) in &mut changes {
+            if let FileChange::Put { copy_from, .. } = change
+                && let Some(FileChange::Put {
+                    copy_from: source, ..
+                }) = original.changes.get(path)
+            {
+                *copy_from = source.clone();
+            }
+        }
         let mut metadata = original.metadata;
         metadata.insert("scion.rebased_from".into(), revision.to_string());
         self.finish_merge(
             vec![onto],
             changes,
             conflicts,
+            original.committer,
             original.author,
             original.message,
             original.timestamp_ms,
@@ -163,6 +174,7 @@ impl Repository {
             vec![onto],
             changes,
             conflicts,
+            None,
             author,
             message,
             timestamp_ms,
@@ -176,6 +188,7 @@ impl Repository {
         parents: Vec<ObjectId>,
         changes: BTreeMap<RepoPath, FileChange>,
         conflicts: Vec<MergeConflict>,
+        committer: Option<String>,
         author: String,
         message: String,
         timestamp_ms: i64,
@@ -190,7 +203,7 @@ impl Repository {
         let request = Changeset {
             parents,
             author,
-            committer: None,
+            committer,
             timestamp_ms,
             message,
             changes,
@@ -286,6 +299,20 @@ impl Repository {
                 .into(),
             ));
         };
+        let kind_class = |kind| match kind {
+            FileKind::Regular | FileKind::Executable => 0,
+            FileKind::Symlink => 1,
+            FileKind::Submodule => 2,
+        };
+        if (kind_class(ours.kind) != kind_class(base.kind)
+            && kind_class(theirs.kind) != kind_class(ours.kind))
+            || (kind_class(theirs.kind) != kind_class(base.kind)
+                && kind_class(ours.kind) != kind_class(theirs.kind))
+        {
+            return Err(Error::Conflict(
+                "file type change conflicts with concurrent modification".into(),
+            ));
+        }
         let kind = if ours.kind == theirs.kind {
             ours.kind
         } else if ours.kind == base.kind {

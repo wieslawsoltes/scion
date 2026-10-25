@@ -554,3 +554,45 @@ fn concurrent_derivation_coalesces_and_reentrant_indexes_fail_without_deadlock()
         Err(Error::Invalid(_))
     ));
 }
+
+#[test]
+fn merge_combines_executable_mode_with_text_but_rejects_type_change_edit() {
+    let repo = repo();
+    let root = commit(&repo, &[], &[("f", Some(b"target"))], "root");
+    let edited = commit(&repo, &[root], &[("f", Some(b"new target"))], "edit");
+    let change_mode = |kind: FileKind| {
+        let mut file = repo.file(root, &path("f")).unwrap().unwrap();
+        file.kind = kind;
+        repo.create_commit(Changeset {
+            parents: vec![root],
+            author: "a".into(),
+            committer: None,
+            timestamp_ms: 0,
+            message: format!("mode{kind:?}"),
+            changes: BTreeMap::from([(path("f"), FileChange::put(file))]),
+            metadata: BTreeMap::new(),
+        })
+        .unwrap()
+        .id()
+        .unwrap()
+    };
+    let executable = change_mode(FileKind::Executable);
+    let merged = repo
+        .merge(executable, edited, "a".into(), "merge".into(), 0)
+        .unwrap()
+        .changeset
+        .unwrap();
+    assert_eq!(
+        repo.file(merged, &path("f")).unwrap().unwrap().kind,
+        FileKind::Executable
+    );
+    assert_eq!(repo.read_file(merged, &path("f")).unwrap(), b"new target");
+    let symlink = change_mode(FileKind::Symlink);
+    assert_eq!(
+        repo.merge(symlink, edited, "a".into(), "merge".into(), 0)
+            .unwrap()
+            .conflicts
+            .len(),
+        1
+    );
+}

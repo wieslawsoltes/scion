@@ -181,11 +181,35 @@ pub fn ancestors(graph: &impl GraphAccess, start: ObjectId, limit: usize) -> Res
 
 /// All maximal common ancestors, including multiple criss-cross merge bases.
 pub fn merge_bases(graph: &impl GraphAccess, a: ObjectId, b: ObjectId) -> Result<Vec<ObjectId>> {
-    let left: BTreeSet<_> = ancestors(graph, a, MAX_VISITED + 1)?.into_iter().collect();
-    let common: Vec<_> = ancestors(graph, b, MAX_VISITED + 1)?
-        .into_iter()
-        .filter(|id| left.contains(id))
-        .collect();
+    // Paint both frontiers in descending generation. Once a node is common,
+    // its ancestors cannot be maximal and need not be expanded along that route.
+    // This avoids reading the entire shared history for every nearby merge.
+    let mut colors = BTreeMap::new();
+    colors.insert(a, 1_u8);
+    *colors.entry(b).or_default() |= 2;
+    let mut pending = BinaryHeap::from([
+        (graph.node(a)?.generation, a),
+        (graph.node(b)?.generation, b),
+    ]);
+    let mut visited = BTreeSet::new();
+    let mut common = Vec::new();
+    while let Some((_, id)) = pending.pop() {
+        if !visited.insert(id) {
+            continue;
+        }
+        if visited.len() > MAX_VISITED {
+            return Err(Error::Limit("merge-base traversal budget exceeded".into()));
+        }
+        let color = colors[&id];
+        if color == 3 {
+            common.push(id);
+            continue;
+        }
+        for parent in graph.node(id)?.parents {
+            *colors.entry(parent).or_default() |= color;
+            pending.push((graph.node(parent)?.generation, parent));
+        }
+    }
     let mut bases = Vec::new();
     for candidate in common {
         let mut dominated = false;
@@ -203,8 +227,10 @@ pub fn merge_bases(graph: &impl GraphAccess, a: ObjectId, b: ObjectId) -> Result
     Ok(bases)
 }
 
-/// Choose a commit which most evenly divides the unknown good..bad DAG.
-/// Skipped revisions remain part of the search space but cannot be selected.
+/// Choose a balanced commit in the unknown good..bad DAG. Small ranges evaluate
+/// every candidate; large ranges score 65 evenly spaced candidates to bound work.
+/// Graph records are loaded once, never once per candidate. Skipped revisions
+/// remain in the search space but cannot be selected.
 pub fn bisect_candidate(
     graph: &impl GraphAccess,
     good: ObjectId,
@@ -217,26 +243,60 @@ pub fn bisect_candidate(
     let known_good: BTreeSet<_> = ancestors(graph, good, MAX_VISITED + 1)?
         .into_iter()
         .collect();
-    let unknown: BTreeSet<_> = ancestors(graph, bad, MAX_VISITED + 1)?
+    let mut unknown: Vec<_> = ancestors(graph, bad, MAX_VISITED + 1)?
         .into_iter()
         .filter(|id| !known_good.contains(id))
         .collect();
+    unknown.reverse();
+    let positions: BTreeMap<_, _> = unknown.iter().enumerate().map(|(i, id)| (*id, i)).collect();
+    let links = unknown
+        .iter()
+        .map(|id| {
+            Ok(graph
+                .node(*id)?
+                .parents
+                .into_iter()
+                .filter_map(|parent| positions.get(&parent).copied())
+                .collect::<Vec<_>>())
+        })
+        .collect::<Result<Vec<_>>>()?;
     let skipped: BTreeSet<_> = skipped.iter().copied().collect();
-    let mut counts = BTreeMap::new();
-    for candidate in &unknown {
-        if *candidate == bad || skipped.contains(candidate) {
-            continue;
-        }
-        let count = ancestors(graph, *candidate, MAX_VISITED + 1)?
-            .into_iter()
-            .filter(|id| unknown.contains(id))
-            .count();
-        counts.insert(*candidate, count.min(unknown.len().saturating_sub(count)));
+    let eligible: Vec<_> = unknown
+        .iter()
+        .enumerate()
+        .filter(|(_, id)| **id != bad && !skipped.contains(id))
+        .map(|(i, _)| i)
+        .collect();
+    if eligible.is_empty() {
+        return Ok(None);
     }
-    Ok(counts
-        .into_iter()
-        .max_by_key(|(id, balance)| (*balance, *id))
-        .map(|(id, _)| id))
+    let candidates = if eligible.len() <= 512 {
+        eligible
+    } else {
+        (0..=64)
+            .map(|i| eligible[i * (eligible.len() - 1) / 64])
+            .collect()
+    };
+    let mut marks = vec![0_usize; unknown.len()];
+    let mut best = None;
+    for (iteration, candidate) in candidates.into_iter().enumerate() {
+        let mark = iteration + 1;
+        let mut queue = vec![candidate];
+        let mut count = 0;
+        while let Some(index) = queue.pop() {
+            if marks[index] == mark {
+                continue;
+            }
+            marks[index] = mark;
+            count += 1;
+            queue.extend(links[index].iter().copied());
+        }
+        let score = (count.min(unknown.len() - count), unknown[candidate]);
+        if best.is_none_or(|current| score > current) {
+            best = Some(score);
+        }
+    }
+    Ok(best.map(|(_, id)| id))
 }
 
 #[cfg(test)]
@@ -294,6 +354,17 @@ mod tests {
             "linear negative ancestry read {} nodes",
             measured.reads.get()
         );
+        let left = g.add("left", &[tip]);
+        let right = g.add("right", &[tip]);
+        let measured = Measured {
+            graph: &g,
+            reads: std::cell::Cell::new(0),
+        };
+        assert_eq!(merge_bases(&measured, left, right).unwrap(), vec![tip]);
+        assert!(
+            measured.reads.get() < 20,
+            "merge base scanned common history"
+        );
     }
     #[test]
     fn criss_cross_returns_all_maximal_bases() {
@@ -318,5 +389,51 @@ mod tests {
         let d = g.add("d", &[c]);
         let e = g.add("e", &[d]);
         assert_eq!(bisect_candidate(&g, a, e, &[]).unwrap(), Some(c));
+    }
+
+    #[test]
+    fn optimized_dag_queries_match_an_exhaustive_reachability_oracle() {
+        let mut graph = Graph::default();
+        let mut ids = Vec::new();
+        let mut reach = BTreeMap::<ObjectId, BTreeSet<ObjectId>>::new();
+        let mut seed = 0x1234_5678_u64;
+        let mut random = || {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+            seed
+        };
+        for i in 0..128 {
+            let count = if i == 0 { 0 } else { (random() % 4) as usize };
+            let mut parents = BTreeSet::new();
+            for _ in 0..count {
+                parents.insert(ids[(random() as usize) % ids.len()]);
+            }
+            let parents = parents.into_iter().collect::<Vec<_>>();
+            let id = graph.add(&format!("random{i}"), &parents);
+            let mut ancestors = BTreeSet::from([id]);
+            for parent in parents {
+                ancestors.extend(reach[&parent].iter().copied());
+            }
+            reach.insert(id, ancestors);
+            ids.push(id);
+        }
+        for _ in 0..256 {
+            let a = ids[(random() as usize) % ids.len()];
+            let b = ids[(random() as usize) % ids.len()];
+            assert_eq!(is_ancestor(&graph, a, b).unwrap(), reach[&b].contains(&a));
+            let common = reach[&a]
+                .intersection(&reach[&b])
+                .copied()
+                .collect::<Vec<_>>();
+            let expected = common
+                .iter()
+                .filter(|candidate| {
+                    !common
+                        .iter()
+                        .any(|other| other != *candidate && reach[other].contains(*candidate))
+                })
+                .copied()
+                .collect::<Vec<_>>();
+            assert_eq!(merge_bases(&graph, a, b).unwrap(), expected);
+        }
     }
 }
