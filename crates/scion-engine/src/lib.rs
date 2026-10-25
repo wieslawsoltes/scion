@@ -64,13 +64,15 @@ impl Repository {
     pub fn store(&self) -> &SharedStore {
         &self.store
     }
-    /// Configure decoded immutable-tree retention; zero disables it. The default
-    /// is 8 MiB of conservative accounting, shared by clones of this repository.
+    /// Configure retention of immutable trees, selected directory entries, and
+    /// membership-validated revision roots; zero disables it. The default is
+    /// 8 MiB of conservative accounting, shared by clones of this repository.
     pub fn with_tree_cache_capacity(mut self, bytes: usize) -> Self {
         self.trees = std::sync::Arc::new(tree_cache::TreeCache::new(bytes));
         self
     }
-    /// Discard retained trees; existing readers retain their immutable snapshots.
+    /// Discard retained trees, point lookups and validated revision roots.
+    /// Existing readers retain their immutable tree snapshots.
     pub fn clear_tree_cache(&self) {
         self.trees.clear();
     }
@@ -193,6 +195,7 @@ impl Repository {
         for (id, tree) in prepared.decoded {
             self.trees.insert(id, tree);
         }
+        self.trees.insert_root(id, prepared.root);
         Ok(CommitPublication {
             changeset: request,
             sequence: publication.sequence,

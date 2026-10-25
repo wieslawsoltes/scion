@@ -12,10 +12,144 @@ use std::{borrow::Cow, collections::BTreeMap, fmt};
 /// Stream every entry and validate every name, retaining only the requested
 /// value. Unlike `IgnoredAny`, this still checks ignored sibling payloads.
 pub(crate) fn lookup(bytes: &[u8], name: &str) -> serde_json::Result<Option<TreeEntry>> {
+    if let Some(entry) = CanonicalLookup::lookup(bytes, name) {
+        return Ok(entry);
+    }
     let mut deserializer = serde_json::Deserializer::from_slice(bytes);
     let value = de::DeserializeSeed::deserialize(Lookup(name), &mut deserializer)?;
     deserializer.end()?;
     Ok(value)
+}
+
+/// Recognize the fixed field layout emitted by `canonical(Tree)` directly. The
+/// complete input, including every unused sibling, is checked before returning.
+/// Any unsupported syntax takes the ordinary streaming Serde path below.
+struct CanonicalLookup<'a> {
+    remaining: &'a [u8],
+}
+
+impl<'a> CanonicalLookup<'a> {
+    fn lookup(bytes: &'a [u8], wanted: &str) -> Option<Option<TreeEntry>> {
+        let mut parser = Self { remaining: bytes };
+        parser.expect(b"{\"entries\":{")?;
+        let mut found = None;
+        if parser.consume(b"}}") {
+            return parser.remaining.is_empty().then_some(None);
+        }
+        loop {
+            let name = parser.name()?;
+            validate_path(name).ok()?;
+            if name.is_empty() || name.contains('/') {
+                return None;
+            }
+            let selected = name == wanted;
+            parser.expect(b":")?;
+            if parser.consume(b"{\"type\":\"directory\",\"id\":\"") {
+                let id = parser.identifier(selected)?;
+                parser.expect(b"\"}")?;
+                if let Some(id) = id {
+                    found = Some(TreeEntry::Directory { id });
+                }
+            } else if parser.consume(b"{\"type\":\"file\",\"entry\":{\"id\":\"") {
+                let id = parser.identifier(selected)?;
+                parser.expect(b"\",\"size\":")?;
+                let size = parser.size(selected)?;
+                parser.expect(b",\"kind\":\"")?;
+                let kind = if parser.consume(b"regular\"}}") {
+                    FileKind::Regular
+                } else if parser.consume(b"executable\"}}") {
+                    FileKind::Executable
+                } else if parser.consume(b"symlink\"}}") {
+                    FileKind::Symlink
+                } else if parser.consume(b"submodule\"}}") {
+                    FileKind::Submodule
+                } else {
+                    return None;
+                };
+                if let Some(id) = id {
+                    found = Some(TreeEntry::File {
+                        entry: FileEntry { id, size, kind },
+                    });
+                }
+            } else {
+                return None;
+            }
+            if parser.consume(b"}}") {
+                return parser.remaining.is_empty().then_some(found);
+            }
+            parser.expect(b",")?;
+        }
+    }
+
+    fn consume(&mut self, expected: &[u8]) -> bool {
+        if let Some(remaining) = self.remaining.strip_prefix(expected) {
+            self.remaining = remaining;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn expect(&mut self, expected: &[u8]) -> Option<()> {
+        self.consume(expected).then_some(())
+    }
+
+    fn name(&mut self) -> Option<&'a str> {
+        self.expect(b"\"")?;
+        let end = self.remaining.iter().position(|byte| *byte == b'"')?;
+        let raw = &self.remaining[..end];
+        // Escaped JSON names are handled by Serde. All other unescaped bytes
+        // must form valid UTF-8 and exclude JSON control characters.
+        if raw.iter().any(|byte| *byte == b'\\' || *byte < 0x20) {
+            return None;
+        }
+        let name = std::str::from_utf8(raw).ok()?;
+        self.remaining = &self.remaining[end + 1..];
+        Some(name)
+    }
+
+    fn identifier(&mut self, selected: bool) -> Option<Option<ObjectId>> {
+        let raw = self.remaining.get(..64)?;
+        // A full reduction checks all digits without constructing an unused ID.
+        // It also permits the optimizer to check independent bytes in parallel.
+        let invalid = raw.iter().fold(0u8, |invalid, byte| {
+            invalid | u8::from(!byte.is_ascii_hexdigit())
+        });
+        if invalid != 0 {
+            return None;
+        }
+        self.remaining = &self.remaining[64..];
+        if selected {
+            Some(Some(std::str::from_utf8(raw).ok()?.parse().ok()?))
+        } else {
+            Some(None)
+        }
+    }
+
+    fn size(&mut self, selected: bool) -> Option<u64> {
+        let end = self
+            .remaining
+            .iter()
+            .take_while(|byte| byte.is_ascii_digit())
+            .count();
+        let raw = self.remaining.get(..end)?;
+        if raw.is_empty()
+            || (raw.len() > 1 && raw[0] == b'0')
+            || raw.len() > 20
+            || (raw.len() == 20 && raw > b"18446744073709551615")
+        {
+            return None;
+        }
+        self.remaining = &self.remaining[end..];
+        if selected {
+            Some(
+                raw.iter()
+                    .fold(0, |value, digit| value * 10 + u64::from(digit - b'0')),
+            )
+        } else {
+            Some(0)
+        }
+    }
 }
 
 struct Name<'a>(Cow<'a, str>);
@@ -223,5 +357,15 @@ mod tests {
         let decoded: CanonicalTree =
             serde_json::from_slice(&canonical(&original).unwrap()).unwrap();
         assert_eq!(decoded.entries, original.entries);
+        for name in ["file", "folder", "missing"] {
+            assert_eq!(
+                CanonicalLookup::lookup(&canonical(&original).unwrap(), name),
+                Some(original.entries.get(name).cloned()),
+            );
+        }
+        assert_eq!(
+            CanonicalLookup::lookup(b"{\"entries\":{}}", "missing"),
+            Some(None)
+        );
     }
 }

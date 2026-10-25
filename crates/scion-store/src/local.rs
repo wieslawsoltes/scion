@@ -47,8 +47,8 @@ pub struct LocalStoreOptions {
 impl Default for LocalStoreOptions {
     fn default() -> Self {
         Self {
-            mmap_size: 256 * 1024 * 1024,
-            checkpoint_on_close: false,
+            mmap_size: 0,
+            checkpoint_on_close: true,
         }
     }
 }

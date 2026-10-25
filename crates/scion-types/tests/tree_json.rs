@@ -223,3 +223,79 @@ fn point_lookup_checks_siblings_after_match_and_escaped_names() {
         assert!(Tree::entry_from_json(invalid.as_bytes(), name).is_err());
     }
 }
+
+#[test]
+fn canonical_point_parser_matches_complete_validation_under_byte_mutations() {
+    use scion_types::{FileEntry, FileKind, TreeEntry};
+    let id = ObjectId::hash(ObjectKind::Blob, b"point-lookup oracle");
+    let tree = Tree {
+        entries: [
+            ("directory".into(), TreeEntry::Directory { id }),
+            (
+                "item".into(),
+                TreeEntry::File {
+                    entry: FileEntry {
+                        id,
+                        size: u64::MAX,
+                        kind: FileKind::Regular,
+                    },
+                },
+            ),
+            (
+                "last".into(),
+                TreeEntry::File {
+                    entry: FileEntry {
+                        id,
+                        size: 0,
+                        kind: FileKind::Submodule,
+                    },
+                },
+            ),
+        ]
+        .into(),
+    };
+    let original = canonical(&tree).unwrap();
+    let check = |input: &[u8]| {
+        let reference = serde_json::from_slice::<Tree>(input)
+            .ok()
+            .filter(|tree| tree.validate().is_ok());
+        for name in ["directory", "item", "last", "missing"] {
+            let actual = Tree::entry_from_json(input, name);
+            match &reference {
+                Some(tree) => assert_eq!(
+                    actual.unwrap(),
+                    tree.entries.get(name).cloned(),
+                    "{input:?}"
+                ),
+                None => assert!(actual.is_err(), "accepted malformed tree: {input:?}"),
+            }
+        }
+    };
+    check(&original);
+    for position in 0..original.len() {
+        check(&original[..position]);
+        let mut input = original.clone();
+        for byte in [
+            b' ', b'0', b'9', b'a', b'g', b'{', b'}', b'[', b']', b'"', b'\\', b',', b':', 0, 0xff,
+        ] {
+            input[position] = byte;
+            check(&input);
+        }
+    }
+    for size in [
+        "0",
+        "1",
+        "01",
+        "-1",
+        "18446744073709551615",
+        "18446744073709551616",
+        "1.0",
+        "1e2",
+        "1e999",
+    ] {
+        let input = String::from_utf8(original.clone())
+            .unwrap()
+            .replace("18446744073709551615", size);
+        check(input.as_bytes());
+    }
+}

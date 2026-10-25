@@ -5,7 +5,7 @@ use std::{
     sync::Arc,
 };
 
-/// Accounting for the repository's bounded, immutable decoded-tree cache.
+/// Accounting for retained trees, selected entries, and validated revision roots.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct TreeCacheStats {
     pub entries: usize,
@@ -20,12 +20,17 @@ pub(crate) struct TreeCache {
 }
 #[derive(Default)]
 struct State {
-    entries: HashMap<ObjectId, Entry>,
-    lru: BTreeSet<(u64, ObjectId)>,
+    entries: HashMap<Key, Entry>,
+    lru: BTreeSet<(u64, Key)>,
     bytes: usize,
     clock: u64,
     hits: u64,
     misses: u64,
+}
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+enum Key {
+    Tree(ObjectId),
+    Root(ObjectId),
 }
 struct Entry {
     value: Value,
@@ -34,6 +39,7 @@ struct Entry {
 }
 enum Value {
     Tree(Arc<Tree>),
+    Root(ObjectId),
     /// Cold point lookups retain only selected entries. Missing names are cached
     /// as well; the immutable object's full payload was validated before insert.
     Lookups(BTreeMap<String, Option<TreeEntry>>),
@@ -61,6 +67,7 @@ impl TreeCache {
         state.clock
     }
     pub(crate) fn get(&self, id: ObjectId) -> Option<Arc<Tree>> {
+        let id = Key::Tree(id);
         let mut state = self.state.lock();
         let stamp = Self::tick(&mut state);
         if let Some(entry) = state.entries.get_mut(&id)
@@ -79,12 +86,14 @@ impl TreeCache {
         }
     }
     pub(crate) fn entry(&self, id: ObjectId, name: &str) -> Option<Option<TreeEntry>> {
+        let id = Key::Tree(id);
         let mut state = self.state.lock();
         let stamp = Self::tick(&mut state);
         let found = state.entries.get_mut(&id).and_then(|entry| {
             let value = match &entry.value {
                 Value::Tree(tree) => Some(tree.entries.get(name).cloned()),
                 Value::Lookups(entries) => entries.get(name).cloned(),
+                Value::Root(_) => None,
             }?;
             let old = std::mem::replace(&mut entry.stamp, stamp);
             Some((old, value))
@@ -100,17 +109,18 @@ impl TreeCache {
         }
     }
     pub(crate) fn should_promote(&self, id: ObjectId) -> bool {
-        self.state.lock().entries.get(&id).is_some_and(
+        self.state.lock().entries.get(&Key::Tree(id)).is_some_and(
             |entry| matches!(&entry.value, Value::Lookups(entries) if !entries.is_empty()),
         )
     }
     pub(crate) fn insert_entry(&self, id: ObjectId, name: &str, value: Option<TreeEntry>) {
+        let id = Key::Tree(id);
         let mut state = self.state.lock();
         if state
             .entries
             .get(&id)
             .is_some_and(|entry| match &entry.value {
-                Value::Tree(_) => true,
+                Value::Tree(_) | Value::Root(_) => true,
                 Value::Lookups(entries) => entries.contains_key(name),
             })
         {
@@ -140,6 +150,7 @@ impl TreeCache {
         self.insert_value(&mut state, id, Value::Lookups(entries), bytes);
     }
     pub(crate) fn insert(&self, id: ObjectId, tree: Arc<Tree>) {
+        let id = Key::Tree(id);
         // Conservative per-entry allowance includes B-tree nodes, key capacity,
         // enum values, Arc and the cache's two indexing structures.
         let bytes = tree.entries.keys().fold(512usize, |size, key| {
@@ -162,7 +173,38 @@ impl TreeCache {
         }
         self.insert_value(&mut state, id, Value::Tree(tree), bytes);
     }
-    fn insert_value(&self, state: &mut State, id: ObjectId, value: Value, bytes: usize) {
+    pub(crate) fn root(&self, revision: ObjectId) -> Option<ObjectId> {
+        let id = Key::Root(revision);
+        let mut state = self.state.lock();
+        let stamp = Self::tick(&mut state);
+        if let Some(entry) = state.entries.get_mut(&id)
+            && let Value::Root(root) = entry.value
+        {
+            let old = std::mem::replace(&mut entry.stamp, stamp);
+            state.lru.remove(&(old, id));
+            state.lru.insert((stamp, id));
+            state.hits = state.hits.saturating_add(1);
+            Some(root)
+        } else {
+            state.misses = state.misses.saturating_add(1);
+            None
+        }
+    }
+    /// Call only after guarded membership lookup or acknowledged publication.
+    /// Membership and tree indexes are immutable within a repository namespace.
+    pub(crate) fn insert_root(&self, revision: ObjectId, root: ObjectId) {
+        const BYTES: usize = 256;
+        if BYTES > self.capacity {
+            return;
+        }
+        let id = Key::Root(revision);
+        let mut state = self.state.lock();
+        if state.entries.contains_key(&id) {
+            return;
+        }
+        self.insert_value(&mut state, id, Value::Root(root), BYTES);
+    }
+    fn insert_value(&self, state: &mut State, id: Key, value: Value, bytes: usize) {
         while state.bytes.saturating_add(bytes) > self.capacity || state.entries.len() >= 4096 {
             let Some((_, oldest)) = state.lru.pop_first() else {
                 break;
@@ -246,5 +288,28 @@ mod tests {
         let disabled = TreeCache::new(0);
         disabled.insert_entry(a, "name", None);
         assert_eq!(disabled.stats().entries, 0);
+    }
+
+    #[test]
+    fn validated_roots_share_the_budget_and_cannot_alias_tree_keys() {
+        let cache = TreeCache::new(1024);
+        let id = ObjectId::hash(ObjectKind::Changeset, b"revision");
+        let root = ObjectId::hash(ObjectKind::Tree, b"root");
+        cache.insert(id, Arc::new(Tree::default()));
+        cache.insert_root(id, root);
+        assert!(cache.get(id).is_some());
+        assert_eq!(cache.root(id), Some(root));
+        assert_eq!(cache.stats().estimated_bytes, 768);
+        for index in 0u8..32 {
+            cache.insert_root(ObjectId::hash(ObjectKind::Changeset, &[index]), root);
+            assert!(cache.stats().estimated_bytes <= 1024);
+        }
+        assert_eq!(cache.stats().entries, 4);
+        cache.clear();
+        assert_eq!(cache.root(id), None);
+        assert_eq!(cache.stats().estimated_bytes, 0);
+        let disabled = TreeCache::new(0);
+        disabled.insert_root(id, root);
+        assert_eq!(disabled.root(id), None);
     }
 }

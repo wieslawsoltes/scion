@@ -3,21 +3,37 @@ use scion_store::{LocalStore, LocalStoreOptions, PreparedObject, Storage};
 use scion_types::{ObjectId, ObjectKind};
 
 #[test]
-fn default_close_keeps_durable_wal_and_explicit_checkpoint_cleans_it() {
+fn retained_wal_option_preserves_durability_and_default_close_cleans_it() {
     let dir = tempfile::tempdir().unwrap();
     let wal = dir.path().join("metadata.sqlite3-wal");
     let object =
         PreparedObject::new(ObjectKind::Changeset, b"durable in retained WAL".to_vec()).unwrap();
     {
-        let writer = LocalStore::open(dir.path()).unwrap();
-        assert_eq!(writer.options(), LocalStoreOptions::default());
+        let writer = LocalStore::open_with_options(
+            dir.path(),
+            LocalStoreOptions {
+                mmap_size: 0,
+                checkpoint_on_close: false,
+            },
+        )
+        .unwrap();
         writer
             .publish_commit_with_objects("r", object.id(), std::slice::from_ref(&object), &[])
             .unwrap();
     }
-    assert!(wal.is_file(), "default close must retain the durable WAL");
+    assert!(
+        wal.is_file(),
+        "explicit no-checkpoint close must retain the durable WAL"
+    );
     {
-        let reader = LocalStore::open_read_only(dir.path()).unwrap();
+        let reader = LocalStore::open_read_only_with_options(
+            dir.path(),
+            LocalStoreOptions {
+                mmap_size: 0,
+                checkpoint_on_close: false,
+            },
+        )
+        .unwrap();
         assert_eq!(
             reader.get_object(object.kind(), object.id()).unwrap(),
             object.bytes()
@@ -29,14 +45,8 @@ fn default_close_keeps_durable_wal_and_explicit_checkpoint_cleans_it() {
         "read-only close must not discard WAL coordination state"
     );
     {
-        let writer = LocalStore::open_with_options(
-            dir.path(),
-            LocalStoreOptions {
-                mmap_size: 0,
-                checkpoint_on_close: true,
-            },
-        )
-        .unwrap();
+        let writer = LocalStore::open(dir.path()).unwrap();
+        assert_eq!(writer.options(), LocalStoreOptions::default());
         writer
             .put_record("options", "checkpoint", b"enabled")
             .unwrap();

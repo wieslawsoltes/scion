@@ -322,6 +322,7 @@ struct CountingStore {
     tree_reads: AtomicUsize,
     tree_writes: AtomicUsize,
     blob_reads: AtomicUsize,
+    record_reads: AtomicUsize,
     fail_tree_writes: AtomicBool,
 }
 impl Storage for CountingStore {
@@ -350,6 +351,7 @@ impl Storage for CountingStore {
         self.inner.put_encoded(k, id, b)
     }
     fn get_record(&self, n: &str, k: &str) -> Result<Option<Vec<u8>>> {
+        self.record_reads.fetch_add(1, Ordering::Relaxed);
         self.inner.get_record(n, k)
     }
     fn put_record(&self, n: &str, k: &str, v: &[u8]) -> Result<()> {
@@ -504,6 +506,52 @@ fn distinct_cold_point_reads_promote_a_wide_directory_once() {
     assert!(repo.file(revision, &path("absent")).unwrap().is_none());
     assert_eq!(store.tree_reads.load(Ordering::Relaxed), 2);
     assert!(repo.tree_cache_stats().estimated_bytes <= 8 * 1024 * 1024);
+}
+
+#[test]
+fn cached_revision_roots_are_bounded_positive_repository_membership_proofs() {
+    let store = Arc::new(CountingStore::default());
+    let repo = Repository::new("test", store.clone()).unwrap();
+    let revision = commit(&repo, &[], &[("file", Some(b"contents"))], "root");
+    repo.clear_tree_cache();
+    store.record_reads.store(0, Ordering::Relaxed);
+    let root = repo.root_tree(revision).unwrap();
+    assert_eq!(store.record_reads.load(Ordering::Relaxed), 2);
+    for _ in 0..32 {
+        assert_eq!(repo.clone().root_tree(revision).unwrap(), root);
+    }
+    assert_eq!(store.record_reads.load(Ordering::Relaxed), 2);
+    repo.clone().clear_tree_cache();
+    assert_eq!(repo.root_tree(revision).unwrap(), root);
+    assert_eq!(store.record_reads.load(Ordering::Relaxed), 4);
+
+    let foreign = Repository::new("foreign", store.clone()).unwrap();
+    let key = revision.to_string();
+    store
+        .put_record(
+            "repo/foreign/derived/tree/1",
+            &key,
+            &canonical(&root).unwrap(),
+        )
+        .unwrap();
+    for _ in 0..2 {
+        assert!(matches!(
+            foreign.root_tree(revision),
+            Err(Error::NotFound(_))
+        ));
+    }
+    assert_eq!(store.record_reads.load(Ordering::Relaxed), 8);
+    // An earlier negative query never hides subsequent authoritative publication.
+    store.append_log("foreign", revision).unwrap();
+    assert_eq!(foreign.root_tree(revision).unwrap(), root);
+    assert_eq!(store.record_reads.load(Ordering::Relaxed), 10);
+
+    let disabled = Repository::new("test", store.clone())
+        .unwrap()
+        .with_tree_cache_capacity(0);
+    assert_eq!(disabled.root_tree(revision).unwrap(), root);
+    assert_eq!(disabled.root_tree(revision).unwrap(), root);
+    assert_eq!(store.record_reads.load(Ordering::Relaxed), 14);
 }
 
 #[test]

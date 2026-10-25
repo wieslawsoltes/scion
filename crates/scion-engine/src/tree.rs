@@ -47,6 +47,9 @@ impl Repository {
     }
 
     pub fn root_tree(&self, revision: ObjectId) -> Result<ObjectId> {
+        if let Some(root) = self.trees.root(revision) {
+            return Ok(root);
+        }
         let key = revision.to_string();
         let [member, tree] = self.store().get_record_pair(
             (&self.namespace("changesets"), &key),
@@ -59,13 +62,15 @@ impl Repository {
             )));
         }
         if let Some(bytes) = tree {
-            return Ok(serde_json::from_slice(&bytes)?);
+            let root = serde_json::from_slice(&bytes)?;
+            self.trees.insert_root(revision, root);
+            return Ok(root);
         }
         // The general derived evaluator reconstructs evicted/rebuildable tree indexes.
         let object = self.derive(revision, &crate::derived::TreeIndex)?;
-        Ok(serde_json::from_slice(
-            &self.store().get_object(ObjectKind::Derived, object)?,
-        )?)
+        let root = serde_json::from_slice(&self.store().get_object(ObjectKind::Derived, object)?)?;
+        self.trees.insert_root(revision, root);
+        Ok(root)
     }
 
     pub(crate) fn apply_tree(

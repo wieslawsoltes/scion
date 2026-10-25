@@ -89,39 +89,40 @@ identities remain identical.
 ## Local I/O options
 
 `LocalStore::open` and `open_read_only` both use `LocalStoreOptions::default()`:
-up to 256 MiB of the main database may be memory-mapped, and the last connection
-leaves its WAL/coordination files in place instead of checkpointing and deleting
-them at shutdown. Ordinary WAL auto-checkpointing and FULL synchronization of
-acknowledged writes remain enabled. This avoids copying mapped database pages
-through SQLite's page buffers and repeated sidecar teardown for short queries.
-Mapping configuration is deferred until the first database operation, and errors
-are returned before that operation proceeds. SQLite may reduce or disable mapping
-when the platform or VFS cannot provide it.
+ordinary SQLite reads (`mmap_size: 0`) and SQLite's normal last-connection
+checkpoint/cleanup policy (`checkpoint_on_close: true`). Fresh-process profiling
+found that mapping setup, page faults and teardown outweighed its reduced copying
+for the measured repository queries, so mapping is an explicit option for
+long-lived deployments. FULL synchronization of acknowledged writes and ordinary
+WAL auto-checkpointing remain enabled in every configuration.
 
-Both behaviors are configurable through `open_with_options` and
-`open_read_only_with_options`:
+Use `open_with_options` or `open_read_only_with_options` to select a policy:
 
 ```rust
 use scion_store::{LocalStore, LocalStoreOptions};
 let store = LocalStore::open_with_options("scion-data", LocalStoreOptions {
-    mmap_size: 0,              // Use ordinary SQLite reads instead of mappings.
-    checkpoint_on_close: true, // Restore SQLite's last-connection cleanup policy.
+    mmap_size: 256 * 1024 * 1024, // Optional bounded mapping for database reads.
+    checkpoint_on_close: false,  // Retain WAL/coordination files on final close.
 })?;
 # Ok::<(), scion_types::Error>(())
 ```
 
-Mapped readers still observe concurrent WAL commits and use normal SQLite locking;
-this is not immutable or exclusive mode. As described in [SQLite's mmap guide](https://www.sqlite.org/mmap.html),
-an underlying mapped I/O failure can cause a process signal instead of a returned
-I/O error, and Windows mappings can delay truncation during VACUUM. Set
-`mmap_size: 0` for deployments that require the ordinary read/error path.
+Mapping configuration is deferred until the first database operation, and errors
+are returned before that operation proceeds. SQLite may reduce or disable mapping
+when the platform or VFS cannot provide it. Mapped readers still observe concurrent
+WAL commits and use normal SQLite locking; this is not immutable or exclusive mode.
+As described in [SQLite's mmap guide](https://www.sqlite.org/mmap.html), an underlying
+mapped I/O failure can cause a process signal instead of a returned I/O error, and
+Windows mappings can delay truncation during VACUUM. Leave `mmap_size: 0` to use
+the ordinary read/error path.
 
-WAL files can remain after every connection closes. Back up the complete store
-with a consistent SQLite backup or quiesced filesystem snapshot, including any
-live WAL and the loose-object directory; a database-file-only copy can omit
-acknowledged commits. `checkpoint_on_close: true` restores final checkpoint and
-cleanup when a writable connection is the last open connection. No write durability
-setting is weakened by either option.
+With `checkpoint_on_close: false`, WAL files can remain after every connection
+closes. Back up the complete store with a consistent SQLite backup or quiesced
+filesystem snapshot, including any live WAL and the loose-object directory; a
+database-file-only copy can omit acknowledged commits. The default
+`checkpoint_on_close: true` preserves final checkpoint and cleanup when a writable
+connection is the last open connection. No write durability setting is weakened by
+either option.
 
 ## Read-only access
 
