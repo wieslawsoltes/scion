@@ -4,13 +4,81 @@
 same generated repository. It checks every query result and saves individual
 samples, summary statistics, configurations, tool versions and source hashes.
 The comparison uses `LocalStore`, including SQLite and filesystem durability.
-The latest Git 2.56.0 results are in the [version follow-up](#git-2560-follow-up-25-october-2026),
-including a full default profile and every query on the 100,000-commit history.
-Earlier runs remain below as an optimization record.
+The latest complete results are the [optimized three-way comparison](#optimized-three-way-comparison-25-october-2026).
+The [Git 2.56.0 version follow-up](#git-2560-follow-up-25-october-2026) retains the
+earlier default and 100,000-commit histories as an optimization record.
 
 These measurements describe the specified workload and machine. They do not
 establish a general performance advantage over Git, distributed server throughput,
 or behavior under cold caches, concurrent writers or real monorepo contents.
+
+## Optimized three-way comparison: 25 October 2026
+
+This complete default-profile run uses clean published source
+[`3b3110c`](https://github.com/wieslawsoltes/scion/commit/3b3110cf4f9cbc286a64289917707342da8d11e2),
+the preserved earlier Scion executable, and Git 2.56.0. Each implementation runs
+31 samples after three warmups on the same logical workload: 100,000 file paths,
+a 10,000-commit trunk, and 1,000 commits on each divergent arm. The two Scion
+stores are constructed independently; all their changeset IDs and query outputs
+must agree. All six execution orders rotate through the sample schedule.
+
+The candidate is a verified static-CRT GNU/Linux x86_64 release build. The
+baseline is the exact earlier dynamic executable, SHA-256
+`ff6a44c736b135d4ec920f4d497a92fa3cac4a2936ff284a6c4abeb1ef6aa6c6`,
+verified against its unchanged clean-source report. Startup improvements from
+linkage are therefore included in fresh-process results, not presented as purely
+algorithmic gains. The JSON records compiler, host, source files, both executable
+identities, build command, flags, linkage, and original baseline provenance.
+
+| Operation | Scion p50 / p95, µs | Baseline p50, µs | Git p50, µs | Baseline / Scion | Git / Scion |
+|---|---:|---:|---:|---:|---:|
+| Prepared durable commit | 1,021.698 / 1,136.911 | 2,053.031 | 2,812.003 | 2.009× | 2.752× |
+| Positive ancestry | 1,162.399 / 1,433.547 | 1,507.950 | 3,282.029 | 1.297× | 2.823× |
+| Negative ancestry | 1,116.921 / 1,460.057 | 1,757.715 | 3,170.311 | 1.574× | 2.838× |
+| Ancestor merge base | 1,061.838 / 1,238.744 | 1,491.815 | 2,914.877 | 1.405× | 2.745× |
+| Divergent merge base | 1,200.617 / 1,497.303 | 1,785.717 | 1,561.130 | 1.487× | 1.300× |
+| Fresh file read, 1 KiB | 1,039.635 / 1,171.624 | 2,190.586 | 1,287.227 | 2.107× | 1.238× |
+| Fresh one-file text diff | 1,141.017 / 1,551.145 | 3,118.914 | 1,611.074 | 2.733× | 1.412× |
+| Resident spread file read | 17.116 / 35.143 | 38.208 | 47.241 | 2.232× | 2.760× |
+
+Ratios above one favor the current Scion build. All eight functional medians
+beat Git. Four reach the 2× improvement target against the earlier Scion build;
+the four graph-query rows remain below it. The durable-commit result is 2.009×,
+close to the threshold and subject to ordinary shared-host timing variation.
+It retains FULL-synchronous publication and the explicit reference CAS.
+
+### Controls
+
+| Operation | Scion p50 / p95, µs | Baseline p50, µs | Git p50, µs | Baseline / Scion | Git / Scion |
+|---|---:|---:|---:|---:|---:|
+| Process startup control | 535.656 / 676.448 | 867.596 | 837.911 | 1.620× | 1.564× |
+| Repository-open control | 942.859 / 1,717.755 | 1,405.415 | 1,124.342 | 1.491× | 1.192× |
+| Resident no-op control | 14.351 / 33.971 | 14.502 | 14.311 | 1.011× | 0.997× |
+
+These controls are measured and retained, never subtracted. The resident no-op
+is effectively equal and is slightly faster for Git in this run. None of the
+three controls improves by 2×. Fresh file/diff queries use the public consistent
+SQLite snapshot API; resident reads retain live visibility. This run does not use
+a frozen graph artifact.
+
+### Raw evidence and reproduction
+
+- [JSON report with every sample and provenance](benchmarks/git-comparison-2026-10-25-optimized-full.json)
+- [Raw CSV](benchmarks/git-comparison-2026-10-25-optimized-full.csv)
+- [Summary CSV, including all p95s and controls](benchmarks/git-comparison-2026-10-25-optimized-full-summary.csv)
+
+```sh
+PATH=/path/to/git-2.56.0/bin:$PATH CARGO_INCREMENTAL=0 \
+  python3 scripts/compare_git.py --static-crt --keep-workdir \
+  --baseline-driver /path/to/preserved/comparison_driver \
+  --baseline-report docs/benchmarks/git-comparison-2026-10-25-git-2.56-full.json \
+  --output target/git-comparison/optimized-full
+```
+
+Use the preserved executable matching the baseline report; compiling a current
+worker and relabeling it as the baseline is rejected by the hash check. These
+results describe one machine and fixture. Historical results below retain their
+original source, setup, and limitations.
 
 ## Run it
 
