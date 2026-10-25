@@ -159,38 +159,47 @@ All product crates carry package metadata and versioned internal dependencies. C
 
 ## Measured performance
 
-The latest large-history three-way run compares the optimized build, a preserved
-Scion baseline, and **Git 2.56.0**. It uses 100,000 file paths, a 100,000-commit
-trunk, 10,000 commits per divergent arm, 31 samples per operation, and warm
-operating-system caches. Both systems retain their documented durable-write
-settings. Fresh queries include process startup and shutdown; prepared commits
-and spread reads use resident workers.
+The latest complete three-way comparison uses **Git 2.56.0**, a preserved Scion
+baseline, 100,000 file paths, a 10,000-commit trunk, 1,000 commits per divergent
+arm, 31 samples per operation, and warm operating-system caches. Both systems
+retain their documented durable-write settings. Fresh queries include process
+startup and shutdown; prepared commits and spread reads use resident workers.
 
 Candidate graph queries use the explicit frozen graph API, prepared alongside
-Git's native commit graph. Its 120,036-node artifact takes **6.320 seconds** to
-export and **96,467,328 bytes** of additional storage. Reads, diffs, and writes use
-ordinary LocalStore APIs. Preparation cost and frozen membership are part of the
-feature's documented contract.
+Git's native commit graph. Its 12,036-node artifact takes **0.511 seconds** to
+export and **8,923,168 bytes** of additional storage. Reads, diffs, and writes use
+ordinary LocalStore APIs. The snapshot has frozen membership and must be rebuilt
+to include later commits.
 
 | Operation | Scion median | Git median | Scion improvement | Against Git |
 |---|---:|---:|---:|---:|
-| Prepared durable commit | 967.706 µs | 2,913.522 µs | 2.27× | 3.01× faster |
-| Positive ancestry | 970.429 µs | 35,124.071 µs | 2.27× | 36.19× faster |
-| Negative ancestry | 970.199 µs | 38,889.853 µs | 2.89× | 40.08× faster |
-| Ancestor merge base | 898.230 µs | 32,357.663 µs | 2.29× | 36.02× faster |
-| Divergent merge base | 862.837 µs | 8,296.653 µs | 2.74× | 9.62× faster |
-| Fresh file read, 1 KiB | 1,189.358 µs | 1,445.924 µs | 1.95× | 1.22× faster |
-| Fresh one-file text diff | 1,359.774 µs | 1,930.002 µs | 2.56× | 1.42× faster |
-| Resident spread file read | 16.815 µs | 39.469 µs | 2.22× | 2.35× faster |
+| Prepared durable commit | 1,066.705 µs | 2,796.568 µs | 1.83× | 2.62× faster |
+| Positive ancestry | 693.353 µs | 3,207.614 µs | 2.21× | 4.63× faster |
+| Negative ancestry | 663.148 µs | 3,241.334 µs | 2.70× | 4.89× faster |
+| Ancestor merge base | 671.330 µs | 2,975.053 µs | 2.26× | 4.43× faster |
+| Divergent merge base | 674.744 µs | 1,517.202 µs | 2.56× | 2.25× faster |
+| Fresh file read, 1 KiB | 1,079.142 µs | 1,397.171 µs | 2.06× | 1.29× faster |
+| Fresh one-file text diff | 1,084.851 µs | 1,549.060 µs | 2.85× | 1.43× faster |
+| Resident spread file read | 16.996 µs | 40.090 µs | 2.21× | 2.36× faster |
 
-Every functional median in this fixture beats Git. Seven of eight improve by at
-least 2× over the preserved Scion build; fresh reads reach 1.95×. The smaller
-10,000-commit profile also beats Git in every functional row, with all four graph
-queries exceeding 2× improvement; its prepared-commit and fresh-read improvements
-remain below 2×. Controls and latency tails remain visible in the
-[complete comparison](docs/git-comparison.md#frozen-graph-comparisons-25-october-2026),
-alongside every raw sample, exact source/build identities, and earlier runs.
-These local measurements do not establish a universal speedup or fleet throughput.
+Every functional median in the complete fixture beats Git. Seven of eight
+improve by at least 2× over the preserved Scion build; the durable-commit result
+is **1.83×** and remains below that target. A separate query replay on a
+100,000-commit trunk and 10,000-commit arms beats Git in all seven functional
+query cases, with **2.19–3.17×** Scion improvements and graph queries **8.14–49.42×**
+faster than Git. That replay does not remeasure writes; its graph export costs
+7.764 seconds and 96,467,328 bytes.
+
+The unchanged MemoryStore scaling workload also exceeds 2× in **all eleven
+cases**, across five alternating trials: initial commits improve **5.50–5.95×**,
+one-file edits **2.22–2.74×**, one-file diffs **3.92–4.71×**, and ancestry queries
+**24.70–32.88×**. These isolate engine work and do not measure durable storage.
+
+The [complete Git comparison](docs/git-comparison.md#resident-cache-and-edit-diff-follow-up-25-october-2026)
+and [engine scaling results](docs/performance.md) retain exact source/build
+identities, raw observations, p95s, preparation costs, controls, and earlier
+unfavorable runs. Startup and no-op controls remain below 2×. These local results
+do not establish a universal speedup or distributed-service throughput.
 
 ## Documentation
 

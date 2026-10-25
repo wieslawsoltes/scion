@@ -116,13 +116,35 @@ platform limitation. Publication now uses the standard library's atomic rename
 with a guarded temporary-file lifetime; the old reader stays open throughout the
 regression. Failure cleanup and Windows normal-file attributes are also checked.
 
+## Resident-cache and edit-diff result
+
+Decoded graph nodes now share the bounded repository cache with trees, root
+proofs, path lookups, and small blobs. Membership checks remain repository-scoped;
+misses and errors are not cached. Cold inline-object reads prepare their actual
+lookup directly, with a guarded legacy fallback only when the inline table is
+confirmed absent. Storage errors and corruption still propagate.
+
+Taking ownership of an old decoded tree had removed entries needed by the next
+adjacent diff. The fix retains only affected names and verified absence under
+the old immutable tree ID before mutation. Partial entries never stand in for a
+complete editable directory. Tests prove zero old-tree reads for affected parent
+lookups and forward/reverse adjacent diffs, including failure and branching cases.
+
+The [five-trial original MemoryStore workload](performance.md) now exceeds 2× in
+all eleven cases (2.217–32.879×). The [complete durable default run and large query
+replay](git-comparison.md#resident-cache-and-edit-diff-follow-up-25-october-2026)
+beat Git in every measured functional median. All seven large-profile query cases
+improve by at least 2× over the preserved Scion build. The default run reaches 2×
+in seven of eight functional cases; its prepared commit improves 1.833×.
+
 ## Remaining investigation
 
-1. Reduce repeated decoding in resident graph queries within the existing shared
-   repository cache budget, and compare the original MemoryStore scaling workload
-   against a clean preserved baseline with complete per-trial provenance.
-2. Reduce cold inline-object read overhead. The subsequent default profile shows
-   1.870× fresh-read and 1.942× durable-commit improvements; the large profile's
-   fresh-read improvement is 1.950×. Keep these observations alongside prior runs.
-3. Keep every remaining target and control visible; these local measurements do
-   not establish arbitrary-workload or distributed-service speedups.
+1. Reduce durable prepared-commit latency with sufficient margin: the latest
+   complete run records 1.833× improvement, while previous runs range above and
+   below 2×. Preserve FULL synchronization and validate any change against the
+   same independent baseline and Git workloads.
+2. Keep transport, startup, and repository-open controls visible. They remain
+   below 2× and must not be represented as completed targets.
+3. Retain every measurement and failure that informs a change. Local engine and
+   durable-query results do not establish arbitrary-workload, cold-cache,
+   concurrent-writer, or distributed-service speedups.

@@ -5,7 +5,8 @@ use crate::{
 };
 use parking_lot::{Mutex, MutexGuard};
 use rusqlite::{
-    Connection, OpenFlags, OptionalExtension, TransactionBehavior, config::DbConfig, params,
+    CachedStatement, Connection, OpenFlags, OptionalExtension, TransactionBehavior,
+    config::DbConfig, params,
 };
 use scion_types::{Error, LogEntry, ObjectId, ObjectKind, Result};
 use std::collections::HashSet;
@@ -134,9 +135,9 @@ impl LocalStore {
         )
         .map_err(db_error)?;
         configure_connection(&db, options)?;
-        // Probe the optional inline table only when reading an object. Graph and
-        // metadata-only clients do not need an extra schema query. Legacy stores
-        // still detect a concurrent writer's schema upgrade on later object reads.
+        // Object queries discover the optional inline table when they prepare.
+        // Only legacy missing-table errors need a separate schema query. Absence
+        // remains retryable so live readers observe a concurrent writer upgrade.
         let has_inline_objects = false;
         Ok(Self {
             root,
@@ -258,23 +259,45 @@ impl LocalStore {
             .join(&hex[..2])
             .join(&hex[2..])
     }
-    fn has_inline_table(&self, db: &Connection) -> Result<bool> {
-        if !self.has_inline_objects.load(Ordering::Relaxed) {
-            if !has_inline_table(db)? {
-                return Ok(false);
+    fn prepare_inline<'a>(
+        &self,
+        db: &'a Connection,
+        sql: &str,
+    ) -> Result<Option<CachedStatement<'a>>> {
+        match db.prepare_cached(sql) {
+            Ok(statement) => {
+                self.has_inline_objects.store(true, Ordering::Relaxed);
+                Ok(Some(statement))
             }
-            // A writer can upgrade a legacy store after this reader opens.
-            self.has_inline_objects.store(true, Ordering::Relaxed);
+            Err(error) => {
+                // A legacy store has no inline table. Confirm catalog absence
+                // only after the known object query fails to prepare, and only
+                // for SQLite's generic SQL/missing-table error. Never reinterpret
+                // busy, I/O, corrupt-schema, authorization or execution errors.
+                // Once this handle has seen the table, its disappearance is an
+                // error as before, not permission to fall back to loose files.
+                if !self.has_inline_objects.load(Ordering::Relaxed)
+                    && error
+                        .sqlite_error()
+                        .is_some_and(|error| error.extended_code == rusqlite::ffi::SQLITE_ERROR)
+                    && !has_inline_schema_object(db)?
+                {
+                    return Ok(None);
+                }
+                Err(db_error(error))
+            }
         }
-        Ok(true)
     }
     fn inline_encoded(&self, kind: ObjectKind, id: ObjectId) -> Result<Option<Vec<u8>>> {
         let db = self.database()?;
-        if !self.has_inline_table(&db)? {
+        let Some(mut statement) = self.prepare_inline(
+            &db,
+            "SELECT encoded FROM inline_objects WHERE kind=?1 AND id=?2",
+        )?
+        else {
             return Ok(None);
-        }
-        db.prepare_cached("SELECT encoded FROM inline_objects WHERE kind=?1 AND id=?2")
-            .map_err(db_error)?
+        };
+        statement
             .query_row(params![kind.as_str(), id.0.as_slice()], |row| row.get(0))
             .optional()
             .map_err(db_error)
@@ -460,9 +483,8 @@ impl Storage for LocalStore {
         let encoded_limit = small_object_encoded_limit(max_decoded_bytes);
         let inline: Option<(i64, Vec<u8>)> = {
             let db = self.database()?;
-            if self.has_inline_table(&db)? {
-                db.prepare_cached("SELECT length(encoded), CASE WHEN length(encoded)<=?3 THEN encoded ELSE substr(encoded,1,49) END FROM inline_objects WHERE kind=?1 AND id=?2")
-                    .map_err(db_error)?
+            if let Some(mut statement) = self.prepare_inline(&db, "SELECT length(encoded), CASE WHEN length(encoded)<=?3 THEN encoded ELSE substr(encoded,1,49) END FROM inline_objects WHERE kind=?1 AND id=?2")? {
+                statement
                     .query_row(params![kind.as_str(), id.0.as_slice(), encoded_limit as i64], |row| Ok((row.get(0)?, row.get(1)?)))
                     .optional().map_err(db_error)?
             } else {
@@ -804,9 +826,11 @@ fn configure_connection(db: &Connection, options: LocalStoreOptions) -> Result<(
     Ok(())
 }
 
-fn has_inline_table(db: &Connection) -> Result<bool> {
+fn has_inline_schema_object(db: &Connection) -> Result<bool> {
     db.query_row(
-        "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type='table' AND name='inline_objects')",
+        // A malformed table or namesake view/index must not be mistaken for a
+        // legacy absent table and hide the original preparation failure.
+        "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name='inline_objects' COLLATE NOCASE)",
         [],
         |row| row.get(0),
     )

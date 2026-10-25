@@ -12,33 +12,50 @@ directory updates rewrite only the directories on changed paths.
 ## Bounded immutable read cache
 
 Repository clones share an 8 MiB cache for validated revision roots, complete
-trees, selected directory entries and verified blob contents of at most 64 KiB.
+trees, selected directory entries, membership-checked decoded graph nodes and
+verified blob contents of at most 64 KiB.
 Every retained value competes for the same byte budget and 4,096-entry limit;
-blob accounting includes spare allocation capacity. Large blobs are read directly
-without retaining another full-size copy. Repeated file reads and text diffs can
-reuse verified bytes while repository membership, path lookup and diff permission
-filtering still precede content access. Repository never caches mutable references;
-reference reads follow the storage backend's live or snapshot semantics.
+graph and blob accounting include spare allocation capacity. Large blobs are read
+directly without retaining another full-size copy. Repeated file reads and text
+diffs can reuse verified bytes while repository membership, path lookup and diff
+permission filtering still precede content access. Repository never caches mutable
+references; reference reads follow the storage backend's live or snapshot semantics.
 
-`with_tree_cache_capacity(bytes)` sets this shared budget, including blobs; zero
-disables retention. `tree_cache_stats()` includes all retained kinds, and
+`with_tree_cache_capacity(bytes)` sets this shared budget, including graphs and
+blobs; zero disables retention. `tree_cache_stats()` includes all retained kinds, and
 `clear_tree_cache()` clears them for all clones sharing the cache. In-progress
 readers may continue using their immutable snapshots after eviction or clearing.
 
-Cache misses verify stored object content before retention; failures are never
-cached. Cache hits return the previously verified bytes. Physical corruption or
-deletion after a successful read becomes visible after eviction or clearing, or
-through a direct `Storage::get_object` call. Use direct storage reads for integrity
-audits; those reads and commit content validation remain uncached. Published
-changes use new content IDs, so cached older revisions do not hide later commits
-or reference changes.
+Object cache misses verify stored content before retention; failures are never
+cached. Cache hits return previously checked immutable values. Physical object
+corruption or deletion after a successful read becomes visible after eviction or
+clearing, or through a direct `Storage::get_object` call. Use direct storage reads
+for integrity audits; those reads and commit content validation remain uncached.
+Published changes use new content IDs, so cached older revisions do not hide
+later commits or reference changes.
+
+Graph cache misses perform the normal paired repository-membership and graph
+record lookup, then decode the stored graph JSON. Only successful reads are
+retained; missing membership, absent indexes and decoding failures are never
+cached. New graph nodes are retained only after publication succeeds. A stale
+reference CAS still acknowledges the published immutable commit. Graph queries
+continue traversing every required node and return independent owned values;
+cached nodes avoid repeated metadata reads and decoding. Cache proofs belong to
+one repository and storage instance, shared only by its clones. Graph metadata
+is a derived record, so caching does not add content authentication. Direct
+`Storage::get_record` reads remain uncached, and clearing or eviction exposes
+later low-level metadata corruption or deletion. Parent-membership and blob
+validation during commit creation still access storage directly.
 
 Edits can take ownership of a fully cached parent tree to reuse its map and name
 allocations. If another reader holds an `Arc<Tree>`, the edit clones it before
-changing anything; the reader's snapshot remains immutable. The old tree's cache
-entry is evicted even if an edit later fails. Revisiting that older tree may
-therefore require a verified storage read. Partial directory lookups remain
-usable for their original immutable tree. New tree values are cached only after
+changing anything; the reader's snapshot remains immutable. Before changing the
+owned tree, the edit retains only affected direct names and their original values
+or absence in the bounded point cache. Inspecting changed paths in the parent or
+diffing the edit can reuse these verified before-values without reloading whole
+directories. Other names and complete old trees may require a verified storage
+read. Failed edits can leave these valid old lookups cached, but never change
+stored parent data. New tree values are cached only after
 their storage write succeeds; values retained in a publication batch wait for
 that publication to succeed. Stored parent trees and content IDs never change.
 New trees use `Tree::canonical_bytes()` with the established canonical bytes.

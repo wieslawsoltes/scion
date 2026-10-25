@@ -67,16 +67,16 @@ impl Repository {
         &self.store
     }
     /// Configure retention of immutable trees, selected directory entries,
-    /// membership-validated revision roots and verified blobs of at most 64 KiB;
-    /// zero disables it. All values share 8 MiB of conservative accounting by
-    /// default, shared by clones of this repository.
+    /// membership-validated revision roots and decoded graph nodes, and verified
+    /// blobs of at most 64 KiB. Zero disables retention. All values share 8 MiB
+    /// of conservative accounting by default, shared by repository clones.
     pub fn with_tree_cache_capacity(mut self, bytes: usize) -> Self {
         self.trees = std::sync::Arc::new(tree_cache::TreeCache::new(bytes));
         self
     }
-    /// Discard retained trees, point lookups, validated roots and verified blobs.
-    /// Existing readers retain their immutable snapshots. Cache misses verify
-    /// stored content again; hits return the previously verified bytes.
+    /// Discard retained trees, point lookups, validated roots, graphs and blobs.
+    /// Existing readers retain their immutable snapshots. Cache misses repeat
+    /// storage validation; hits return previously checked immutable values.
     pub fn clear_tree_cache(&self) {
         self.trees.clear();
     }
@@ -189,7 +189,8 @@ impl Repository {
             .transpose()?;
         // Backends may batch immutable content and metadata into one durable
         // transaction; the portable fallback writes all content before indexes,
-        // membership and the log. No staged tree enters the cache before success.
+        // membership and the log. Staged trees and graphs enter the cache only
+        // after publication acknowledges success.
         let publication = self.store.publish_commit_with_objects_and_cas(
             &self.name,
             id,
@@ -212,6 +213,7 @@ impl Repository {
             self.trees.insert(id, tree);
         }
         self.trees.insert_root(id, prepared.root);
+        self.trees.insert_graph(id, std::sync::Arc::new(graph));
         Ok(CommitPublication {
             changeset: request,
             sequence: publication.sequence,
@@ -313,6 +315,9 @@ impl Repository {
 
 impl GraphAccess for Repository {
     fn node(&self, id: ObjectId) -> Result<GraphNode> {
+        if let Some(node) = self.trees.graph(id) {
+            return Ok((*node).clone());
+        }
         let key = id.to_string();
         let [member, record] = self.store.get_record_pair(
             (&self.namespace("changesets"), &key),
@@ -321,9 +326,12 @@ impl GraphAccess for Repository {
         if member.is_none() {
             return Err(Error::NotFound(format!("changeset {id} in {}", self.name)));
         }
-        match record {
-            Some(bytes) => Ok(serde_json::from_slice(&bytes)?),
-            None => Err(Error::Corrupt(format!("missing graph record for {id}"))),
-        }
+        let bytes =
+            record.ok_or_else(|| Error::Corrupt(format!("missing graph record for {id}")))?;
+        let node = std::sync::Arc::new(serde_json::from_slice::<GraphNode>(&bytes)?);
+        self.trees.insert_graph(id, node.clone());
+        // An ineligible/disabled cache retains no Arc, so cold reads can return
+        // their decoded vectors directly instead of making an unused copy.
+        Ok(std::sync::Arc::unwrap_or_clone(node))
     }
 }
