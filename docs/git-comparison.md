@@ -4,6 +4,8 @@
 same generated repository. It checks every query result and saves individual
 samples, summary statistics, configurations, tool versions and source hashes.
 The comparison uses `LocalStore`, including SQLite and filesystem durability.
+The latest clean-source measurements are in [Streaming trees and read-only opening](#streaming-trees-and-read-only-opening-25-october-2026), including a separate
+100,000-commit history profile. Earlier runs remain below as an optimization record.
 
 These measurements describe the specified workload and machine. They do not
 establish a general performance advantage over Git, distributed server throughput,
@@ -40,6 +42,31 @@ Override individual dimensions with `--files`, `--commits`, `--branch-commits`,
 `--keep-workdir` retains the fixture, identifiers and worker logs for investigation.
 The temporary fixture is removed otherwise. Output consists of a JSON report,
 a CSV containing every sample and a separate summary CSV.
+
+To repeat every read/graph query on a retained fixture, select another Git binary
+on `PATH` and use the original JSON report:
+
+```sh
+PATH=/path/to/git-prefix/bin:$PATH CARGO_INCREMENTAL=0 \
+  python3 scripts/compare_git.py \
+  --reuse-report target/git-comparison/full.json \
+  --samples 31 --warmup 3 --output target/git-comparison/query-repeat
+```
+
+The original run must use `--keep-workdir`. Reuse validates the stored fixture
+marker, dimensions, identifiers and expected file content. It reapplies the
+benchmark Git configuration, repacks objects and writes Git's commit-graph using
+the selected executable before measuring all fresh-process queries, process-startup
+controls and resident file reads. The Scion store opens read-only. The retained
+fixture is never deleted, and the output may not overwrite the original report or
+fixture marker. Only `--samples` and `--warmup` can override the saved dimensions.
+
+These reports explicitly declare `mode: queries_only`; they do not contain new
+prepared-commit or resident writer no-op timings. They record the source report's
+SHA-256, original Git/source/worker identities and the newly measured source,
+Scion worker, Git executable, helper path, configuration and samples. Git's helpers
+must be installed under the selected build's prefix: the harness deliberately
+removes inherited `GIT_*` variables, including `GIT_EXEC_PATH`.
 
 The files share a bounded pool of deterministic text bodies. This deliberately
 isolates metadata, tree traversal and small-change costs; it is not a claim about
@@ -114,7 +141,11 @@ wall time for both implementations.
 Each query starts a new Scion example process or Git CLI process. Both include
 process creation, repository opening, computation, output and process shutdown.
 The Scion executable calls the local `Repository` API directly; it does not run an
-HTTP server. Git likewise operates on local repository storage.
+HTTP server. Git likewise operates on local repository storage. The current driver
+opens read queries through `LocalStore::open_read_only`, which uses an existing
+SQLite database and its live WAL without schema initialization. The fixture
+already contains the tree and graph indexes required by these queries. Arbitrary
+lazy index creation still requires a writable store.
 
 Before these measurements, the harness closes both writers, repacks Git's objects
 and runs `git commit-graph write --reachable --changed-paths`. Git therefore has
@@ -132,7 +163,7 @@ The measured operations are:
 | Divergent merge bases | `merge_bases(left, right)` | `merge-base --all` |
 | One-file text diff | `diff(previous, tip)` | `diff --no-ext-diff --no-textconv --no-renames --unified=3` |
 | File content read | `read_file(tip, path)` | `show tip:path` |
-| Repository-open control | Open `LocalStore`, then no-op | `rev-parse --is-bare-repository` |
+| Repository-open control | Open `LocalStore` read-only, then no-op | `rev-parse --is-bare-repository` |
 | Process-startup control | Driver `--version` | `git --version` |
 
 Scion outputs JSON while Git uses its command's native output. Output byte counts
@@ -333,3 +364,117 @@ diff median rose from 3.659 ms to 5.143 ms and remained slower than Git; fresh f
 reads and divergent merge bases also remained losses. These results support the
 write-batching change, while leaving query/open and tree-processing costs as
 measured optimization targets. Every earlier run and every sample is retained.
+
+
+### Streaming trees and read-only opening, 25 October 2026
+
+Both final measurement profiles were built from clean public commit
+[`f06cc594bb1603dc837a9379f646e1fd1c06827b`](https://github.com/wieslawsoltes/scion/commit/f06cc594bb1603dc837a9379f646e1fd1c06827b).
+Their recorded core-source hashes and release executable hashes are identical;
+`source.dirty` and `build.source_changed_during_build` are false in both reports.
+The default profile reproduces the exact fixture contents and commit identifiers
+from all earlier full runs. The larger-history profile preserves the same files,
+prepared edits and initial commit identifiers while extending the graph workload.
+
+The measured source adds a streaming decoder for canonical tree objects and
+borrowed path validation, avoiding intermediate enum buffering and per-name string
+clones. Unknown or noncanonical JSON shapes fall back to the unchanged derived
+Serde decoder. Differential tests and the canonical fuzz target compare accepted
+inputs and normalized values with that original decoder. The engine and client
+use the same public `Tree::from_json` method; canonical bytes and IDs are unchanged.
+
+Read queries now use the explicit read-only LocalStore opener and cached SQL
+statements. Publication also verifies existing immutable object envelopes before
+accepting a duplicate. The bundled database is SQLite 3.51.3, which includes the
+[upstream WAL-reset corruption fix](https://sqlite.org/releaselog/3_51_3.html);
+the durability settings remain WAL with `synchronous=FULL`. Local builds and service tests were paused for both measurement
+windows. The host was still shared: AMD EPYC 9V74, nine visible logical CPUs,
+approximately 9.7 GiB RAM, Linux x86_64 with an overlay filesystem, Rust 1.99.1 and
+Git 2.51.1. These are observed workload results, not an isolated causal experiment
+for an individual optimization.
+
+#### Default history: 100,000 files and 10,000 trunk commits
+
+This uses the unchanged default dimensions: 1,000 commits per divergent arm,
+31 samples and three warmups. Both p50 and p95 are shown in milliseconds, including
+controls and the resident read row. Ratios use unrounded p50 values.
+
+Raw data: [JSON report](benchmarks/git-comparison-2026-10-25-final.json),
+[all samples](benchmarks/git-comparison-2026-10-25-final.csv), and
+[summary CSV](benchmarks/git-comparison-2026-10-25-final-summary.csv).
+
+| Operation and scope | Scion p50 / p95 (ms) | Git p50 / p95 (ms) | Ratio of medians |
+| --- | ---: | ---: | --- |
+| Prepared durable commit · resident | 2.101 / 2.944 | 3.054 / 3.756 | Scion 1.45× faster |
+| Positive ancestry · fresh process | 1.792 / 4.037 | 3.663 / 8.501 | Scion 2.04× faster |
+| Negative ancestry · fresh process | 2.067 / 2.968 | 3.541 / 4.328 | Scion 1.71× faster |
+| Ancestor merge base · fresh process | 1.700 / 2.224 | 3.279 / 4.354 | Scion 1.93× faster |
+| Divergent merge base · fresh process | 1.939 / 2.167 | 1.784 / 1.928 | Git 1.09× faster |
+| One-file text diff · fresh process | 3.251 / 3.729 | 1.844 / 2.126 | Git 1.76× faster |
+| File read, 1 KiB · fresh process | 2.372 / 2.618 | 1.496 / 1.695 | Git 1.59× faster |
+| File reads across warmed paths · resident | 0.042 / 0.083 | 0.043 / 0.058 | Scion 1.03× faster |
+| Repository-open control · fresh process | 1.429 / 1.924 | 1.258 / 1.743 | Git 1.14× faster |
+| Process-startup control · fresh process | 0.959 / 1.056 | 1.005 / 1.175 | Scion 1.05× faster |
+| No-op control · resident | 0.015 / 0.030 | 0.020 / 0.068 | Scion 1.34× faster |
+
+Prepared durable commits are 1.45× faster than Git at the median in this run, and
+their p95 is also lower. Positive/negative ancestry and ancestor merge-base queries
+are 1.71–2.04× faster. Git remains faster for fresh file reads, text diffs and the
+1,000-commit divergent merge-base workload. The resident read medians differ by
+about 3%, with a worse Scion p95, so that row should be treated as near parity.
+
+Relative to the preceding Scion batching run, the fresh diff median falls from
+5.143 to 3.251 ms and the fresh file-read median from 2.885 to 2.372 ms. Git's
+corresponding timings also change between runs; these differences must not be
+attributed entirely to the decoder or read-only opener.
+
+#### Larger history: 100,000 files and 100,000 trunk commits
+
+This is an additional scaling profile, not a replacement for the default result.
+Only the trunk length and divergent-arm lengths change; each arm has 10,000
+commits. It retains all measured rows, 31 samples, three warmups and the same
+storage, durability and Git commit-graph configuration.
+
+```sh
+CARGO_INCREMENTAL=0 python3 scripts/compare_git.py \
+  --commits 100000 --branch-commits 10000 \
+  --output target/git-comparison/large-history
+```
+
+Raw data: [JSON report](benchmarks/git-comparison-2026-10-25-large-history.json),
+[all samples](benchmarks/git-comparison-2026-10-25-large-history.csv), and
+[summary CSV](benchmarks/git-comparison-2026-10-25-large-history-summary.csv).
+
+| Operation and scope | Scion p50 / p95 (ms) | Git p50 / p95 (ms) | Ratio of medians |
+| --- | ---: | ---: | --- |
+| Prepared durable commit · resident | 1.883 / 2.510 | 2.838 / 3.990 | Scion 1.51× faster |
+| Positive ancestry · fresh process | 2.986 / 4.875 | 49.570 / 84.075 | Scion 16.60× faster |
+| Negative ancestry · fresh process | 3.325 / 5.355 | 48.414 / 62.689 | Scion 14.56× faster |
+| Ancestor merge base · fresh process | 2.555 / 3.713 | 37.958 / 52.857 | Scion 14.86× faster |
+| Divergent merge base · fresh process | 2.881 / 4.231 | 9.727 / 12.531 | Scion 3.38× faster |
+| One-file text diff · fresh process | 3.586 / 4.176 | 2.060 / 2.510 | Git 1.74× faster |
+| File read, 1 KiB · fresh process | 2.595 / 3.208 | 1.769 / 2.117 | Git 1.47× faster |
+| File reads across warmed paths · resident | 0.045 / 0.097 | 0.042 / 0.087 | Git 1.07× faster |
+| Repository-open control · fresh process | 1.815 / 2.572 | 1.469 / 3.325 | Git 1.24× faster |
+| Process-startup control · fresh process | 1.056 / 1.259 | 1.119 / 1.416 | Scion 1.06× faster |
+| No-op control · resident | 0.015 / 0.039 | 0.015 / 0.026 | Scion 1.02× faster |
+
+At this graph size, positive ancestry is 16.60× faster than Git, negative ancestry
+14.56× faster, ancestor merge-base lookup 14.86× faster and the divergent
+merge-base query 3.38× faster at the median. Their p95 values also favor Scion. This
+is the measured advantage of Scion's persisted graph skips for these long linear
+histories, compared with Git's native commit-graph acceleration on the same DAG.
+The functional DAG oracle and counted-I/O regression tests remain separate from
+these timing observations.
+
+Prepared commits are measured **before** constructing the long history in both
+profiles. Their 1.51× median advantage in this second run therefore confirms another
+measurement of the same prepared-edit workload; it does not establish that commit
+latency improves as history grows. Fresh reads and diffs remain Git wins, and Git
+also leads the resident read row in this run. All samples and tails are retained.
+
+The evidence supports substantially faster graph queries on the larger fixture
+and faster durable prepared commits in both final runs. It does not establish a
+universal speed advantage, network/server throughput, cold-cache performance,
+large binary-file behavior or production fleet scale. Fresh-process file and tree
+work remains an area for further improvement.

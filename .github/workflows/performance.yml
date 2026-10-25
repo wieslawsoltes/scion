@@ -54,10 +54,15 @@ jobs:
         shell: bash
         run: |
           if [ "$PROFILE" = full ]; then
-            python scripts/compare_git.py --no-build --output target/git-comparison/results
+            python scripts/compare_git.py --no-build --keep-workdir --output target/git-comparison/results
           else
-            python scripts/compare_git.py --no-build --quick --output target/git-comparison/results
+            python scripts/compare_git.py --no-build --quick --keep-workdir --output target/git-comparison/results
           fi
+      - name: Verify retained-fixture query replay
+        run: >-
+          python scripts/compare_git.py --no-build
+          --reuse-report target/git-comparison/results.json
+          --samples 3 --warmup 1 --output target/git-comparison/reuse
       - uses: actions/upload-artifact@v7
         if: always()
         with:
