@@ -12,6 +12,9 @@ struct Args {
     data: PathBuf,
     #[arg(long)]
     policy: Option<PathBuf>,
+    /// Reload the policy file atomically; zero disables polling.
+    #[arg(long, default_value_t = 10)]
+    policy_reload_seconds: u64,
     #[arg(long, env = "SCION_CAPABILITY_KEY", hide_env_values = true)]
     capability_key: Option<String>,
     /// Explicit anonymous development mode; only binds loopback.
@@ -27,6 +30,20 @@ struct Args {
     #[cfg(feature = "postgres")]
     #[arg(long, env = "SCION_DATABASE_URL", hide_env_values = true)]
     database_url: Option<String>,
+    /// Use a provisioned GoogleSQL Spanner database for transactional metadata.
+    #[cfg(feature = "spanner")]
+    #[arg(long, env = "SCION_SPANNER_DATABASE", requires = "cloud_provider")]
+    #[cfg_attr(feature = "postgres", arg(conflicts_with = "database_url"))]
+    spanner_database: Option<String>,
+    #[cfg(feature = "spanner")]
+    #[arg(long, env = "SCION_SPANNER_ROLE", requires = "spanner_database")]
+    spanner_role: Option<String>,
+    #[cfg(feature = "spanner")]
+    #[arg(long, default_value_t = 60)]
+    spanner_timeout_seconds: u64,
+    #[cfg(feature = "spanner")]
+    #[arg(long, default_value_t = 64)]
+    spanner_max_inflight: usize,
     #[cfg(feature = "postgres")]
     #[arg(
         long,
@@ -101,8 +118,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .into(),
         );
     }
-    let policy = if let Some(path) = args.policy {
-        serde_json::from_slice::<Policy>(&std::fs::read(path)?)?
+    let reload_path = args.policy.clone();
+    let reload_seconds = args.policy_reload_seconds;
+    let policy = if let Some(path) = &args.policy {
+        Policy::from_file(path)?
     } else {
         Policy::default()
     };
@@ -124,32 +143,59 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "--cloud-provider and --object-shard select alternative object backends".into(),
                 ));
             }
-            #[cfg(feature = "postgres")]
-            let store: SharedStore = if let Some(url) = args.database_url {
-                let metadata: SharedStore = Arc::new(scion_store::PostgresStore::connect(&url, 8)?);
-                if args.object_shard.is_empty() {
-                    metadata
-                } else {
-                    let shards = args
-                        .object_shard
-                        .iter()
-                        .map(|u| {
-                            scion_store::PostgresStore::connect(u, 8)
-                                .map(|s| Arc::new(s) as SharedStore)
-                        })
-                        .collect::<scion_types::Result<Vec<_>>>()?;
-                    Arc::new(scion_store::ShardedStore::new(metadata, shards)?)
-                }
+            #[cfg(feature = "spanner")]
+            let distributed: Option<SharedStore> = if let Some(database) = args.spanner_database {
+                let mut config = scion_store_spanner::SpannerConfig::new(database);
+                config.database_role = args.spanner_role;
+                config.operation_timeout =
+                    std::time::Duration::from_secs(args.spanner_timeout_seconds);
+                config.max_inflight = args.spanner_max_inflight;
+                // The required outer CloudStore owns all immutable object I/O;
+                // no object is written to this unreachable inner delegate.
+                Some(Arc::new(scion_store_spanner::SpannerStore::connect(
+                    Arc::new(scion_store::MemoryStore::default()),
+                    config,
+                )?))
             } else {
-                if !args.object_shard.is_empty() {
-                    return Err(scion_types::Error::Invalid(
-                        "--object-shard requires --database-url".into(),
-                    ));
-                }
-                Arc::new(LocalStore::open(&args.data)?)
+                None
             };
-            #[cfg(not(feature = "postgres"))]
-            let store: SharedStore = Arc::new(LocalStore::open(&args.data)?);
+            #[cfg(not(feature = "spanner"))]
+            let distributed: Option<SharedStore> = None;
+            let store: SharedStore = if let Some(distributed) = distributed {
+                distributed
+            } else {
+                #[cfg(feature = "postgres")]
+                {
+                    if let Some(url) = args.database_url {
+                        let metadata: SharedStore =
+                            Arc::new(scion_store::PostgresStore::connect(&url, 8)?);
+                        if args.object_shard.is_empty() {
+                            metadata
+                        } else {
+                            let shards = args
+                                .object_shard
+                                .iter()
+                                .map(|url| {
+                                    scion_store::PostgresStore::connect(url, 8)
+                                        .map(|store| Arc::new(store) as SharedStore)
+                                })
+                                .collect::<scion_types::Result<Vec<_>>>()?;
+                            Arc::new(scion_store::ShardedStore::new(metadata, shards)?)
+                        }
+                    } else {
+                        if !args.object_shard.is_empty() {
+                            return Err(scion_types::Error::Invalid(
+                                "--object-shard requires --database-url".into(),
+                            ));
+                        }
+                        Arc::new(LocalStore::open(&args.data)?)
+                    }
+                }
+                #[cfg(not(feature = "postgres"))]
+                {
+                    Arc::new(LocalStore::open(&args.data)?)
+                }
+            };
             #[cfg(feature = "cloud")]
             if let Some(provider) = args.cloud_provider {
                 let bucket = args.cloud_bucket.ok_or_else(|| {
@@ -181,7 +227,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         requests_per_second: args.requests_per_second,
         burst: args.requests_per_second.saturating_mul(2),
     };
-    let app = router(ServerState::new(store, config)?);
+    let state = ServerState::new(store, config)?;
+    if let Some(path) = reload_path.filter(|_| reload_seconds > 0) {
+        let policy = Arc::downgrade(&state.policy_store());
+        tokio::spawn(async move {
+            let mut interval =
+                tokio::time::interval(std::time::Duration::from_secs(reload_seconds));
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            interval.tick().await;
+            loop {
+                interval.tick().await;
+                let Some(policy) = policy.upgrade() else {
+                    break;
+                };
+                let path = path.clone();
+                match tokio::task::spawn_blocking(move || policy.reload_file(path)).await {
+                    Ok(Ok(true)) => tracing::info!("authentication policy reloaded"),
+                    Ok(Ok(false)) => {}
+                    Ok(Err(error)) => {
+                        tracing::warn!(error=%error, "policy reload rejected; retaining last valid policy")
+                    }
+                    Err(_) => {
+                        tracing::error!("policy reload task failed; retaining last valid policy")
+                    }
+                }
+            }
+        });
+    }
+    let app = router(state);
     let listener = tokio::net::TcpListener::bind(args.listen).await?;
     tracing::info!(address=%listener.local_addr()?,development=args.dev,"Scion server ready");
     axum::serve(listener, app)

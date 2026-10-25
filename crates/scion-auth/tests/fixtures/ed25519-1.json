@@ -1,0 +1,5 @@
+{
+  "purpose": "Public non-production signing key for Scion regression tests only",
+  "pkcs8": "MC4CAQAwBQYDK2VwBCIEIClzYo9mZyo4/wPqy78TiPJYv2f1c1RUhkVnCJ/QOYMB",
+  "x": "YW3LGO6uJe5_4KQf-KFcSF_OmLFiZAXdVpn1DrqRQhI"
+}

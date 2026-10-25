@@ -1,0 +1,23 @@
+[package]
+name = "scion-store-spanner"
+description = "Transactional Google Cloud Spanner metadata and publication log for Scion"
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+scion-types.workspace = true
+scion-store.workspace = true
+google-cloud-spanner.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true
+
+[package.metadata.docs.rs]
+all-features = true

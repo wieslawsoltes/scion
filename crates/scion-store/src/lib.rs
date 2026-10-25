@@ -24,11 +24,10 @@ pub struct ImmutableRecord {
     pub value: Vec<u8>,
 }
 
-pub(crate) fn validate_publication(
-    repo: &str,
-    id: ObjectId,
-    records: &[ImmutableRecord],
-) -> Result<()> {
+/// Validate an immutable publication batch before performing any writes. Custom
+/// backends should call this before their transaction to reject conflicting
+/// duplicate records and caller-supplied changeset membership entries.
+pub fn validate_publication(repo: &str, id: ObjectId, records: &[ImmutableRecord]) -> Result<()> {
     let namespace = format!("repo/{repo}/changesets");
     let key = id.to_string();
     let mut seen = std::collections::BTreeMap::new();

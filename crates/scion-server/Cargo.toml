@@ -14,11 +14,14 @@ categories.workspace = true
 default = []
 postgres = ["scion-store/postgres"]
 cloud = ["dep:scion-store-cloud"]
+spanner = ["dep:scion-store-spanner", "cloud"]
 
 [dependencies]
+scion-auth.workspace = true
 scion-types.workspace = true
 scion-store.workspace = true
 scion-store-cloud = { workspace = true, optional = true }
+scion-store-spanner = { workspace = true, optional = true }
 scion-engine.workspace = true
 scion-protocol.workspace = true
 serde.workspace = true

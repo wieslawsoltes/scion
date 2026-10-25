@@ -17,6 +17,7 @@ categories = ["development-tools"]
 scion-types = { path = "crates/scion-types", version = "0.1.0" }
 scion-store = { path = "crates/scion-store", version = "0.1.0" }
 scion-store-cloud = { path = "crates/scion-store-cloud", version = "0.1.0" }
+scion-store-spanner = { path = "crates/scion-store-spanner", version = "0.1.0" }
 scion-graph = { path = "crates/scion-graph", version = "0.1.0" }
 scion-engine = { path = "crates/scion-engine", version = "0.1.0" }
 scion-protocol = { path = "crates/scion-protocol", version = "0.1.0" }
@@ -24,6 +25,7 @@ scion-client = { path = "crates/scion-client", version = "0.1.0" }
 scion-cache = { path = "crates/scion-cache", version = "0.1.0" }
 scion-git = { path = "crates/scion-git", version = "0.1.0" }
 scion-server = { path = "crates/scion-server", version = "0.1.0" }
+scion-auth = { path = "crates/scion-auth", version = "0.1.0" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
@@ -54,6 +56,7 @@ fs2 = "0.4"
 libc = "0.2"
 object_store = { version = "0.14.2", default-features = false }
 bytes = "1"
+google-cloud-spanner = "=0.34.4-preview"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
