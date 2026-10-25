@@ -11,9 +11,12 @@ so that improvements cannot be attributed to hidden setup costs.
 - Preserve the existing workloads, correctness checks, logical history, warmup,
   sample count, alternating order, and fully consumed responses.
 - Retain FULL-synchronous publication, immutable-object integrity verification,
-  live-WAL visibility, and compare-and-swap reference semantics.
-- Compare the baseline and candidate binaries on identical retained fixtures;
-  measure fresh durable writes separately with equivalent fixture construction.
+  committed-WAL visibility, and compare-and-swap reference semantics. Fresh
+  single-operation queries may use a consistent snapshot; resident readers keep
+  observing later commits between requests.
+- Compare the baseline and candidate binaries on identical logical fixtures;
+  use independently constructed stores when measuring a changed physical layout,
+  and identify shared-fixture query replays explicitly.
 - Use the same current Git binary and prepare its packs and commit graph before
   query measurements. Publish source and executable hashes, medians, p95s,
   controls, raw observations, and any target that remains unmet.
@@ -42,6 +45,21 @@ share a database query. The worker buffers each complete JSON response before
 flushing; end-to-end measurements still include serialization, every response
 byte, and the acknowledgement.
 
+Fresh single-operation queries now use the reusable `open_read_snapshot` API.
+It pins the committed WAL view at the first database query and reuses a read
+transaction for the operation. Resident workers continue using live read-only
+connections. New stores use a rowid metadata table with a narrow composite-key
+index so comparisons do not traverse wide values on overflow pages. Existing
+stores retain their layout; an explicit atomic migration is available and tested
+for concurrent snapshots, byte preservation, and rollback on storage failure.
+
+Recent changed-file reads and adjacent diffs can inspect bounded, verified small
+changesets before traversing trees. The probe decodes at most 8 KiB and retains
+the regular tree path for large changesets, unrelated paths, or unsupported
+storage implementations. Repository membership, object identity, and changeset
+validation remain required. Repeated unrelated lookups do not re-probe the same
+revision.
+
 ## Measurement-driven decisions
 
 SQLite mapping is configurable, but the default remains disabled. The initial
@@ -60,10 +78,9 @@ available.
 
 ## Remaining investigation
 
-1. Reduce SQLite index/overflow-page amplification for wide metadata records.
-2. Answer small recent changes directly from verified changeset deltas.
-3. Reduce fresh-process and request/response overhead without omitting work.
-4. Measure optimized release code and preserve all performance losses alongside
+1. Validate Linux static C runtime builds and their startup impact, including
+   platform-specific compatibility and release documentation.
+2. Measure optimized release code and preserve all performance losses alongside
    wins; source changes must pass the existing build, test, packaging, and
    integration gates before merge.
 

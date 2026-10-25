@@ -93,7 +93,7 @@ impl LocalStore {
         let db = Connection::open(root.join("metadata.sqlite3")).map_err(db_error)?;
         configure_connection(&db, options)?;
         db.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;
-            CREATE TABLE IF NOT EXISTS records(namespace TEXT NOT NULL, key TEXT NOT NULL, value BLOB NOT NULL, PRIMARY KEY(namespace,key)) WITHOUT ROWID;
+            CREATE TABLE IF NOT EXISTS records(namespace TEXT NOT NULL, key TEXT NOT NULL, value BLOB NOT NULL, PRIMARY KEY(namespace,key));
             CREATE TABLE IF NOT EXISTS inline_objects(kind TEXT NOT NULL, id BLOB NOT NULL, encoded BLOB NOT NULL, PRIMARY KEY(kind,id)) WITHOUT ROWID;
             CREATE TABLE IF NOT EXISTS changeset_log(sequence INTEGER PRIMARY KEY AUTOINCREMENT, repo TEXT NOT NULL, id TEXT NOT NULL, UNIQUE(repo,id));
             CREATE INDEX IF NOT EXISTS changeset_log_repo ON changeset_log(repo,sequence);").map_err(db_error)?;
@@ -149,6 +149,80 @@ impl LocalStore {
             durable_directories: Default::default(),
             durable_objects: Default::default(),
         })
+    }
+
+    /// Open a consistent read-only analysis view. A deferred SQLite read
+    /// transaction pins committed metadata/inline objects at the first database
+    /// query and retains that view until the store is dropped. Other WAL writers
+    /// may continue publishing; use a new snapshot to observe their later commits.
+    /// Immutable loose objects are still verified by content ID when read.
+    ///
+    /// This uses ordinary SQLite locking, not immutable or exclusive mode.
+    /// Long-lived snapshots can delay WAL checkpoint progress. All mutations are
+    /// rejected; `open_read_only` remains the API for a live view between queries.
+    pub fn open_read_snapshot(path: impl AsRef<Path>) -> Result<Self> {
+        Self::open_read_snapshot_with_options(path, LocalStoreOptions::default())
+    }
+
+    /// Open a consistent read snapshot with explicit per-connection I/O options.
+    /// In legacy non-WAL databases, normal SQLite read locks may block writers.
+    pub fn open_read_snapshot_with_options(
+        path: impl AsRef<Path>,
+        options: LocalStoreOptions,
+    ) -> Result<Self> {
+        let store = Self::open_read_only_with_options(path, options)?;
+        store
+            .db
+            .lock()
+            .execute_batch("BEGIN DEFERRED")
+            .map_err(db_error)?;
+        Ok(store)
+    }
+
+    /// Explicitly replace the legacy WITHOUT ROWID metadata table with an
+    /// ordinary rowid table and its narrow `(namespace,key)` primary-key index.
+    /// This avoids reading large metadata values during B-tree key comparisons.
+    /// Returns true after migration, or false when the table already uses rowids.
+    ///
+    /// The copy/schema swap is one transaction; existing WAL snapshots continue
+    /// reading their previous view. Other writers serialize during the copy.
+    /// Only the standard managed table is migrated: custom constraints, indexes,
+    /// triggers, views or foreign-key dependencies are rejected before copying.
+    ///
+    /// This is never performed implicitly on open. Back up the complete store and
+    /// provide space for the copied metadata plus WAL. Freed pages are retained;
+    /// this method does not run VACUUM or alter the immutable-object table.
+    pub fn migrate_records_to_rowid(&self) -> Result<bool> {
+        self.require_writable()?;
+        let mut db = self.database()?;
+        let tx = db
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(db_error)?;
+        let without_rowid: Option<bool> = tx.query_row(
+            "SELECT wr FROM pragma_table_list WHERE schema='main' AND name='records' AND type='table'",
+            [], |row| row.get(0),
+        ).optional().map_err(db_error)?;
+        match without_rowid {
+            Some(false) => {
+                tx.commit().map_err(db_error)?;
+                return Ok(false);
+            }
+            Some(true) => validate_legacy_records_schema(&tx)?,
+            None => {
+                return Err(Error::Corrupt(
+                    "local metadata records table is missing".into(),
+                ));
+            }
+        }
+        tx.execute_batch(
+            "CREATE TABLE scion_records_rowid_migration(namespace TEXT NOT NULL, key TEXT NOT NULL, value BLOB NOT NULL, PRIMARY KEY(namespace,key));
+             INSERT INTO scion_records_rowid_migration(namespace,key,value) SELECT namespace,key,value FROM records;
+             DROP TABLE records;
+             ALTER TABLE scion_records_rowid_migration RENAME TO records;",
+        ).map_err(db_error)?;
+        tx.commit().map_err(db_error)?;
+        db.flush_prepared_statement_cache();
+        Ok(true)
     }
 
     pub fn root(&self) -> &Path {
@@ -607,6 +681,77 @@ impl Storage for LocalStore {
     }
 }
 
+fn validate_legacy_records_schema(db: &Connection) -> Result<()> {
+    let sql: String = db
+        .query_row(
+            "SELECT sql FROM sqlite_schema WHERE type='table' AND name='records'",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(db_error)?;
+    // Support the stock definition with ordinary identifier quoting/whitespace,
+    // but do not silently discard custom constraints, collations or defaults.
+    let normalized: String = sql
+        .chars()
+        .filter(|c| !c.is_ascii_whitespace() && !matches!(c, '"' | '`' | '[' | ']'))
+        .map(|c| c.to_ascii_lowercase())
+        .collect();
+    let normalized = normalized.trim_end_matches(';');
+    let normalized = normalized.replace("createtableifnotexistsrecords", "createtablerecords");
+    if normalized
+        != "createtablerecords(namespacetextnotnull,keytextnotnull,valueblobnotnull,primarykey(namespace,key))withoutrowid"
+    {
+        return Err(Error::Invalid(
+            "record-layout migration requires the standard records schema".into(),
+        ));
+    }
+    let custom_attached: bool = db.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE tbl_name='records' AND type IN ('index','trigger') AND sql IS NOT NULL)",
+        [], |row| row.get(0),
+    ).map_err(db_error)?;
+    if custom_attached {
+        return Err(Error::Invalid(
+            "record-layout migration cannot discard custom indexes or triggers".into(),
+        ));
+    }
+    let mut schema = db.prepare(
+        "SELECT type,name,sql FROM sqlite_schema WHERE (type IN ('view','trigger') OR type='table') AND name NOT GLOB 'sqlite_*' AND name!='records'",
+    ).map_err(db_error)?;
+    let objects = schema
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })
+        .map_err(db_error)?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(db_error)?;
+    drop(schema);
+    for (kind, name, sql) in objects {
+        if kind == "table" {
+            let references: bool = db.query_row(
+                "SELECT EXISTS(SELECT 1 FROM pragma_foreign_key_list(?1) WHERE lower([table])='records')",
+                [&name], |row| row.get(0),
+            ).map_err(db_error)?;
+            if references {
+                return Err(Error::Invalid(format!(
+                    "record-layout migration cannot replace foreign-key target for {name}"
+                )));
+            }
+        } else if sql
+            .split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+            .any(|word| word.eq_ignore_ascii_case("records"))
+        {
+            return Err(Error::Invalid(format!(
+                "record-layout migration cannot replace a table referenced by {kind} {name}"
+            )));
+        }
+    }
+    Ok(())
+}
+
 fn configure_connection(db: &Connection, options: LocalStoreOptions) -> Result<()> {
     db.busy_timeout(Duration::from_secs(30)).map_err(db_error)?;
     db.set_db_config(
@@ -954,5 +1099,69 @@ mod tests {
                     .unwrap()
             );
         }
+    }
+    #[test]
+    fn rowid_migration_rolls_back_on_sqlite_full_and_can_retry() {
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let db = Connection::open(dir.path().join("metadata.sqlite3")).unwrap();
+            db.execute_batch("PRAGMA journal_mode=WAL; CREATE TABLE records(namespace TEXT NOT NULL, key TEXT NOT NULL, value BLOB NOT NULL, PRIMARY KEY(namespace,key)) WITHOUT ROWID;").unwrap();
+        }
+        let store = LocalStore::open(dir.path()).unwrap();
+        for index in 0..128 {
+            store
+                .put_record(
+                    "migration",
+                    &format!("{index:04}"),
+                    &vec![index as u8; 2048],
+                )
+                .unwrap();
+        }
+        {
+            let db = store.db.lock();
+            db.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)").unwrap();
+            let pages: i64 = db
+                .pragma_query_value(None, "page_count", |row| row.get(0))
+                .unwrap();
+            db.pragma_update(None, "max_page_count", pages + 3).unwrap();
+        }
+        assert!(store.migrate_records_to_rowid().is_err());
+        {
+            let db = store.db.lock();
+            let without_rowid: bool = db
+                .query_row(
+                    "SELECT wr FROM pragma_table_list WHERE name='records'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert!(without_rowid);
+            let partial: i64 = db
+                .query_row(
+                    "SELECT count(*) FROM sqlite_schema WHERE name='scion_records_rowid_migration'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(
+                partial, 0,
+                "failed migration must remove its temporary table"
+            );
+            db.pragma_update(None, "max_page_count", 1_000_000).unwrap();
+        }
+        for index in 0..128 {
+            assert_eq!(
+                store
+                    .get_record("migration", &format!("{index:04}"))
+                    .unwrap(),
+                Some(vec![index as u8; 2048])
+            );
+        }
+        assert!(store.migrate_records_to_rowid().unwrap());
+        assert!(!store.migrate_records_to_rowid().unwrap());
+        assert_eq!(
+            store.scan_records("migration", "", 1000).unwrap().len(),
+            128
+        );
     }
 }

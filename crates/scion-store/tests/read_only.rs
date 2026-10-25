@@ -89,6 +89,7 @@ fn every_reader_mutation_is_rejected() {
             .is_err()
     );
     assert!(reader.append_log("readonly", id).is_err());
+    assert!(reader.migrate_records_to_rowid().is_err());
     assert!(reader.publish_commit("readonly", id, &[]).is_err());
     assert!(
         reader

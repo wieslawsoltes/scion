@@ -228,7 +228,11 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     }
     let once = arguments.iter().any(|argument| argument == "--once");
     let read_only = arguments.iter().any(|argument| argument == "--read-only");
-    let store = if read_only {
+    let store = if read_only && once {
+        // One logical query keeps a consistent WAL view and reuses its read
+        // transaction. Resident workers retain live visibility between requests.
+        LocalStore::open_read_snapshot(directory)?
+    } else if read_only {
         LocalStore::open_read_only(directory)?
     } else {
         LocalStore::open(directory)?

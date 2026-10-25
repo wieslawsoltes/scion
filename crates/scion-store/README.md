@@ -86,6 +86,33 @@ frames and valid skippable frames remain readable; emitted frames remain readabl
 by the previous streaming decoder. Compression bytes can differ while content
 identities remain identical.
 
+## Metadata layout and explicit upgrades
+
+New local stores use an ordinary SQLite rowid table for `records`, with a narrow
+unique primary-key index on `(namespace,key)`. Large graph/index values live in
+the row payload rather than the comparison key. This prevents a metadata key
+search from reading unrelated wide values through B-tree overflow pages. The
+`inline_objects` table is unchanged.
+
+Existing stores retain their original layout when opened, and every read/write
+API supports both layouts. `LocalStore::migrate_records_to_rowid()` explicitly
+upgrades the standard legacy `WITHOUT ROWID` records table. It returns `true` for
+a completed migration and `false` when already upgraded. The copy and schema swap
+are one FULL-synchronous transaction; interruption or SQL failure rolls back the
+upgrade. Content IDs, all record bytes, objects, log sequences and reference values
+are preserved. Prepared statements are refreshed after the swap.
+
+Back up the complete store and provide free space for a copied metadata table and
+its WAL before upgrading. The copy temporarily serializes other metadata writers;
+existing WAL snapshots continue reading their old view. The migration rejects
+custom record constraints, collations, indexes, triggers and detected view or
+foreign-key dependencies rather than discarding them. Dependency detection is
+conservative. Read-only handles and read snapshots reject migration.
+
+The migration does not run VACUUM: freed pages remain available to later writes.
+Plan any optional file compaction separately as an operational maintenance task.
+There is no implicit expensive migration during ordinary open or query startup.
+
 ## Bounded small-object probes
 
 `Storage::try_get_small_object(kind, id, max_decoded_bytes)` lets query engines
@@ -159,6 +186,23 @@ writes, including idempotent writes and loose-object insertion. Readers observe
 concurrent commits through the live WAL; this does not use SQLite's immutable
 mode. SQLite can maintain WAL reader coordination sidecars, so the API is not a
 promise that no filesystem coordination files are touched.
+
+### Consistent read snapshots
+
+`LocalStore::open_read_snapshot(path)` and `open_read_snapshot_with_options`
+provide a consistent analysis view using an ordinary deferred SQLite read
+transaction. The first database query pins the latest committed WAL state; later
+queries on that handle retain it until the handle is dropped. Commits completed
+after constructing the handle but before its first query are included. A new
+snapshot observes later commits. Regular `open_read_only` continues to provide
+live visibility between queries.
+
+WAL writers can publish while a read snapshot is active. Long-lived snapshots can
+delay checkpoint progress and increase WAL retention, so scope a snapshot to one
+logical query/analysis operation. Legacy non-WAL databases retain SQLite's normal
+read-lock behavior, which can block writers. No immutable or exclusive mode is
+used, and every mutation remains rejected. Metadata and inline-object reads share
+the snapshot; immutable loose objects are read and verified by content ID.
 
 High-level repository queries can lazily derive missing indexes. Such queries
 still need a writable backend when their required derived data is absent; opening
