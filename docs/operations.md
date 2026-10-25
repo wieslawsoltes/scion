@@ -145,6 +145,12 @@ scion-daemon \
 
 A cache snapshot warms a disposable cache. It does not back up repository references, change logs, access policy, or the authoritative object collection.
 
+## Resource limits
+
+The authority defaults to 128 admitted requests and 10,000 requests per second with a burst of 20,000. Configure `--max-concurrent` and `--requests-per-second` for the available memory and backend capacity. Admission starts before request-body extraction and stays reserved while blocking backend work or successful RPC/object response data remains live. Slow readers therefore occupy capacity until their response data is released. Saturated admission and rate limits return a structured `429` response.
+
+Blob uploads have a 256 MiB object ceiling and share a 1 GiB reservation pool. Length-delimited uploads reserve their advertised size, rounded up to MiB; chunked uploads reserve the full object ceiling. RPC bodies and serialized results are limited to 16 MiB. Use file pagination and immutable-object APIs for larger results. These limits bound individual operations; select concurrency with both compressed response buffers and temporary decoded objects in mind.
+
 ## Persistence and scaling
 
 The local backend stores compressed immutable objects on disk and metadata in SQLite. It is convenient for a single authority and deterministic tests. SQLite serializes writes; this backend does not claim distributed write scalability.

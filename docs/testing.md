@@ -10,7 +10,7 @@ cargo test --workspace --all-features --locked
 
 Storage tests should use fresh temporary directories or isolated databases. A backend is conforming only when immutable insertion is idempotent, acknowledged data survives restart, reference updates compare the old value atomically, and change-log insertion deduplicates retries.
 
-Repository tests exercise DAG ancestry, tree updates, merges, rebases, path history, and line attribution. Client tests must exercise dirty and untracked files, sparse selection, and the distinction between absent files and files that have not been materialized. Service tests must verify authorization at both control and object endpoints.
+Repository tests exercise DAG ancestry, tree updates, merges, rebases, path history, and line attribution. Client tests exercise dirty and untracked files, sparse selection, absent lazy files, and explicit file/directory replacements involving virtual entries. Service tests verify authorization at both control and object endpoints, and admission remains reserved while response bodies or their data frames are retained by slow consumers.
 
 Passing unit tests establishes the behavior those tests cover. It does not establish availability under region failures or throughput for an arbitrary production workload.
 

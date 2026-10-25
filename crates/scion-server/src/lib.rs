@@ -73,6 +73,17 @@ struct RequestBudget {
     _request: OwnedSemaphorePermit,
     _memory: Option<OwnedSemaphorePermit>,
 }
+// The body owner keeps admission reserved through response delivery, including
+// cloned data frames, instead of releasing it when blocking work finishes.
+struct BudgetedBody {
+    bytes: Vec<u8>,
+    _budget: Arc<RequestBudget>,
+}
+impl AsRef<[u8]> for BudgetedBody {
+    fn as_ref(&self) -> &[u8] {
+        &self.bytes
+    }
+}
 pub struct ServerState {
     store: SharedStore,
     config: ServerConfig,
@@ -253,7 +264,6 @@ async fn rpc(
     };
     let s = state.clone();
     match tokio::task::spawn_blocking(move || {
-        let _budget = budget;
         let reply = dispatch(&s, &repo, &access, request)?;
         let bytes = serde_json::to_vec(&reply)?;
         if bytes.len() > MAX_RPC_BYTES {
@@ -261,7 +271,10 @@ async fn rpc(
                 "RPC result exceeds 16MiB; use paginated or immutable-object APIs".into(),
             ));
         }
-        Ok::<_, Error>(bytes)
+        Ok::<_, Error>(Bytes::from_owner(BudgetedBody {
+            bytes,
+            _budget: budget,
+        }))
     })
     .await
     {
@@ -317,11 +330,13 @@ async fn object(
     }
     let s = state.clone();
     match tokio::task::spawn_blocking(move || {
-        let _budget = budget;
         let t = request.ticket;
         let bytes = s.store.get_encoded(t.kind, t.id)?;
         decode_object(t.kind, t.id, &bytes)?;
-        Ok::<_, Error>(bytes)
+        Ok::<_, Error>(Bytes::from_owner(BudgetedBody {
+            bytes,
+            _budget: budget,
+        }))
     })
     .await
     {

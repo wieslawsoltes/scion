@@ -136,18 +136,24 @@ impl WorkingCopy {
     pub fn status(&self) -> Result<Vec<StatusEntry>> {
         let mut changes = BTreeMap::new();
         for (path, tracked) in &self.state.files {
-            let disk = tracked_path(&self.root, path)?;
-            let current = match disk {
-                Some(ref disk) if !fs::symlink_metadata(disk).is_ok_and(|m| m.is_dir()) => {
-                    disk_entry(disk, Some(tracked.entry.kind))?
-                }
-                _ => None,
+            // A virtual file that is merely absent is unchanged. A physical
+            // directory at that file, or a regular-file ancestor, is an explicit
+            // type replacement and needs deletion of the old virtual entries.
+            let (current, replaced) = match locate_tracked(&self.root, path)? {
+                TrackedLocation::Path(disk) => match fs::symlink_metadata(&disk) {
+                    Ok(metadata) if metadata.is_dir() => (None, true),
+                    Ok(_) => (disk_entry(&disk, Some(tracked.entry.kind))?, false),
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => (None, false),
+                    Err(error) => return Err(error.into()),
+                },
+                TrackedLocation::Missing => (None, false),
+                TrackedLocation::Replaced => (None, true),
             };
             match current {
                 Some((entry, _)) if entry != tracked.entry => {
                     changes.insert(path.clone(), StatusKind::Modified);
                 }
-                None if tracked.materialized => {
+                None if tracked.materialized || replaced => {
                     changes.insert(path.clone(), StatusKind::Deleted);
                 }
                 _ => {}
@@ -748,7 +754,18 @@ fn safe_path(root: &Path, path: &RepoPath, create_parents: bool) -> Result<PathB
 }
 // A regular-file ancestor represents a legitimate directory-to-file edit;
 // a symlink ancestor must never be followed while examining tracked descendants.
+enum TrackedLocation {
+    Path(PathBuf),
+    Missing,
+    Replaced,
+}
 fn tracked_path(root: &Path, path: &RepoPath) -> Result<Option<PathBuf>> {
+    Ok(match locate_tracked(root, path)? {
+        TrackedLocation::Path(path) => Some(path),
+        TrackedLocation::Missing | TrackedLocation::Replaced => None,
+    })
+}
+fn locate_tracked(root: &Path, path: &RepoPath) -> Result<TrackedLocation> {
     let parts: Vec<_> = path.components().collect();
     let mut result = root.to_path_buf();
     for (index, part) in parts.iter().enumerate() {
@@ -760,14 +777,16 @@ fn tracked_path(root: &Path, path: &RepoPath) -> Result<Option<PathBuf>> {
                         "unsafe symlink ancestor of {path}"
                     )));
                 }
-                Ok(m) if !m.is_dir() => return Ok(None),
+                Ok(m) if !m.is_dir() => return Ok(TrackedLocation::Replaced),
                 Ok(_) => {}
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    return Ok(TrackedLocation::Missing);
+                }
                 Err(e) => return Err(e.into()),
             }
         }
     }
-    Ok(Some(result))
+    Ok(TrackedLocation::Path(result))
 }
 fn disk_entry(path: &Path, expected: Option<FileKind>) -> Result<Option<(FileEntry, Vec<u8>)>> {
     let metadata = match fs::symlink_metadata(path) {
@@ -1142,5 +1161,66 @@ mod tests {
             Err(Error::Conflict(_))
         ));
         assert_eq!(fs::read(path).unwrap(), b"local work");
+    }
+    #[test]
+    fn virtual_file_replaced_by_directory_records_delete_and_new_child() {
+        let (temp, mut wc) = fixture(true);
+        let entry = wc
+            .state
+            .files
+            .remove(&RepoPath::new("src/main.rs").unwrap())
+            .unwrap();
+        wc.state
+            .files
+            .insert(RepoPath::new("src").unwrap(), entry.clone());
+        wc.state
+            .files
+            .insert(RepoPath::new("untouched.txt").unwrap(), entry);
+        fs::create_dir(temp.path().join("src")).unwrap();
+        fs::write(temp.path().join("src/new"), b"new").unwrap();
+        let changes = wc.status().unwrap();
+        assert_eq!(
+            changes,
+            vec![
+                StatusEntry {
+                    path: RepoPath::new("src").unwrap(),
+                    status: StatusKind::Deleted
+                },
+                StatusEntry {
+                    path: RepoPath::new("src/new").unwrap(),
+                    status: StatusKind::Added
+                },
+            ]
+        );
+    }
+    #[test]
+    fn virtual_descendants_replaced_by_ancestor_file_record_each_deletion() {
+        let (temp, mut wc) = fixture(true);
+        let entry = wc.state.files[&RepoPath::new("src/main.rs").unwrap()].clone();
+        wc.state
+            .files
+            .insert(RepoPath::new("src/nested/other.rs").unwrap(), entry.clone());
+        wc.state
+            .files
+            .insert(RepoPath::new("untouched.txt").unwrap(), entry);
+        fs::write(temp.path().join("src"), b"replacement").unwrap();
+        let changes = wc.status().unwrap();
+        assert_eq!(
+            changes,
+            vec![
+                StatusEntry {
+                    path: RepoPath::new("src").unwrap(),
+                    status: StatusKind::Added
+                },
+                StatusEntry {
+                    path: RepoPath::new("src/main.rs").unwrap(),
+                    status: StatusKind::Deleted
+                },
+                StatusEntry {
+                    path: RepoPath::new("src/nested/other.rs").unwrap(),
+                    status: StatusKind::Deleted
+                },
+            ]
+        );
     }
 }
