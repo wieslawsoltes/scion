@@ -1,0 +1,27 @@
+[package]
+name = "scion-store"
+description = "Compressed immutable objects, write-ahead logs and atomic refs for Scion"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+default = []
+postgres = ["dep:postgres"]
+
+[dependencies]
+scion-types.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+zstd.workspace = true
+rusqlite.workspace = true
+parking_lot.workspace = true
+tempfile.workspace = true
+postgres = { workspace = true, optional = true }
+
+[lints]
+workspace = true

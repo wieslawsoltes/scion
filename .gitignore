@@ -1,0 +1,7 @@
+/target/
+**/*.rs.bk
+.scion/
+*.db
+*.db-shm
+*.db-wal
+.DS_Store
