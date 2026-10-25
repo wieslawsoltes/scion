@@ -1,0 +1,24 @@
+[package]
+name = "scion-git"
+description = "Streaming, restartable Git ingestion and export for Scion"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme = "README.md"
+
+[dependencies]
+scion-types.workspace = true
+scion-store.workspace = true
+scion-engine.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,42 @@
+[package]
+name = "scion-client"
+description = "Thin online Scion client, verified caches and sparse working copies"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme = "README.md"
+
+[dependencies]
+scion-types.workspace = true
+scion-store.workspace = true
+scion-protocol.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+reqwest.workspace = true
+tokio.workspace = true
+base64.workspace = true
+parking_lot.workspace = true
+tempfile.workspace = true
+notify.workspace = true
+ignore.workspace = true
+futures.workspace = true
+fs2.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+axum.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = []
+fuse = ["dep:fuser", "dep:libc"]
+
+[target.'cfg(target_os = "linux")'.dependencies]
+fuser = { version = "0.16", default-features = false, features = ["abi-7-31"], optional = true }
+libc = { workspace = true, optional = true }
