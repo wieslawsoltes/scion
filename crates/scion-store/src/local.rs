@@ -1,4 +1,6 @@
-use crate::{ImmutableRecord, Storage, decode_object, encode_object, validate_publication};
+use crate::{
+    ImmutableRecord, PreparedObject, Storage, decode_object, encode_object, validate_publication,
+};
 use parking_lot::Mutex;
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use scion_types::{Error, LogEntry, ObjectId, ObjectKind, Result};
@@ -14,7 +16,16 @@ fn db_error(e: rusqlite::Error) -> Error {
     Error::Storage(e.to_string())
 }
 
-/// Durable local backend: sharded immutable compressed files plus SQLite WAL.
+// Small encoded objects share the FULL-synchronous metadata transaction. Larger
+// objects keep the original sharded-file representation. Batches are flushed in
+// bounded chunks, always before the final membership visibility boundary.
+const INLINE_OBJECT_LIMIT: usize = 256 * 1024;
+const INLINE_BATCH_LIMIT: usize = 16 * 1024 * 1024;
+type EncodedObject = (ObjectKind, ObjectId, Vec<u8>);
+
+/// Durable local backend: bounded small objects and metadata in SQLite WAL,
+/// with larger immutable compressed objects in sharded files. Existing loose
+/// objects remain readable; the encoded object format and content IDs do not change.
 /// Multiple processes may open a store. Shared deployments should use PostgresStore.
 pub struct LocalStore {
     root: PathBuf,
@@ -31,6 +42,7 @@ impl LocalStore {
         db.busy_timeout(Duration::from_secs(30)).map_err(db_error)?;
         db.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;
             CREATE TABLE IF NOT EXISTS records(namespace TEXT NOT NULL, key TEXT NOT NULL, value BLOB NOT NULL, PRIMARY KEY(namespace,key)) WITHOUT ROWID;
+            CREATE TABLE IF NOT EXISTS inline_objects(kind TEXT NOT NULL, id BLOB NOT NULL, encoded BLOB NOT NULL, PRIMARY KEY(kind,id)) WITHOUT ROWID;
             CREATE TABLE IF NOT EXISTS changeset_log(sequence INTEGER PRIMARY KEY AUTOINCREMENT, repo TEXT NOT NULL, id TEXT NOT NULL, UNIQUE(repo,id));
             CREATE INDEX IF NOT EXISTS changeset_log_repo ON changeset_log(repo,sequence);").map_err(db_error)?;
         Ok(Self {
@@ -51,6 +63,66 @@ impl LocalStore {
             .join(kind.as_str())
             .join(&hex[..2])
             .join(&hex[2..])
+    }
+    fn contains_inline(&self, kind: ObjectKind, id: ObjectId) -> Result<bool> {
+        self.db
+            .lock()
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM inline_objects WHERE kind=?1 AND id=?2)",
+                params![kind.as_str(), id.0.as_slice()],
+                |row| row.get(0),
+            )
+            .map_err(db_error)
+    }
+    fn write_inline(&self, kind: ObjectKind, id: ObjectId, encoded: &[u8]) -> Result<()> {
+        self.db
+            .lock()
+            .execute(
+                "INSERT INTO inline_objects(kind,id,encoded) VALUES (?1,?2,?3) ON CONFLICT DO NOTHING",
+                params![kind.as_str(), id.0.as_slice(), encoded],
+            )
+            .map_err(db_error)?;
+        Ok(())
+    }
+    fn flush_inline(&self, objects: &[EncodedObject]) -> Result<()> {
+        let mut db = self.db.lock();
+        let tx = db
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(db_error)?;
+        insert_objects(&tx, objects)?;
+        tx.commit().map_err(db_error)
+    }
+    fn publish_batch(
+        &self,
+        repo: &str,
+        id: ObjectId,
+        objects: &[EncodedObject],
+        records: &[ImmutableRecord],
+    ) -> Result<u64> {
+        let mut db = self.db.lock();
+        let tx = db
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(db_error)?;
+        insert_objects(&tx, objects)?;
+        for record in records {
+            insert_immutable(&tx, &record.namespace, &record.key, &record.value)?;
+        }
+        let id = id.to_string();
+        tx.execute(
+            "INSERT INTO changeset_log(repo,id) VALUES (?1,?2) ON CONFLICT DO NOTHING",
+            params![repo, id],
+        )
+        .map_err(db_error)?;
+        insert_immutable(&tx, &format!("repo/{repo}/changesets"), &id, b"1")?;
+        let seq: i64 = tx
+            .query_row(
+                "SELECT sequence FROM changeset_log WHERE repo=?1 AND id=?2",
+                params![repo, id],
+                |r| r.get(0),
+            )
+            .map_err(db_error)?;
+        tx.commit().map_err(db_error)?;
+        Ok(seq as u64)
     }
     fn write_encoded(&self, kind: ObjectKind, id: ObjectId, encoded: &[u8]) -> Result<()> {
         let path = self.path(kind, id);
@@ -117,12 +189,23 @@ impl LocalStore {
 }
 impl Storage for LocalStore {
     fn put_object(&self, kind: ObjectKind, bytes: &[u8]) -> Result<ObjectId> {
+        if bytes.len() > crate::MAX_OBJECT_SIZE {
+            return Err(Error::Limit("object exceeds 256 MiB".into()));
+        }
         let id = ObjectId::hash(kind, bytes);
+        if self.contains_inline(kind, id)? {
+            return Ok(id);
+        }
         let path = self.path(kind, id);
         if path.is_file() {
             self.establish_durability(kind, id, &path)?;
         } else {
-            self.write_encoded(kind, id, &encode_object(kind, bytes)?)?;
+            let encoded = encode_object(kind, bytes)?;
+            if encoded.len() <= INLINE_OBJECT_LIMIT {
+                self.write_inline(kind, id, &encoded)?;
+            } else {
+                self.write_encoded(kind, id, &encoded)?;
+            }
         }
         Ok(id)
     }
@@ -130,6 +213,19 @@ impl Storage for LocalStore {
         decode_object(kind, id, &self.get_encoded(kind, id)?)
     }
     fn get_encoded(&self, kind: ObjectKind, id: ObjectId) -> Result<Vec<u8>> {
+        let inline: Option<Vec<u8>> = self
+            .db
+            .lock()
+            .query_row(
+                "SELECT encoded FROM inline_objects WHERE kind=?1 AND id=?2",
+                params![kind.as_str(), id.0.as_slice()],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(db_error)?;
+        if let Some(encoded) = inline {
+            return Ok(encoded);
+        }
         match fs::read(self.path(kind, id)) {
             Ok(bytes) => Ok(bytes),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -140,7 +236,17 @@ impl Storage for LocalStore {
     }
     fn put_encoded(&self, kind: ObjectKind, id: ObjectId, bytes: &[u8]) -> Result<()> {
         decode_object(kind, id, bytes)?;
-        self.write_encoded(kind, id, bytes)
+        if self.contains_inline(kind, id)? {
+            return Ok(());
+        }
+        let path = self.path(kind, id);
+        if path.is_file() {
+            self.establish_durability(kind, id, &path)
+        } else if bytes.len() <= INLINE_OBJECT_LIMIT {
+            self.write_inline(kind, id, bytes)
+        } else {
+            self.write_encoded(kind, id, bytes)
+        }
     }
     fn get_record(&self, ns: &str, key: &str) -> Result<Option<Vec<u8>>> {
         self.db
@@ -213,29 +319,39 @@ impl Storage for LocalStore {
     }
     fn publish_commit(&self, repo: &str, id: ObjectId, records: &[ImmutableRecord]) -> Result<u64> {
         validate_publication(repo, id, records)?;
-        let mut db = self.db.lock();
-        let tx = db
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(db_error)?;
-        for record in records {
-            insert_immutable(&tx, &record.namespace, &record.key, &record.value)?;
+        self.publish_batch(repo, id, &[], records)
+    }
+    fn publish_commit_with_objects(
+        &self,
+        repo: &str,
+        id: ObjectId,
+        objects: &[PreparedObject],
+        records: &[ImmutableRecord],
+    ) -> Result<u64> {
+        validate_publication(repo, id, records)?;
+        let mut pending = Vec::new();
+        let mut pending_bytes = 0;
+        let mut seen = HashSet::new();
+        for object in objects {
+            if !seen.insert((object.kind(), object.id())) {
+                continue;
+            }
+            let encoded = encode_object(object.kind(), object.bytes())?;
+            if encoded.len() > INLINE_OBJECT_LIMIT {
+                // A durable file may become an unreachable orphan if subsequent
+                // metadata validation fails, but membership is never exposed.
+                self.write_encoded(object.kind(), object.id(), &encoded)?;
+                continue;
+            }
+            if pending_bytes + encoded.len() > INLINE_BATCH_LIMIT {
+                self.flush_inline(&pending)?;
+                pending.clear();
+                pending_bytes = 0;
+            }
+            pending_bytes += encoded.len();
+            pending.push((object.kind(), object.id(), encoded));
         }
-        let id = id.to_string();
-        tx.execute(
-            "INSERT INTO changeset_log(repo,id) VALUES (?1,?2) ON CONFLICT DO NOTHING",
-            params![repo, id],
-        )
-        .map_err(db_error)?;
-        insert_immutable(&tx, &format!("repo/{repo}/changesets"), &id, b"1")?;
-        let seq: i64 = tx
-            .query_row(
-                "SELECT sequence FROM changeset_log WHERE repo=?1 AND id=?2",
-                params![repo, id],
-                |r| r.get(0),
-            )
-            .map_err(db_error)?;
-        tx.commit().map_err(db_error)?;
-        Ok(seq as u64)
+        self.publish_batch(repo, id, &pending, records)
     }
     fn read_log(&self, repo: &str, after: u64, limit: usize) -> Result<Vec<LogEntry>> {
         let db = self.db.lock();
@@ -277,6 +393,20 @@ impl Storage for LocalStore {
         }
         Ok(result)
     }
+}
+
+fn insert_objects(tx: &rusqlite::Transaction<'_>, objects: &[EncodedObject]) -> Result<()> {
+    let mut statement = tx
+        .prepare_cached(
+            "INSERT INTO inline_objects(kind,id,encoded) VALUES (?1,?2,?3) ON CONFLICT DO NOTHING",
+        )
+        .map_err(db_error)?;
+    for (kind, id, encoded) in objects {
+        statement
+            .execute(params![kind.as_str(), id.0.as_slice(), encoded])
+            .map_err(db_error)?;
+    }
+    Ok(())
 }
 
 fn insert_immutable(
@@ -366,5 +496,145 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    #[test]
+    fn inline_batch_rolls_back_on_metadata_collision_and_reopens() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = LocalStore::open(dir.path()).unwrap();
+        let objects = [
+            PreparedObject::new(ObjectKind::Tree, b"new tree".to_vec()).unwrap(),
+            PreparedObject::new(ObjectKind::Changeset, b"new commit".to_vec()).unwrap(),
+        ];
+        let id = objects[1].id();
+        store.put_record("indexes", "root", b"existing").unwrap();
+        let mut records = [ImmutableRecord {
+            namespace: "indexes".into(),
+            key: "root".into(),
+            value: b"conflicting".to_vec(),
+        }];
+        assert!(
+            store
+                .publish_commit_with_objects("r", id, &objects, &records)
+                .is_err()
+        );
+        for object in &objects {
+            assert!(store.get_object(object.kind(), object.id()).is_err());
+        }
+        assert!(store.read_log("r", 0, 10).unwrap().is_empty());
+        records[0].value = b"existing".to_vec();
+        let sequence = store
+            .publish_commit_with_objects("r", id, &objects, &records)
+            .unwrap();
+        assert_eq!(
+            store
+                .publish_commit_with_objects("r", id, &objects, &records)
+                .unwrap(),
+            sequence
+        );
+        for object in &objects {
+            assert!(store.contains_inline(object.kind(), object.id()).unwrap());
+            assert!(!store.path(object.kind(), object.id()).exists());
+        }
+        drop(store);
+        let reopened = LocalStore::open(dir.path()).unwrap();
+        for object in &objects {
+            assert_eq!(
+                reopened.get_object(object.kind(), object.id()).unwrap(),
+                object.bytes()
+            );
+        }
+        assert_eq!(reopened.read_log("r", 0, 10).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn publication_reads_old_loose_and_new_inline_and_large_objects() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = LocalStore::open(dir.path()).unwrap();
+        let old = PreparedObject::new(ObjectKind::Blob, b"old loose file".to_vec()).unwrap();
+        store
+            .write_encoded(
+                old.kind(),
+                old.id(),
+                &encode_object(old.kind(), old.bytes()).unwrap(),
+            )
+            .unwrap();
+        store.put_record("legacy", "retained", b"metadata").unwrap();
+        // Reopen a pre-inline schema; upgrading must preserve existing rows and
+        // old loose objects without a content or identity migration.
+        store
+            .db
+            .lock()
+            .execute_batch("DROP TABLE inline_objects")
+            .unwrap();
+        drop(store);
+        let store = LocalStore::open(dir.path()).unwrap();
+        // Deterministic incompressible data exercises the large-file fallback.
+        let mut random = 0x1234_5678_90ab_cdefu64;
+        let bytes: Vec<_> = (0..1024 * 1024)
+            .map(|_| {
+                random ^= random << 13;
+                random ^= random >> 7;
+                random ^= random << 17;
+                random as u8
+            })
+            .collect();
+        let large = PreparedObject::new(ObjectKind::Tree, bytes).unwrap();
+        let small = PreparedObject::new(ObjectKind::Changeset, b"small commit".to_vec()).unwrap();
+        store
+            .publish_commit_with_objects("r", small.id(), &[large.clone(), small.clone()], &[])
+            .unwrap();
+        assert!(store.path(large.kind(), large.id()).is_file());
+        assert!(store.contains_inline(small.kind(), small.id()).unwrap());
+        drop(store);
+        let reopened = LocalStore::open(dir.path()).unwrap();
+        assert_eq!(
+            reopened.get_record("legacy", "retained").unwrap(),
+            Some(b"metadata".to_vec())
+        );
+        for object in [old, large, small] {
+            assert_eq!(
+                reopened.get_object(object.kind(), object.id()).unwrap(),
+                object.bytes()
+            );
+        }
+    }
+
+    #[test]
+    fn concurrent_identical_object_batches_deduplicate_publication() {
+        let dir = tempfile::tempdir().unwrap();
+        let stores: Vec<_> = (0..8)
+            .map(|_| LocalStore::open(dir.path()).unwrap())
+            .collect();
+        let barrier = Arc::new(std::sync::Barrier::new(stores.len()));
+        let objects = Arc::new([
+            PreparedObject::new(ObjectKind::Tree, b"concurrent tree".to_vec()).unwrap(),
+            PreparedObject::new(ObjectKind::Changeset, b"concurrent commit".to_vec()).unwrap(),
+        ]);
+        let id = objects[1].id();
+        let threads: Vec<_> = stores
+            .into_iter()
+            .map(|store| {
+                let barrier = barrier.clone();
+                let objects = objects.clone();
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    let sequence = store
+                        .publish_commit_with_objects("r", id, objects.as_slice(), &[])
+                        .unwrap();
+                    for object in objects.iter() {
+                        assert_eq!(
+                            store.get_object(object.kind(), object.id()).unwrap(),
+                            object.bytes()
+                        );
+                    }
+                    sequence
+                })
+            })
+            .collect();
+        let sequences: HashSet<_> = threads.into_iter().map(|t| t.join().unwrap()).collect();
+        assert_eq!(sequences.len(), 1);
+        let reopened = LocalStore::open(dir.path()).unwrap();
+        assert_eq!(reopened.read_log("r", 0, 10).unwrap().len(), 1);
     }
 }

@@ -1,7 +1,7 @@
 //! Server-side source control independent of transport, runtime and working copy.
 //! Changesets are immutable first-parent file deltas; refs are separate CAS rows.
 use scion_graph::{GraphAccess, GraphNode};
-use scion_store::{ImmutableRecord, SharedStore};
+use scion_store::{ImmutableRecord, PreparedObject, SharedStore};
 use scion_types::*;
 use std::collections::BTreeMap;
 
@@ -101,20 +101,23 @@ impl Repository {
             None => None,
         };
         // Validation and persistent-tree construction touch only modified directories.
-        let root = self.apply_tree(parent_root, &request.changes)?;
+        let mut prepared = self.prepare_tree(parent_root, &request.changes)?;
         let graph = scion_graph::build_node(self, &request.parents)?;
-        let bytes = canonical(&request)?;
-        let id = self.store.put_object(ObjectKind::Changeset, &bytes)?;
-        // One metadata transaction persists indexes, membership and the log. The
-        // immutable content above is durable before this visibility boundary.
-        self.store.publish_commit(
+        let object = PreparedObject::new(ObjectKind::Changeset, canonical(&request)?)?;
+        let id = object.id();
+        prepared.objects.push(object);
+        // Backends may batch immutable content and metadata into one durable
+        // transaction; the portable fallback writes all content before indexes,
+        // membership and the log. No staged tree enters the cache before success.
+        self.store.publish_commit_with_objects(
             &self.name,
             id,
+            &prepared.objects,
             &[
                 ImmutableRecord {
                     namespace: self.namespace("derived/tree/1"),
                     key: id.to_string(),
-                    value: canonical(&root)?,
+                    value: canonical(&prepared.root)?,
                 },
                 ImmutableRecord {
                     namespace: self.namespace("graph"),
@@ -123,6 +126,9 @@ impl Repository {
                 },
             ],
         )?;
+        for (id, tree) in prepared.decoded {
+            self.trees.insert(id, tree);
+        }
         Ok(request)
     }
 

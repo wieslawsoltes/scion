@@ -1,6 +1,18 @@
 use crate::Repository;
+use scion_store::PreparedObject;
 use scion_types::*;
 use std::collections::BTreeMap;
+use std::sync::Arc;
+
+// Bound transient raw-tree retention independently of repository size. Beyond
+// this budget trees are persisted immediately; membership remains unpublished.
+const PREPARED_TREE_BYTES: usize = 32 * 1024 * 1024;
+
+pub(crate) struct PreparedTree {
+    pub root: ObjectId,
+    pub objects: Vec<PreparedObject>,
+    pub decoded: Vec<(ObjectId, Arc<Tree>)>,
+}
 
 #[derive(Default)]
 struct DeltaNode<'a> {
@@ -54,6 +66,48 @@ impl Repository {
         base: Option<ObjectId>,
         changes: &BTreeMap<RepoPath, FileChange>,
     ) -> Result<ObjectId> {
+        self.apply_tree_with(base, changes, &mut |tree| self.store_tree(tree))
+    }
+
+    pub(crate) fn prepare_tree(
+        &self,
+        base: Option<ObjectId>,
+        changes: &BTreeMap<RepoPath, FileChange>,
+    ) -> Result<PreparedTree> {
+        let mut objects = Vec::new();
+        let mut decoded = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        let mut bytes = 0;
+        let root = self.apply_tree_with(base, changes, &mut |tree| {
+            let object = PreparedObject::new(ObjectKind::Tree, canonical(&tree)?)?;
+            let id = object.id();
+            if seen.contains(&id) {
+                return Ok(id);
+            }
+            if bytes + object.bytes().len() > PREPARED_TREE_BYTES {
+                self.store().put_object(ObjectKind::Tree, object.bytes())?;
+                self.trees.insert(id, Arc::new(tree));
+            } else {
+                bytes += object.bytes().len();
+                seen.insert(id);
+                objects.push(object);
+                decoded.push((id, Arc::new(tree)));
+            }
+            Ok(id)
+        })?;
+        Ok(PreparedTree {
+            root,
+            objects,
+            decoded,
+        })
+    }
+
+    fn apply_tree_with(
+        &self,
+        base: Option<ObjectId>,
+        changes: &BTreeMap<RepoPath, FileChange>,
+        write: &mut impl FnMut(Tree) -> Result<ObjectId>,
+    ) -> Result<ObjectId> {
         if changes.is_empty()
             && let Some(root) = base
         {
@@ -72,11 +126,11 @@ impl Repository {
             None => Tree::default(),
         };
         for (name, change) in &delta.children {
-            if let Some(entry) = self.apply_node(root.entries.remove(*name), change, name)? {
+            if let Some(entry) = self.apply_node(root.entries.remove(*name), change, name, write)? {
                 root.entries.insert((*name).to_owned(), entry);
             }
         }
-        self.store_tree(root)
+        write(root)
     }
 
     fn apply_node(
@@ -84,6 +138,7 @@ impl Repository {
         old: Option<TreeEntry>,
         delta: &DeltaNode<'_>,
         path: &str,
+        write: &mut impl FnMut(Tree) -> Result<ObjectId>,
     ) -> Result<Option<TreeEntry>> {
         let mut old = old;
         if matches!(delta.change, Some(FileChange::Delete)) {
@@ -122,6 +177,7 @@ impl Repository {
                 directory.entries.remove(*name),
                 child,
                 &format!("{path}/{name}"),
+                write,
             )? {
                 directory.entries.insert((*name).to_owned(), entry);
             }
@@ -140,7 +196,7 @@ impl Repository {
             return Ok(None);
         }
         Ok(Some(TreeEntry::Directory {
-            id: self.store_tree(directory)?,
+            id: write(directory)?,
         }))
     }
 

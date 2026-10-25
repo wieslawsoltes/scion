@@ -1,4 +1,4 @@
-use scion_store::{ImmutableRecord, LocalStore, MemoryStore, Storage};
+use scion_store::{ImmutableRecord, LocalStore, MemoryStore, PreparedObject, Storage};
 use scion_types::{ObjectId, ObjectKind};
 
 fn verify_publication(store: &dyn Storage, repo: &str) {
@@ -84,6 +84,57 @@ fn local_publication_is_atomic_durable_and_idempotent() {
         reopened.get_record("publication/local", "tree").unwrap(),
         Some(b"root".to_vec())
     );
+}
+
+#[test]
+fn acknowledged_batch_survives_exit_without_store_cleanup() {
+    let temp = tempfile::tempdir().unwrap();
+    let status = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", "acknowledged_publication_child"])
+        .env("SCION_PUBLICATION_CHILD_STORE", temp.path())
+        .status()
+        .unwrap();
+    assert!(status.success());
+    let reopened = LocalStore::open(temp.path()).unwrap();
+    for (kind, content) in [
+        (ObjectKind::Blob, b"acknowledged blob".as_slice()),
+        (ObjectKind::Tree, b"acknowledged tree".as_slice()),
+        (ObjectKind::Changeset, b"acknowledged changeset".as_slice()),
+    ] {
+        let id = ObjectId::hash(kind, content);
+        assert_eq!(reopened.get_object(kind, id).unwrap(), content);
+    }
+    assert_eq!(reopened.read_log("exit", 0, 10).unwrap().len(), 1);
+    assert_eq!(
+        reopened.get_record("exit/index", "root").unwrap(),
+        Some(b"durable".to_vec())
+    );
+}
+
+#[test]
+fn acknowledged_publication_child() {
+    let Some(path) = std::env::var_os("SCION_PUBLICATION_CHILD_STORE") else {
+        return;
+    };
+    let store = LocalStore::open(path).unwrap();
+    store
+        .put_object(ObjectKind::Blob, b"acknowledged blob")
+        .unwrap();
+    let objects = [
+        PreparedObject::new(ObjectKind::Tree, b"acknowledged tree".to_vec()).unwrap(),
+        PreparedObject::new(ObjectKind::Changeset, b"acknowledged changeset".to_vec()).unwrap(),
+    ];
+    let records = [ImmutableRecord {
+        namespace: "exit/index".into(),
+        key: "root".into(),
+        value: b"durable".to_vec(),
+    }];
+    store
+        .publish_commit_with_objects("exit", objects[1].id(), &objects, &records)
+        .unwrap();
+    // Skip destructors and SQLite's close-time checkpoint. The parent must read
+    // acknowledged content from the recovered WAL, not a graceful close.
+    std::process::exit(0);
 }
 
 #[cfg(feature = "postgres")]

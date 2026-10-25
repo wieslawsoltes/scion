@@ -24,6 +24,38 @@ pub struct ImmutableRecord {
     pub value: Vec<u8>,
 }
 
+/// Immutable content prepared for a durable publication batch. Construction
+/// validates the size and computes its content-addressed identifier; private
+/// fields keep backends from accepting caller-supplied, unverified identifiers.
+#[derive(Clone, Debug)]
+pub struct PreparedObject {
+    kind: ObjectKind,
+    id: ObjectId,
+    bytes: Vec<u8>,
+}
+
+impl PreparedObject {
+    pub fn new(kind: ObjectKind, bytes: Vec<u8>) -> Result<Self> {
+        if bytes.len() > MAX_OBJECT_SIZE {
+            return Err(scion_types::Error::Limit("object exceeds 256 MiB".into()));
+        }
+        Ok(Self {
+            kind,
+            id: ObjectId::hash(kind, &bytes),
+            bytes,
+        })
+    }
+    pub fn kind(&self) -> ObjectKind {
+        self.kind
+    }
+    pub fn id(&self) -> ObjectId {
+        self.id
+    }
+    pub fn bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+}
+
 /// Validate an immutable publication batch before performing any writes. Custom
 /// backends should call this before their transaction to reject conflicting
 /// duplicate records and caller-supplied changeset membership entries.
@@ -83,6 +115,33 @@ pub trait Storage: Send + Sync {
             self.put_record(&record.namespace, &record.key, &record.value)?;
         }
         self.append_log(repo, id)
+    }
+    /// Persist prepared immutable content before making a changeset visible.
+    /// Backends may combine objects and metadata into one durable transaction.
+    /// The default preserves object routing through `self.put_object`, then
+    /// publishes metadata/membership with `self.publish_commit`. A failure may
+    /// leave unreachable immutable objects, but must never expose membership
+    /// before every supplied object and metadata record is durable.
+    ///
+    /// Previously uploaded blobs retain their independent durability contract;
+    /// this method does not defer or weaken acknowledgement of `put_object`.
+    fn publish_commit_with_objects(
+        &self,
+        repo: &str,
+        id: ObjectId,
+        objects: &[PreparedObject],
+        records: &[ImmutableRecord],
+    ) -> Result<u64> {
+        validate_publication(repo, id, records)?;
+        for object in objects {
+            let stored = self.put_object(object.kind(), object.bytes())?;
+            if stored != object.id() {
+                return Err(scion_types::Error::Corrupt(
+                    "storage returned an incorrect prepared object identifier".into(),
+                ));
+            }
+        }
+        self.publish_commit(repo, id, records)
     }
     fn read_log(&self, repo: &str, after: u64, limit: usize) -> Result<Vec<LogEntry>>;
     fn scan_records(

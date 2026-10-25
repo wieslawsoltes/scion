@@ -62,6 +62,10 @@ Scion writes the blob, creates and publishes the immutable changeset and its
 derived metadata, then advances a reference with compare-and-swap. Its local
 backend uses SQLite WAL with `synchronous=FULL`, and syncs new object files and
 their parent directories on Unix. The reply follows successful reference update.
+With the publication-batching optimization below, small encoded objects live in
+SQLite: the prepared trees, changeset and commit metadata share a FULL-synchronous
+transaction. The blob upload and reference CAS retain their separate durable
+acknowledgements. Larger objects still use synced loose files.
 
 Git receives a commit on `refs/heads/bench`, then `checkpoint` and `get-mark`.
 The checkpoint closes the pack and saves references; the subsequent mark response
@@ -276,3 +280,56 @@ faster ancestry operations on this fixture. It does **not** support claiming tha
 the full system is uniformly faster than Git. Future work should measure durable
 write batching and tree-format/traversal costs with the same safeguards and retain
 any workloads where Git remains faster.
+
+### After durable object batching, 25 October 2026
+
+A diagnostic syscall trace of twelve prepared commits found 48 immutable-file
+flushes, 101 directory flushes, 26 WAL flushes and one database flush, including
+startup/shutdown. Those instrumented timings are not benchmark samples. The count
+identified repeated file/directory publication barriers as a concrete write cost.
+
+The local backend now keeps encoded objects up to 256 KiB in SQLite. The engine
+prepares changed directory trees and the changeset before calling
+`publish_commit_with_objects`; LocalStore can commit those objects, derived
+indexes, membership and log in one `synchronous=FULL` transaction. Independently
+acknowledged blobs and reference CAS still have their own durability boundaries.
+Large objects remain synced loose files. Buffers are bounded: 32 MiB of staged raw
+trees in the engine and 16 MiB of encoded objects in the backend; overflow is
+durably written before membership becomes visible. Other storage implementations
+inherit a safe object-first fallback through their existing object routing.
+
+This adds a local SQLite table without changing canonical objects, content IDs or
+network envelopes. New code reads all old loose objects. Backups must include
+SQLite and any live WAL together with the object directory; older binaries do not
+understand newly inlined objects. Tests cover transaction rollback, legacy schema
+opening, mixed inline/loose reads, concurrent idempotent publication, sharded
+object placement and recovery after a process exits without running SQLite's
+close-time cleanup. This tests process-exit recovery, not physical power loss.
+
+The unchanged full profile again produced exactly the same fixture identifiers
+and contents as both prior runs. Source revision `eb9e5fd` plus working-tree and
+executable hashes are recorded. Local compilation and service tests were paused
+through the measurement window; the shared-host limitations still apply.
+
+Raw data: [JSON report](benchmarks/git-comparison-2026-10-25-batched.json),
+[all samples](benchmarks/git-comparison-2026-10-25-batched.csv), and
+[summary CSV](benchmarks/git-comparison-2026-10-25-batched-summary.csv).
+
+| Operation | Scope | Scion median | Git median | Within-run comparison |
+| --- | --- | ---: | ---: | --- |
+| Prepared durable commit | Resident | 2.483 ms | 3.150 ms | Scion 1.27× faster |
+| Positive ancestry | Fresh process | 2.244 ms | 4.848 ms | Scion 2.16× faster |
+| Negative ancestry | Fresh process | 2.943 ms | 5.142 ms | Scion 1.75× faster |
+| Ancestor merge base | Fresh process | 2.362 ms | 4.815 ms | Scion 2.04× faster |
+| Divergent merge base | Fresh process | 2.900 ms | 2.645 ms | Git 1.10× faster |
+| One-file text diff | Fresh process | 5.143 ms | 2.537 ms | Git 2.03× faster |
+| File read, 1 KiB | Fresh process | 2.885 ms | 1.754 ms | Git 1.65× faster |
+| File reads across warmed paths | Resident | 0.0729 ms | 0.0793 ms | Scion 1.09× faster |
+
+Prepared-commit median improved from 6.433 ms to 2.483 ms, about 2.59× within
+Scion, and was 1.27× faster than Git's median in this run. Its p95 was 5.798 ms
+versus Git's 4.546 ms, so that median win does not extend to the tail. The fresh
+diff median rose from 3.659 ms to 5.143 ms and remained slower than Git; fresh file
+reads and divergent merge bases also remained losses. These results support the
+write-batching change, while leaving query/open and tree-processing costs as
+measured optimization targets. Every earlier run and every sample is retained.
