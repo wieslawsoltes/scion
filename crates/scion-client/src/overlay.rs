@@ -145,6 +145,8 @@ pub struct OverlayHandle {
     write: bool,
     append: bool,
     sync: bool,
+    #[cfg(windows)]
+    _lifetime_pin: File,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RenameMode {
@@ -710,7 +712,16 @@ impl Overlay {
             .read(true)
             .write(options.write)
             .open(self.data_path(inode))?;
-        FileExt::lock_shared(&file)?; // clean-cache eviction must not detach a live inode
+        // Unix flock is advisory. Windows byte-range shared locks deny even
+        // the owner's writes, so lifetime pinning must use a separate file there.
+        #[cfg(not(windows))]
+        FileExt::lock_shared(&file)?;
+        #[cfg(windows)]
+        let pin = {
+            let pin = self.pin_file(inode)?;
+            FileExt::lock_shared(&pin)?;
+            pin
+        };
         Ok(OverlayHandle {
             inode,
             file,
@@ -718,6 +729,8 @@ impl Overlay {
             write: options.write,
             append: options.append,
             sync: options.sync,
+            #[cfg(windows)]
+            _lifetime_pin: pin,
         })
     }
     pub fn read(&self, handle: &mut OverlayHandle, offset: u64, length: usize) -> Result<Vec<u8>> {
@@ -1209,12 +1222,20 @@ impl Overlay {
             if total <= max_bytes {
                 break;
             }
+            #[cfg(windows)]
+            let _pin = {
+                let pin = self.pin_file(id)?;
+                if !try_exclusive(&pin)? {
+                    continue;
+                }
+                pin
+            };
             let path = self.data_path(id);
             let file = File::open(&path)?;
             if file.try_lock_exclusive().is_err() {
                 continue;
             }
-            // The shared data-file locks protect open inode identity. Clearing
+            // The shared lifetime locks protect open inode identity. Clearing
             // the cache marker before removing bytes makes crash recovery safe.
             let tx = conn.transaction().map_err(sql_error)?;
             tx.execute("UPDATE nodes SET local=0 WHERE inode=?1", [id])
@@ -1229,7 +1250,8 @@ impl Overlay {
         Ok(removed)
     }
     /// Reclaim unreachable local data while no kernel mount is active. Live
-    /// `OverlayHandle`s keep a shared data-file lock, so open-unlinked files are
+    /// `OverlayHandle`s keep a shared lifetime lock (a separate pin file on
+    /// Windows), so open-unlinked files are
     /// retained. Inactive stale mount records do not block recovery.
     pub fn collect_orphans(&self) -> Result<ReclaimStats> {
         let _mount_guard = self.mount_guard()?;
@@ -1279,6 +1301,16 @@ impl Overlay {
             if !metadata.is_file() {
                 continue;
             }
+            #[cfg(windows)]
+            let _pin = if let Ok(id) = name.parse::<u64>() {
+                let pin = self.pin_file(id)?;
+                if !try_exclusive(&pin)? {
+                    continue;
+                }
+                Some(pin)
+            } else {
+                None
+            };
             let file = OpenOptions::new()
                 .read(true)
                 .write(true)
@@ -1292,13 +1324,44 @@ impl Overlay {
             stats.bytes += length;
             stats.interrupted_files += 1;
         }
+        #[cfg(windows)]
+        {
+            let directory = self.root.join("pins");
+            if directory.is_dir() {
+                for item in fs::read_dir(&directory)? {
+                    let item = item?;
+                    let Some(id) = item
+                        .file_name()
+                        .to_str()
+                        .and_then(|name| name.parse::<u64>().ok())
+                    else {
+                        continue;
+                    };
+                    let exists: bool = conn
+                        .query_row(
+                            "SELECT EXISTS(SELECT 1 FROM nodes WHERE inode=?1)",
+                            [id],
+                            |r| r.get(0),
+                        )
+                        .map_err(sql_error)?;
+                    if exists {
+                        continue;
+                    }
+                    let pin = self.pin_file(id)?;
+                    if try_exclusive(&pin)? {
+                        drop(pin);
+                        fs::remove_file(item.path())?;
+                    }
+                }
+            }
+        }
         if stats.inodes > 0 || stats.interrupted_files > 0 {
             sync_dir(&self.root.join("data"))?;
         }
         Ok(stats)
     }
     /// The adapter calls this only after the kernel releases lookup references
-    /// and after all its file/directory handles close. The data lock also covers
+    /// and after all its file/directory handles close. The lifetime lock also covers
     /// direct users of the reusable API in this or another process.
     #[cfg(all(feature = "fuse", target_os = "linux"))]
     pub(crate) fn collect_unlinked_inode(&self, inode: u64) -> Result<ReclaimStats> {
@@ -1329,6 +1392,14 @@ impl Overlay {
             return Ok(ReclaimStats::default());
         }
         let node = get_node(conn, inode)?;
+        #[cfg(windows)]
+        let pin = {
+            let pin = self.pin_file(inode)?;
+            if !try_exclusive(&pin)? {
+                return Ok(ReclaimStats::default());
+            }
+            pin
+        };
         let path = self.data_path(inode);
         let data = match fs::symlink_metadata(&path) {
             Ok(metadata) if metadata.is_file() => {
@@ -1368,11 +1439,31 @@ impl Overlay {
         if had_data {
             fs::remove_file(path)?;
         }
+        #[cfg(windows)]
+        {
+            drop(pin);
+            fs::remove_file(self.root.join("pins").join(inode.to_string()))?;
+        }
         Ok(ReclaimStats {
             inodes: 1,
             bytes,
             interrupted_files: 0,
         })
+    }
+    #[cfg(windows)]
+    fn pin_file(&self, inode: u64) -> Result<File> {
+        let directory = self.root.join("pins");
+        match fs::symlink_metadata(&directory) {
+            Ok(meta) if meta.is_dir() && !meta.file_type().is_symlink() => {}
+            Ok(_) => {
+                return Err(Error::Invalid(
+                    "overlay pin directory is not a real directory".into(),
+                ));
+            }
+            Err(error) if error.kind() == ErrorKind::NotFound => fs::create_dir(&directory)?,
+            Err(error) => return Err(error.into()),
+        }
+        lock_file(&directory.join(inode.to_string()))
     }
     fn data_path(&self, inode: u64) -> PathBuf {
         self.root.join("data").join(inode.to_string())
@@ -2304,5 +2395,32 @@ mod tests {
         let handle = overlay.open_file(a.inode, rw(), &source).unwrap();
         assert_eq!(overlay.getattr(a.inode).unwrap().mtime_ns, modified);
         drop(handle);
+    }
+    #[cfg(windows)]
+    #[test]
+    fn windows_lifetime_pins_allow_multiple_writable_content_handles() {
+        let (_dir, overlay, source, _) = fixture();
+        let file = overlay.create(1, "shared", 0o644, 1, 1).unwrap();
+        let mut first = overlay.open_file(file.inode, rw(), &source).unwrap();
+        let mut second = overlay.open_file(file.inode, rw(), &source).unwrap();
+        overlay.write(&mut first, 0, b"first").unwrap();
+        assert_eq!(overlay.read(&mut second, 0, 10).unwrap(), b"first");
+        overlay.write(&mut second, 0, b"other").unwrap();
+        overlay.truncate(file.inode, 3, &source).unwrap();
+        assert_eq!(overlay.read(&mut first, 0, 10).unwrap(), b"oth");
+        overlay.fsync(&first, false).unwrap();
+        overlay.unlink(1, "shared").unwrap();
+        assert_eq!(overlay.collect_orphans().unwrap().inodes, 0);
+        drop(first);
+        assert_eq!(overlay.collect_orphans().unwrap().inodes, 0);
+        drop(second);
+        assert_eq!(overlay.collect_orphans().unwrap().inodes, 1);
+        assert!(
+            !overlay
+                .root()
+                .join("pins")
+                .join(file.inode.to_string())
+                .exists()
+        );
     }
 }
