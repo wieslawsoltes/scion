@@ -45,6 +45,7 @@ pub struct WritableFs {
     source: RemoteSource,
     handles: BTreeMap<u64, OverlayHandle>,
     directories: BTreeMap<u64, DirectoryHandle>,
+    lookup_refs: BTreeMap<u64, u64>,
     directory_bytes: usize,
     next_handle: u64,
     clean_cache_bytes: u64,
@@ -59,6 +60,7 @@ impl WritableFs {
                 "mount client does not match overlay repository".into(),
             ));
         }
+        overlay.collect_orphans()?;
         let guard = overlay.mount_guard()?;
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
@@ -69,6 +71,7 @@ impl WritableFs {
             source: RemoteSource { client, runtime },
             handles: BTreeMap::new(),
             directories: BTreeMap::new(),
+            lookup_refs: BTreeMap::new(),
             directory_bytes: 0,
             next_handle: 1,
             clean_cache_bytes,
@@ -92,11 +95,38 @@ impl WritableFs {
         let handle = self
             .overlay
             .open_file(inode, open_options(flags), &self.source)?;
-        self.handles.insert(id, handle);
         // Dirty/open files are protected. The byte budget bounds reusable clean
         // copies, while application-owned open and dirty data may exceed it.
         self.overlay.prune_clean_cache(self.clean_cache_bytes)?;
+        self.handles.insert(id, handle);
         Ok(id)
+    }
+    fn remember_inode(&mut self, inode: u64) {
+        let count = self.lookup_refs.entry(inode).or_default();
+        *count = count.saturating_add(1);
+    }
+    fn forget_inode(&mut self, inode: u64, count: u64) -> Result<()> {
+        if let Some(remaining) = self.lookup_refs.get_mut(&inode) {
+            *remaining = remaining.saturating_sub(count);
+            if *remaining == 0 {
+                self.lookup_refs.remove(&inode);
+            }
+        }
+        self.collect_if_unused(inode)
+    }
+    fn collect_if_unused(&self, inode: u64) -> Result<()> {
+        // O_PATH descriptors and cached kernel dentries hold lookup references
+        // even when FUSE never received an open request for a data handle.
+        if self.lookup_refs.contains_key(&inode)
+            || self.handles.values().any(|handle| handle.inode == inode)
+            || self
+                .directories
+                .values()
+                .any(|handle| handle.inode == inode)
+        {
+            return Ok(());
+        }
+        self.overlay.collect_unlinked_inode(inode).map(|_| ())
     }
 }
 fn open_options(flags: i32) -> OpenFileOptions {
@@ -189,11 +219,24 @@ impl Filesystem for WritableFs {
         Ok(())
     }
 
+    fn destroy(&mut self) {
+        for handle in self.handles.values() {
+            let _ = self.overlay.fsync(handle, false);
+        }
+    }
     fn lookup(&mut self, _req: &Request<'_>, parent: u64, entry: &OsStr, reply: ReplyEntry) {
         match name(entry).and_then(|n| self.overlay.lookup(parent, n)) {
-            Ok(node) => reply.entry(&TTL, &attr(node), 0),
+            Ok(node) => {
+                self.remember_inode(node.inode);
+                reply.entry(&TTL, &attr(node), 0);
+            }
             Err(e) => reply.error(errno(e)),
         }
+    }
+    fn forget(&mut self, _req: &Request<'_>, ino: u64, nlookup: u64) {
+        // Forget has no reply channel. Failed cleanup is retried by offline GC
+        // or the next mount; source-control state remains intact.
+        let _ = self.forget_inode(ino, nlookup);
     }
     fn getattr(&mut self, _req: &Request<'_>, ino: u64, _fh: Option<u64>, reply: ReplyAttr) {
         match self.overlay.getattr(ino) {
@@ -263,7 +306,10 @@ impl Filesystem for WritableFs {
             self.overlay
                 .create(parent, n, mode & !umask, req.uid(), req.gid())
         }) {
-            Ok(node) => reply.entry(&TTL, &attr(node), 0),
+            Ok(node) => {
+                self.remember_inode(node.inode);
+                reply.entry(&TTL, &attr(node), 0);
+            }
             Err(e) => reply.error(errno(e)),
         }
     }
@@ -280,7 +326,10 @@ impl Filesystem for WritableFs {
             self.overlay
                 .mkdir(parent, n, mode & !umask, req.uid(), req.gid())
         }) {
-            Ok(node) => reply.entry(&TTL, &attr(node), 0),
+            Ok(node) => {
+                self.remember_inode(node.inode);
+                reply.entry(&TTL, &attr(node), 0);
+            }
             Err(e) => reply.error(errno(e)),
         }
     }
@@ -313,7 +362,10 @@ impl Filesystem for WritableFs {
                 req.gid(),
             )
         }) {
-            Ok(node) => reply.entry(&TTL, &attr(node), 0),
+            Ok(node) => {
+                self.remember_inode(node.inode);
+                reply.entry(&TTL, &attr(node), 0);
+            }
             Err(e) => reply.error(errno(e)),
         }
     }
@@ -375,7 +427,10 @@ impl Filesystem for WritableFs {
             }
         };
         match self.open_inode(node.inode, flags) {
-            Ok(handle) => reply.created(&TTL, &attr(node), 0, handle, 0),
+            Ok(handle) => {
+                self.remember_inode(node.inode);
+                reply.created(&TTL, &attr(node), 0, handle, 0);
+            }
             Err(e) => reply.error(errno(e)),
         }
     }
@@ -464,11 +519,13 @@ impl Filesystem for WritableFs {
         drop(handle);
         reply_empty(
             reply,
-            result.and_then(|()| {
-                self.overlay
-                    .prune_clean_cache(self.clean_cache_bytes)
-                    .map(|_| ())
-            }),
+            result
+                .and_then(|()| self.collect_if_unused(ino))
+                .and_then(|()| {
+                    self.overlay
+                        .prune_clean_cache(self.clean_cache_bytes)
+                        .map(|_| ())
+                }),
         );
     }
     fn opendir(&mut self, _req: &Request<'_>, ino: u64, _flags: i32, reply: ReplyOpen) {
@@ -538,7 +595,7 @@ impl Filesystem for WritableFs {
     ) {
         if let Some(handle) = self.directories.remove(&fh).filter(|h| h.inode == ino) {
             self.directory_bytes -= handle.bytes;
-            reply.ok();
+            reply_empty(reply, self.collect_if_unused(ino));
         } else {
             reply.error(libc::EBADF);
         }
@@ -610,6 +667,7 @@ pub fn mount_writable(
     );
     let mut filesystem = WritableFs::new(client, overlay, clean_cache_bytes)?;
     filesystem.mount_identity = Some((mountpoint.clone(), source.clone()));
+    let backing_path = filesystem.overlay.root().to_path_buf();
     fuser::mount2(
         filesystem,
         mountpoint,
@@ -622,5 +680,71 @@ pub fn mount_writable(
             MountOption::NoSuid,
         ],
     )?;
-    Ok(())
+    match Overlay::open(backing_path)?.collect_orphans() {
+        Ok(_) | Err(Error::Conflict(_)) => Ok(()), // another mount may have started
+        Err(error) => Err(error),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::overlay::OverlayConfig;
+    use scion_types::{ObjectId, ObjectKind};
+
+    fn fixture() -> (tempfile::TempDir, WritableFs) {
+        let dir = tempfile::tempdir().unwrap();
+        let client = Client::new("http://127.0.0.1:7420", None, "test", None, None).unwrap();
+        let revision = ObjectId::hash(ObjectKind::Changeset, b"base");
+        let overlay = Overlay::initialize(
+            dir.path(),
+            OverlayConfig::new(&client, revision, vec![], 1000, 1000),
+            BTreeMap::new(),
+        )
+        .unwrap();
+        let filesystem = WritableFs::new(client, overlay, 1024).unwrap();
+        (dir, filesystem)
+    }
+    #[test]
+    fn kernel_lookup_reference_preserves_opath_inode_until_forget() {
+        let (_dir, mut filesystem) = fixture();
+        let node = filesystem
+            .overlay
+            .create(1, "opath", 0o644, 1000, 1000)
+            .unwrap();
+        filesystem.remember_inode(node.inode);
+        filesystem.overlay.unlink(1, "opath").unwrap();
+        filesystem.collect_if_unused(node.inode).unwrap();
+        assert_eq!(filesystem.overlay.getattr(node.inode).unwrap().nlink, 0);
+        assert!(filesystem.overlay.collect_orphans().is_err()); // mounted guard
+        filesystem.forget_inode(node.inode, 1).unwrap();
+        assert!(filesystem.overlay.getattr(node.inode).is_err());
+    }
+    #[test]
+    fn forgotten_open_inode_is_collected_only_after_final_handle_closes() {
+        let (_dir, mut filesystem) = fixture();
+        let node = filesystem
+            .overlay
+            .create(1, "open", 0o644, 1000, 1000)
+            .unwrap();
+        filesystem.remember_inode(node.inode);
+        let id = filesystem.open_inode(node.inode, libc::O_RDWR).unwrap();
+        filesystem.overlay.unlink(1, "open").unwrap();
+        filesystem.forget_inode(node.inode, 1).unwrap();
+        assert!(filesystem.overlay.getattr(node.inode).is_ok());
+        let mut handle = filesystem.handles.remove(&id).unwrap();
+        filesystem
+            .overlay
+            .write(&mut handle, 0, b"still alive")
+            .unwrap();
+        // Even an API handle temporarily outside the adapter map keeps its lock.
+        filesystem.collect_if_unused(node.inode).unwrap();
+        assert_eq!(
+            filesystem.overlay.read(&mut handle, 0, 20).unwrap(),
+            b"still alive"
+        );
+        drop(handle);
+        filesystem.collect_if_unused(node.inode).unwrap();
+        assert!(filesystem.overlay.getattr(node.inode).is_err());
+    }
 }

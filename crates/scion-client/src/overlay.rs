@@ -122,6 +122,13 @@ pub struct OverlayStatus {
     pub files_hashed: u64,
     pub bytes_hashed: u64,
 }
+/// Space recovered from unlinked inodes and interrupted unpublished data files.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub struct ReclaimStats {
+    pub inodes: u64,
+    pub bytes: u64,
+    pub interrupted_files: u64,
+}
 #[derive(Debug, Clone, Copy, Default)]
 pub struct OpenFileOptions {
     pub read: bool,
@@ -1139,7 +1146,7 @@ impl Overlay {
                 [serde_json::to_string(&next)?],
             )
             .map_err(sql_error)?;
-            clear_dirty_edits(&tx, id)?;
+            clear_dirty_edits(&tx, id, &self.root)?;
             tx.commit().map_err(sql_error)?;
         }
         if let Some(name) = reference {
@@ -1221,6 +1228,152 @@ impl Overlay {
         sync_dir(&self.root.join("data"))?;
         Ok(removed)
     }
+    /// Reclaim unreachable local data while no kernel mount is active. Live
+    /// `OverlayHandle`s keep a shared data-file lock, so open-unlinked files are
+    /// retained. Inactive stale mount records do not block recovery.
+    pub fn collect_orphans(&self) -> Result<ReclaimStats> {
+        let _mount_guard = self.mount_guard()?;
+        let _lease = self.lease(true)?;
+        let mut conn = self.db.lock();
+        self.collect_orphans_locked(&mut conn)
+    }
+    fn collect_orphans_locked(&self, conn: &mut Connection) -> Result<ReclaimStats> {
+        let ids = {
+            let mut statement = conn.prepare("SELECT inode FROM nodes n WHERE NOT EXISTS (SELECT 1 FROM entries e WHERE e.inode=n.inode)").map_err(sql_error)?;
+            statement
+                .query_map([], |r| r.get::<_, u64>(0))
+                .map_err(sql_error)?
+                .collect::<std::result::Result<Vec<_>, _>>()
+                .map_err(sql_error)?
+        };
+        let mut stats = ReclaimStats::default();
+        for id in ids {
+            let recovered = self.collect_inode_locked(conn, id)?;
+            stats.inodes += recovered.inodes;
+            stats.bytes += recovered.bytes;
+        }
+        // A crash after deleting metadata but before removing data can leave a
+        // numeric file with no node. An interrupted tempfile write has a known
+        // private prefix. Never follow links or remove unrelated named files.
+        for item in fs::read_dir(self.root.join("data"))? {
+            let item = item?;
+            let name = item.file_name();
+            let Some(name) = name.to_str() else {
+                continue;
+            };
+            let unpublished = if let Ok(id) = name.parse::<u64>() {
+                !conn
+                    .query_row(
+                        "SELECT EXISTS(SELECT 1 FROM nodes WHERE inode=?1)",
+                        [id],
+                        |r| r.get::<_, bool>(0),
+                    )
+                    .map_err(sql_error)?
+            } else {
+                name.starts_with(".scion-data-") || name.starts_with(".tmp")
+            };
+            if !unpublished {
+                continue;
+            }
+            let metadata = item.file_type()?;
+            if !metadata.is_file() {
+                continue;
+            }
+            let file = OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(item.path())?;
+            if !try_exclusive(&file)? {
+                continue;
+            }
+            let length = file.metadata()?.len();
+            drop(file);
+            fs::remove_file(item.path())?;
+            stats.bytes += length;
+            stats.interrupted_files += 1;
+        }
+        if stats.inodes > 0 || stats.interrupted_files > 0 {
+            sync_dir(&self.root.join("data"))?;
+        }
+        Ok(stats)
+    }
+    /// The adapter calls this only after the kernel releases lookup references
+    /// and after all its file/directory handles close. The data lock also covers
+    /// direct users of the reusable API in this or another process.
+    #[cfg(all(feature = "fuse", target_os = "linux"))]
+    pub(crate) fn collect_unlinked_inode(&self, inode: u64) -> Result<ReclaimStats> {
+        let _lease = self.lease(true)?;
+        let mut conn = self.db.lock();
+        let stats = self.collect_inode_locked(&mut conn, inode)?;
+        if stats.inodes > 0 {
+            sync_dir(&self.root.join("data"))?;
+        }
+        Ok(stats)
+    }
+    fn collect_inode_locked(&self, conn: &mut Connection, inode: u64) -> Result<ReclaimStats> {
+        let named: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM entries WHERE inode=?1)",
+                [inode],
+                |r| r.get(0),
+            )
+            .map_err(sql_error)?;
+        let exists: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM nodes WHERE inode=?1)",
+                [inode],
+                |r| r.get(0),
+            )
+            .map_err(sql_error)?;
+        if named || !exists {
+            return Ok(ReclaimStats::default());
+        }
+        let node = get_node(conn, inode)?;
+        let path = self.data_path(inode);
+        let data = match fs::symlink_metadata(&path) {
+            Ok(metadata) if metadata.is_file() => {
+                let file = OpenOptions::new().read(true).write(true).open(&path)?;
+                if !try_exclusive(&file)? {
+                    return Ok(ReclaimStats::default());
+                }
+                Some(file)
+            }
+            Ok(_) => {
+                return Err(Error::Corrupt(
+                    "unlinked overlay data is not a regular file".into(),
+                ));
+            }
+            Err(e) if e.kind() == ErrorKind::NotFound => None,
+            Err(e) => return Err(e.into()),
+        };
+        let bytes = data
+            .as_ref()
+            .map(|f| f.metadata().map(|m| m.len()))
+            .transpose()?
+            .unwrap_or_default();
+        let tx = conn.transaction().map_err(sql_error)?;
+        if node.local
+            && !node.dirty
+            && let Some(origin) = node.origin
+        {
+            adjust_clean_bytes(&tx, -(origin.entry.size as i64))?;
+        }
+        tx.execute("DELETE FROM nodes WHERE inode=?1", [inode])
+            .map_err(sql_error)?;
+        tx.commit().map_err(sql_error)?;
+        let had_data = data.is_some();
+        // Other API opens cannot race while the operation lease is held. Close
+        // our own lock before unlink for Windows delete-sharing compatibility.
+        drop(data);
+        if had_data {
+            fs::remove_file(path)?;
+        }
+        Ok(ReclaimStats {
+            inodes: 1,
+            bytes,
+            interrupted_files: 0,
+        })
+    }
     fn data_path(&self, inode: u64) -> PathBuf {
         self.root.join("data").join(inode.to_string())
     }
@@ -1274,7 +1427,9 @@ impl Overlay {
     fn persist_data(&self, inode: u64, bytes: &[u8]) -> Result<()> {
         let directory = self.root.join("data");
         let path = self.data_path(inode);
-        let mut temp = tempfile::NamedTempFile::new_in(&directory)?;
+        let mut temp = tempfile::Builder::new()
+            .prefix(".scion-data-")
+            .tempfile_in(&directory)?;
         temp.write_all(bytes)?;
         temp.as_file().sync_all()?;
         // Called only for unpublished new data or an unmaterialized inode under
@@ -1483,7 +1638,50 @@ fn mark_content_dirty(conn: &mut Connection, inode: u64) -> Result<()> {
     tx.commit().map_err(sql_error)?;
     Ok(())
 }
-fn clear_dirty_edits(tx: &Transaction<'_>, revision: ObjectId) -> Result<()> {
+fn clear_dirty_edits(tx: &Transaction<'_>, revision: ObjectId, root: &Path) -> Result<()> {
+    // The write fast path reads times from local data instead of rewriting WAL
+    // on every write. Preserve them in the clean baseline before that data can
+    // be evicted and later hydrated again.
+    let dirty_ids = {
+        let mut statement = tx.prepare("SELECT inode FROM nodes WHERE local=1 AND dirty=1 AND inode IN (SELECT inode FROM edits WHERE inode IS NOT NULL)").map_err(sql_error)?;
+        statement
+            .query_map([], |r| r.get::<_, u64>(0))
+            .map_err(sql_error)?
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(sql_error)?
+    };
+    for inode in dirty_ids {
+        let node = get_node(tx, inode)?;
+        let meta = fs::symlink_metadata(root.join("data").join(inode.to_string()))?;
+        let atime = meta
+            .accessed()
+            .ok()
+            .map(system_time_ns)
+            .unwrap_or(node.attr.atime_ns);
+        let mtime = meta
+            .modified()
+            .ok()
+            .map(system_time_ns)
+            .unwrap_or(node.attr.mtime_ns);
+        let ctime = {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::MetadataExt;
+                (i128::from(meta.ctime()) * 1_000_000_000 + i128::from(meta.ctime_nsec()))
+                    .clamp(0, i128::from(i64::MAX)) as u64
+            }
+            #[cfg(not(unix))]
+            {
+                node.attr.ctime_ns
+            }
+        };
+        tx.execute(
+            "UPDATE nodes SET atime=?2,mtime=?3,ctime=max(ctime,?4) WHERE inode=?1",
+            params![inode, atime, mtime, ctime],
+        )
+        .map_err(sql_error)?;
+    }
+
     // A replacement inode can be byte-identical to its baseline and therefore
     // omitted from the changeset. It still needs an immutable origin before its
     // dirty marker is cleared, so later rename/eviction/reopen remains valid.
@@ -1588,6 +1786,19 @@ fn validate_name(name: &str) -> Result<()> {
         return Err(Error::Invalid("invalid overlay entry name".into()));
     }
     Ok(())
+}
+fn try_exclusive(file: &File) -> Result<bool> {
+    match file.try_lock_exclusive() {
+        Ok(()) => Ok(true),
+        Err(error)
+            if error.kind() == ErrorKind::WouldBlock
+                || error.raw_os_error()
+                    == Some(fs2::lock_contended_error().raw_os_error().unwrap_or(-1)) =>
+        {
+            Ok(false)
+        }
+        Err(error) => Err(error.into()),
+    }
 }
 fn lock_file(path: &Path) -> Result<File> {
     if fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()) {
@@ -1915,7 +2126,7 @@ mod tests {
         {
             let mut conn = overlay.db.lock();
             let tx = conn.transaction().unwrap();
-            clear_dirty_edits(&tx, read_config(&tx).unwrap().revision).unwrap();
+            clear_dirty_edits(&tx, read_config(&tx).unwrap().revision, overlay.root()).unwrap();
             tx.commit().unwrap();
         }
         overlay.write(&mut handle, 0, b"again").unwrap();
@@ -1949,7 +2160,7 @@ mod tests {
         {
             let mut conn = overlay.db.lock();
             let tx = conn.transaction().unwrap();
-            clear_dirty_edits(&tx, read_config(&tx).unwrap().revision).unwrap();
+            clear_dirty_edits(&tx, read_config(&tx).unwrap().revision, overlay.root()).unwrap();
             tx.commit().unwrap();
         }
         assert_eq!(clean_bytes(), 5);
@@ -1978,7 +2189,7 @@ mod tests {
         {
             let mut conn = overlay.db.lock();
             let tx = conn.transaction().unwrap();
-            clear_dirty_edits(&tx, read_config(&tx).unwrap().revision).unwrap();
+            clear_dirty_edits(&tx, read_config(&tx).unwrap().revision, overlay.root()).unwrap();
             tx.commit().unwrap();
         }
         drop(handle);
@@ -2003,5 +2214,95 @@ mod tests {
         assert_eq!(overlay.changes().unwrap().len(), 1);
         let _lease = overlay.lease(true).unwrap();
         assert_eq!(overlay.sync_dirty_data(&overlay.db.lock()).unwrap(), 2);
+    }
+    #[test]
+    fn orphan_collection_preserves_open_unlinked_handles_then_reclaims_bytes() {
+        let (_dir, overlay, source, _) = fixture();
+        let node = overlay.create(1, "temporary", 0o644, 1, 1).unwrap();
+        let mut handle = overlay.open_file(node.inode, rw(), &source).unwrap();
+        overlay.write(&mut handle, 0, b"temporary bytes").unwrap();
+        overlay.unlink(1, "temporary").unwrap();
+        assert_eq!(overlay.collect_orphans().unwrap().inodes, 0);
+        overlay.write(&mut handle, 0, b"still open").unwrap();
+        assert_eq!(overlay.read(&mut handle, 0, 10).unwrap(), b"still open");
+        drop(handle);
+        let stats = overlay.collect_orphans().unwrap();
+        assert_eq!(stats.inodes, 1);
+        assert_eq!(stats.bytes, 15);
+        assert!(!overlay.data_path(node.inode).exists());
+        assert!(overlay.getattr(node.inode).is_err());
+        assert!(overlay.status().unwrap().changes.is_empty());
+    }
+    #[test]
+    fn recovery_collection_cleans_interrupted_files_and_ignores_stale_mount_record() {
+        let (dir, overlay, source, _) = fixture();
+        let src = overlay.lookup(1, "src").unwrap();
+        let a = overlay.lookup(src.inode, "a").unwrap();
+        let handle = overlay.open_file(a.inode, rw(), &source).unwrap();
+        drop(handle);
+        overlay.unlink(src.inode, "a").unwrap();
+        fs::write(
+            overlay.root().join("mounted.json"),
+            b"stale invalid session",
+        )
+        .unwrap();
+        fs::write(overlay.root().join("data/99999999"), b"unpublished").unwrap();
+        fs::write(
+            overlay.root().join("data/.scion-data-interrupted"),
+            b"temporary",
+        )
+        .unwrap();
+        let active = overlay.mount_guard().unwrap();
+        assert!(matches!(overlay.collect_orphans(), Err(Error::Conflict(_))));
+        drop(active);
+        drop(overlay);
+        let overlay = Overlay::open(dir.path()).unwrap();
+        let stats = overlay.collect_orphans().unwrap();
+        assert_eq!(stats.inodes, 1);
+        assert_eq!(stats.interrupted_files, 2);
+        assert_eq!(stats.bytes, 5 + 11 + 9);
+        assert_eq!(overlay.prune_clean_cache(0).unwrap(), 0);
+        assert_eq!(overlay.status().unwrap().changes.len(), 1);
+        assert!(overlay.collect_orphans().unwrap().inodes == 0);
+    }
+    #[test]
+    fn repeated_atomic_saves_do_not_retain_replaced_local_data() {
+        let (_dir, overlay, source, _) = fixture();
+        let src = overlay.lookup(1, "src").unwrap();
+        for _ in 0..20 {
+            let node = overlay.create(src.inode, "save-tmp", 0o644, 1, 1).unwrap();
+            let mut handle = overlay.open_file(node.inode, rw(), &source).unwrap();
+            overlay.write(&mut handle, 0, b"replacement").unwrap();
+            drop(handle);
+            overlay
+                .rename(src.inode, "save-tmp", src.inode, "a", RenameMode::Replace)
+                .unwrap();
+            overlay.collect_orphans().unwrap();
+        }
+        let data_files = fs::read_dir(overlay.root().join("data")).unwrap().count();
+        assert_eq!(data_files, 1);
+        assert_eq!(overlay.changes().unwrap().len(), 1);
+    }
+    #[test]
+    fn clean_cache_eviction_preserves_restored_file_mtime() {
+        let (_dir, overlay, source, _) = fixture();
+        let a = overlay.resolve(&RepoPath::new("src/a").unwrap()).unwrap();
+        let mut handle = overlay.open_file(a.inode, rw(), &source).unwrap();
+        overlay.write(&mut handle, 0, b"world").unwrap();
+        overlay.write(&mut handle, 0, b"hello").unwrap();
+        let modified = overlay.getattr(a.inode).unwrap().mtime_ns;
+        overlay.fsync(&handle, false).unwrap();
+        {
+            let mut conn = overlay.db.lock();
+            let tx = conn.transaction().unwrap();
+            clear_dirty_edits(&tx, read_config(&tx).unwrap().revision, overlay.root()).unwrap();
+            tx.commit().unwrap();
+        }
+        drop(handle);
+        assert_eq!(overlay.prune_clean_cache(0).unwrap(), 5);
+        assert_eq!(overlay.getattr(a.inode).unwrap().mtime_ns, modified);
+        let handle = overlay.open_file(a.inode, rw(), &source).unwrap();
+        assert_eq!(overlay.getattr(a.inode).unwrap().mtime_ns, modified);
+        drop(handle);
     }
 }

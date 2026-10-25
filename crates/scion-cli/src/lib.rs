@@ -268,6 +268,10 @@ enum OverlayCommand {
     Prune {
         directory: PathBuf,
     },
+    /// Reclaim unlinked data and interrupted temporary files while unmounted.
+    Gc {
+        directory: PathBuf,
+    },
 }
 #[derive(Subcommand)]
 enum CacheCommand {
@@ -557,6 +561,9 @@ pub async fn run(args: &Args) -> Result<()> {
                 args,
                 serde_json::json!({"bytes_removed":Overlay::open(directory)?.prune_clean_cache(args.cache_bytes)?}),
             ),
+            OverlayCommand::Gc { directory } => {
+                output(args, Overlay::open(directory)?.collect_orphans()?)
+            }
             OverlayCommand::Commit {
                 directory,
                 message,

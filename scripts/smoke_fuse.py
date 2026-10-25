@@ -80,6 +80,7 @@ def run_smoke(scn: Path, server_bin: Path) -> None:
     mounted = None
     opened = []
     maps = []
+    descriptors = []
     succeeded = False
     try:
         with server_log.open("wb") as log:
@@ -106,6 +107,7 @@ def run_smoke(scn: Path, server_bin: Path) -> None:
             "base.txt": b"hello base\n",
             "rename.txt": b"rename content\n",
             "delete.txt": b"open after unlink\n",
+            "opath.txt": b"metadata after unlink\n",
             "truncate.txt": b"truncate this content\n",
             "mapped.bin": bytes(16384),
             "reverted.txt": b"same before and after\n",
@@ -166,6 +168,14 @@ def run_smoke(scn: Path, server_bin: Path) -> None:
         deleted.write(b"unlinked data")
         os.fsync(deleted.fileno())
         assert os.fstat(deleted.fileno()).st_nlink == 0
+        opath = os.open(mountpoint / "opath.txt", os.O_PATH)
+        descriptors.append(opath)
+        opath_inode = os.fstat(opath).st_ino
+        os.unlink(mountpoint / "opath.txt")
+        # O_PATH has no FUSE open/data handle. Lookup references must keep its
+        # metadata alive until the kernel sends forget after the descriptor closes.
+        assert os.fstat(opath).st_ino == opath_inode
+        assert os.fstat(opath).st_nlink == 0
         with (mountpoint / "truncate.txt").open("r+b", buffering=0) as trunc:
             trunc.truncate(3)
             os.fsync(trunc.fileno())
@@ -221,6 +231,9 @@ def run_smoke(scn: Path, server_bin: Path) -> None:
         assert scn_call("cat", "main", "mapped.bin", expect_json=False) == bytes(expected_mapping)
         assert scn_call("cat", "main", "reverted.txt", expect_json=False) == b"next" + initial["reverted.txt"][4:]
         assert scn_call("overlay", "status", overlay)["changes"] == []
+        for descriptor in descriptors:
+            os.close(descriptor)
+        descriptors.clear()
         for mapping in maps:
             mapping.close()
         maps.clear()
@@ -234,12 +247,18 @@ def run_smoke(scn: Path, server_bin: Path) -> None:
         assert not os.path.ismount(mountpoint)
         assert scn_call("overlay", "info", overlay)["revision"] == second["revision"]
         assert scn_call("overlay", "status", overlay)["changes"] == []
+        recovered = scn_call("overlay", "gc", overlay)
+        assert recovered["inodes"] == 0, "clean unmount should already collect unlinked inodes"
+        assert not (overlay / "data" / str(opath_inode)).exists()
         succeeded = True
         print(json.dumps({
             "result": "passed", "first_commit": first["revision"], "second_commit": second["revision"],
-            "checks": ["lazy reads", "create/write/append/holes", "truncate", "directory rename", "open inode identity", "unlink while open", "symlink", "chmod", "file and directory fsync", "dirty mmap commit barrier", "no-op dirty reset", "two server commits", "clean unmount/reopen"],
+            "checks": ["lazy reads", "create/write/append/holes", "truncate", "directory rename", "open inode identity", "unlink while open", "O_PATH/forget lifetime", "orphan reclamation", "symlink", "chmod", "file and directory fsync", "dirty mmap commit barrier", "no-op dirty reset", "two server commits", "clean unmount/reopen"],
         }, indent=2))
     finally:
+        for descriptor in descriptors:
+            with suppress(OSError):
+                os.close(descriptor)
         for mapping in maps:
             with suppress(OSError, BufferError):
                 mapping.close()

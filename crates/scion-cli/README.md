@@ -38,7 +38,7 @@ scn overlay commit overlay --author Ada -m 'Mounted changes' --ref main
 fusermount3 -u mount
 ```
 
-The mount command runs in the foreground. Its backing directory must be outside the mountpoint. Existing overlay revision and sparse selection are validated when reopened. `overlay info` shows the persisted revision and service addresses; `overlay prune` evicts clean hydrated contents according to `--cache-bytes`. Open and dirty files are retained. The default `mount` command remains read-only unless `--writable --overlay DIRECTORY` is supplied.
+The mount command runs in the foreground. Its backing directory must be outside the mountpoint. Existing overlay revision and sparse selection are validated when reopened. `overlay info` shows the persisted revision and service addresses; `overlay prune` evicts clean hydrated contents according to `--cache-bytes`. Open and dirty files are retained. `overlay gc DIRECTORY` reclaims unlinked inodes and interrupted temporary data while the overlay is unmounted; kernel mounts also collect data as the last open/lookup reference closes. The default `mount` command remains read-only unless `--writable --overlay DIRECTORY` is supplied.
 
 The authority supplies commit and reference semantics. Overlay commit preserves local data and its newly created revision if a reference compare-and-swap fails. Credentials are read from the invocation or environment and are never written into working-copy or overlay configuration.
 
