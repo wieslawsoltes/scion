@@ -39,10 +39,18 @@ impl PostgresStore {
         for _ in 0..pool_size {
             pool.push(Mutex::new(Self::open_connection(&config, &tls)?));
         }
-        pool[0].lock().batch_execute("CREATE TABLE IF NOT EXISTS scion_objects(kind TEXT NOT NULL,id TEXT NOT NULL,encoded BYTEA NOT NULL,PRIMARY KEY(kind,id));
+        {
+            let mut connection = pool[0].lock();
+            let mut migration = connection.transaction().map_err(pg_error)?;
+            migration
+                .query_one("SELECT pg_advisory_xact_lock($1)", &[&0x5343494f4e5631i64])
+                .map_err(pg_error)?;
+            migration.batch_execute("CREATE TABLE IF NOT EXISTS scion_objects(kind TEXT NOT NULL,id TEXT NOT NULL,encoded BYTEA NOT NULL,PRIMARY KEY(kind,id));
             CREATE TABLE IF NOT EXISTS scion_records(namespace TEXT NOT NULL,key TEXT NOT NULL,value BYTEA NOT NULL,PRIMARY KEY(namespace,key));
             CREATE TABLE IF NOT EXISTS scion_log(sequence BIGSERIAL PRIMARY KEY,repo TEXT NOT NULL,id TEXT NOT NULL,UNIQUE(repo,id));
             CREATE INDEX IF NOT EXISTS scion_log_repo ON scion_log(repo,sequence);").map_err(pg_error)?;
+            migration.commit().map_err(pg_error)?;
+        }
         Ok(Self {
             pool,
             next: AtomicUsize::new(0),

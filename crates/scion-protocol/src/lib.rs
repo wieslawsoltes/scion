@@ -62,10 +62,10 @@ impl ObjectTicket {
         Ok(())
     }
     pub fn verify(&self, key: &[u8; 32], repo: &str, now: i64) -> Result<()> {
-        if self.repo != repo
-            || self.expires_ms < now
-            || self.expires_ms > now.saturating_add(CAPABILITY_TTL_MS)
-        {
+        // The authority fixes TTL when issuing the signed ticket. Checking an
+        // upper bound relative to a cache's clock would reject fresh tickets
+        // whenever that clock is slightly behind the authority.
+        if self.repo != repo || self.expires_ms < now {
             return Err(Error::Permission(
                 "expired or incorrectly scoped object capability".into(),
             ));
@@ -183,6 +183,11 @@ pub enum RpcRequest {
     },
     Rebase {
         revision: ObjectId,
+        onto: ObjectId,
+    },
+    RebaseStack {
+        tip: ObjectId,
+        base: ObjectId,
         onto: ObjectId,
     },
     Revert {
@@ -308,6 +313,9 @@ mod tests {
         assert!(t.verify(&key, "test", 0).is_ok());
         assert!(t.verify(&key, "another", 0).is_err());
         assert!(t.verify(&key, "test", 1001).is_err());
+        t.expires_ms = 1000 + CAPABILITY_TTL_MS;
+        t.sign(&key).unwrap();
+        assert!(t.verify(&key, "test", 900).is_ok());
         t.path = RepoPath::new("secret").unwrap();
         assert!(t.verify(&key, "test", 0).is_err());
     }

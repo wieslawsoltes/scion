@@ -50,8 +50,8 @@ impl Default for ServerConfig {
             development: false,
             capability_key: [0; 32],
             max_concurrent: 128,
-            requests_per_second: 200,
-            burst: 400,
+            requests_per_second: 10_000,
+            burst: 20_000,
         }
     }
 }
@@ -183,10 +183,11 @@ async fn admit(State(s): State<Arc<ServerState>>, mut request: Request, next: Ne
     }
     let is_upload = request.uri().path().ends_with("/blobs");
     let needs_token = is_upload || request.uri().path().ends_with("/rpc");
-    if needs_token && !s.config.development {
-        if let Err(e) = s.config.policy.authenticate_headers(request.headers()) {
-            return fail(e, &s);
-        }
+    if needs_token
+        && !s.config.development
+        && let Err(e) = s.config.policy.authenticate_headers(request.headers())
+    {
+        return fail(e, &s);
     }
     let permit = match s.admission.clone().try_acquire_owned() {
         Ok(p) => p,
@@ -453,16 +454,16 @@ fn check_commit(repo: &Repository, a: &Access, c: &scion_types::Changeset) -> Re
                         .into(),
                 ));
             }
-            if let Some(parent) = c.parents.first() {
-                if matches!(
+            if let Some(parent) = c.parents.first()
+                && matches!(
                     repo.entry(*parent, path)?,
                     Some(TreeEntry::Directory { .. })
-                ) && !a.permissions.allows_subtree(path, true)
-                {
-                    return Err(Error::Permission(
-                        "cannot replace a protected directory".into(),
-                    ));
-                }
+                )
+                && !a.permissions.allows_subtree(path, true)
+            {
+                return Err(Error::Permission(
+                    "cannot replace a protected directory".into(),
+                ));
             }
         }
     }
@@ -676,6 +677,11 @@ fn dispatch(state: &ServerState, name: &str, a: &Access, request: RpcRequest) ->
             a.permissions.require_full(false)?;
             a.permissions.require_full(true)?;
             RpcReply::success(repo.rebase(revision, onto)?)
+        }
+        RpcRequest::RebaseStack { tip, base, onto } => {
+            a.permissions.require_full(false)?;
+            a.permissions.require_full(true)?;
+            RpcReply::success(repo.rebase_stack(tip, base, onto)?)
         }
         RpcRequest::Revert {
             revision,

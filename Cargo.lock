@@ -1695,6 +1695,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+ "unicode-normalization",
 ]
 
 [[package]]
@@ -1779,6 +1780,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "tokio",
  "tokio-postgres-rustls",
  "zstd",
 ]

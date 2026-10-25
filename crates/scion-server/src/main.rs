@@ -22,7 +22,7 @@ struct Args {
     hash_token: bool,
     #[arg(long, default_value_t = 128)]
     max_concurrent: usize,
-    #[arg(long, default_value_t = 200)]
+    #[arg(long, default_value_t = 10_000)]
     requests_per_second: u32,
     #[cfg(feature = "postgres")]
     #[arg(long, env = "SCION_DATABASE_URL", hide_env_values = true)]
@@ -113,7 +113,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         max_concurrent: args.max_concurrent,
         requests_per_second: args.requests_per_second,
         burst: args.requests_per_second.saturating_mul(2),
-        ..ServerConfig::default()
     };
     let app = router(ServerState::new(store, config)?);
     let listener = tokio::net::TcpListener::bind(args.listen).await?;

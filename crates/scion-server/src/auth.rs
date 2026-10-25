@@ -58,11 +58,12 @@ impl Permissions {
         let mut result = if write { self.write } else { self.read };
         let mut specificity = 0;
         for rule in &self.rules {
-            if rule.prefix.contains(path) && rule.prefix.as_str().len() >= specificity {
-                if let Some(allow) = if write { rule.write } else { rule.read } {
-                    result = allow;
-                    specificity = rule.prefix.as_str().len();
-                }
+            if rule.prefix.contains(path)
+                && rule.prefix.as_str().len() >= specificity
+                && let Some(allow) = if write { rule.write } else { rule.read }
+            {
+                result = allow;
+                specificity = rule.prefix.as_str().len();
             }
         }
         result

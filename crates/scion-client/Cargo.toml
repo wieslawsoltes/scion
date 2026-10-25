@@ -25,6 +25,7 @@ notify.workspace = true
 ignore.workspace = true
 futures.workspace = true
 fs2.workspace = true
+unicode-normalization = "0.1"
 
 [dev-dependencies]
 tempfile.workspace = true

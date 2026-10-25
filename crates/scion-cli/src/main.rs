@@ -3,7 +3,11 @@ use clap::Parser;
 async fn main() {
     let args = scion_cli::Args::parse();
     if let Err(error) = scion_cli::run(&args).await {
-        if args.json { eprintln!("{}", serde_json::json!({"error": error.to_string()})); } else { eprintln!("scn: {error}"); }
+        if args.json {
+            eprintln!("{}", serde_json::json!({"error": error.to_string()}));
+        } else {
+            eprintln!("scn: {error}");
+        }
         std::process::exit(match error {
             scion_types::Error::Conflict(_) => 2,
             scion_types::Error::Permission(_) => 3,

@@ -3,6 +3,23 @@ use scion_store::{PostgresStore, Storage};
 use scion_types::{ObjectId, ObjectKind};
 use std::sync::Arc;
 
+#[tokio::test]
+async fn pool_can_be_destroyed_by_an_async_owner() {
+    let Ok(url) = std::env::var("SCION_TEST_DATABASE_URL") else {
+        return;
+    };
+    let store =
+        tokio::task::spawn_blocking(move || Arc::new(PostgresStore::connect(&url, 2).unwrap()))
+            .await
+            .unwrap();
+    let query = store.clone();
+    tokio::task::spawn_blocking(move || query.get_record("health", "probe").unwrap())
+        .await
+        .unwrap();
+    // The final Arc can be released by an HTTP task without nested-runtime panic.
+    drop(store);
+}
+
 #[test]
 fn shared_backend_concurrent_publication_cas_and_reopen() {
     let Ok(url) = std::env::var("SCION_TEST_DATABASE_URL") else {
