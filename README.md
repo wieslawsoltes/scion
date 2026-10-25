@@ -157,6 +157,30 @@ The reusable client exposes the same service protocol. See [commands](docs/comma
 
 All product crates carry package metadata and versioned internal dependencies. CI packages and rebuilds them as archives. Publication to crates.io is separately configured; packageability does not imply a version is already published.
 
+## Measured performance
+
+The recorded comparison uses **Git 2.56.0**, 100,000 file paths, durable writes,
+warm operating-system caches, and 31 samples per operation. Graph rows use a
+100,000-commit trunk and 10,000 commits per divergent arm; both implementations
+run each graph query in a fresh process. The prepared-commit row is measured
+before extending history, with both writers resident.
+
+| Operation | Scion median | Git median | Within-run result |
+|---|---:|---:|---|
+| Prepared durable commit | 2.279 ms | 2.879 ms | Scion 1.26× faster |
+| Positive ancestry | 2.342 ms | 43.704 ms | Scion 18.66× faster |
+| Negative ancestry | 3.017 ms | 42.148 ms | Scion 13.97× faster |
+| Ancestor merge base | 2.307 ms | 30.971 ms | Scion 13.42× faster |
+| Divergent merge base | 2.258 ms | 6.081 ms | Scion 2.69× faster |
+| Fresh file read, 1 KiB | 2.313 ms | 1.296 ms | Git 1.78× faster |
+| Fresh one-file text diff | 3.326 ms | 1.562 ms | Git 2.13× faster |
+
+These results support a substantial advantage for the measured long-history
+graph queries. Read and diff costs still favor Git. The [complete comparison](docs/git-comparison.md)
+includes p95, every raw sample, smaller-history results, exact source and binary
+hashes, Git build instructions, and the shared-host limitations. It does not
+establish fleet throughput or a universal speedup over Git.
+
 ## Documentation
 
 | Guide | Contents |

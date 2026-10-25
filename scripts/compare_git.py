@@ -3,7 +3,8 @@
 
 Prepared commits: two resident processes, full request/ack latency, durable
 objects plus ref updates. Queries: a fresh process for each engine and sample.
-Run --quick for a smoke test; see docs/git-comparison.md for interpretation.
+Run --quick for a smoke test, or --reuse-report to repeat every query on a
+retained fixture. See docs/git-comparison.md for interpretation.
 """
 from __future__ import annotations
 
@@ -228,6 +229,7 @@ def source_metadata():
 
 
 def host_metadata(workdir):
+    git_binary = Path(shutil.which("git", path=ENV.get("PATH")) or "git").resolve()
     cpu = "unknown"
     if Path("/proc/cpuinfo").exists():
         cpu = next((line.split(":", 1)[1].strip() for line in Path("/proc/cpuinfo").read_text().splitlines() if line.startswith("model name")), cpu)
@@ -242,10 +244,51 @@ def host_metadata(workdir):
         "platform": platform.platform(), "machine": platform.machine(), "cpu": cpu,
         "logical_cpus": os.cpu_count(), "python": sys.version,
         "git": run(["git", "--version"])[0].stdout.decode().strip(),
+        "git_binary": str(git_binary),
+        "git_sha256": hashlib.sha256(git_binary.read_bytes()).hexdigest(),
+        "git_exec_path": run(["git", "--exec-path"])[0].stdout.decode().strip(),
         "rustc": run(["rustc", "-vV"])[0].stdout.decode().strip(),
         "filesystem": filesystems,
         "memory_kib": next((line.split()[1] for line in Path("/proc/meminfo").read_text().splitlines() if line.startswith("MemTotal:")), None) if Path("/proc/meminfo").exists() else None,
     }
+
+
+def retained_fixture(report_path):
+    """Load only a retained fixture that matches its report's exact marker."""
+    raw = report_path.read_bytes()
+    report = json.loads(raw)
+    if report["schema"] != 1:
+        raise ValueError("unsupported source-report schema")
+    dimensions = report["dimensions"]
+    required_dimensions = {"files", "commits", "branch_commits", "samples", "fanout", "blob_bytes", "variants", "warmup"}
+    if set(dimensions) != required_dimensions or any(type(value) is not int for value in dimensions.values()):
+        raise ValueError("invalid source-report dimensions")
+    if any(value < (0 if key == "warmup" else 1) for key, value in dimensions.items()) or dimensions["blob_bytes"] < 32:
+        raise ValueError("invalid source-report dimensions")
+    fixture = report["fixture"]
+    for implementation, length in (("scion", 64), ("git", 40)):
+        for key in ("root", "tip", "previous", "trunk", "left", "right", "side"):
+            identifier = fixture[implementation][key]
+            if not isinstance(identifier, str) or len(identifier) != length or any(c not in "0123456789abcdef" for c in identifier):
+                raise ValueError(f"invalid {implementation} fixture identifier: {key}")
+    if fixture["path"] != file_path(0, dimensions["fanout"]):
+        raise ValueError("source report does not describe the generated fixture's edit path")
+    if not isinstance(fixture["content"], str) or len(fixture["content"].encode()) != dimensions["blob_bytes"]:
+        raise ValueError("source report has invalid expected file content")
+    work = Path(report["work_directory"]).resolve()
+    if not (work / "git").is_dir() or not (work / "scion" / "metadata.sqlite3").is_file():
+        raise ValueError("fixture was not retained; the original run requires --keep-workdir")
+    if json.loads((work / "fixture.json").read_text()) != fixture:
+        raise ValueError("retained fixture marker differs from the source report")
+    provenance = {
+        "source_report": str(report_path.resolve()),
+        "source_report_sha256": hashlib.sha256(raw).hexdigest(),
+        "original_source_commit": report["source"]["commit"],
+        "original_git": report["host"]["git"],
+        "original_driver_sha256": report["build"]["driver_sha256"],
+        "scope": "queries only; no prepared commits or resident writer no-ops are measured",
+    }
+    return dimensions.copy(), fixture, work, provenance
 
 
 def record(rows, operation, scope, implementation, sample, wall_ns, internal_ns=None, output_bytes=None):
@@ -283,10 +326,11 @@ def main():
     parser.add_argument("--commits", type=int)
     parser.add_argument("--branch-commits", type=int)
     parser.add_argument("--samples", type=int)
-    parser.add_argument("--warmup", type=int, default=3)
-    parser.add_argument("--fanout", type=int, default=100)
-    parser.add_argument("--blob-bytes", type=int, default=1024)
-    parser.add_argument("--variants", type=int, default=128)
+    parser.add_argument("--warmup", type=int)
+    parser.add_argument("--fanout", type=int)
+    parser.add_argument("--blob-bytes", type=int)
+    parser.add_argument("--variants", type=int)
+    parser.add_argument("--reuse-report", type=Path, help="repeat all queries on the fixture retained by a previous report; no commit timings")
     parser.add_argument("--output", type=Path, default=ROOT / "target/git-comparison/results")
     parser.add_argument("--work-root", type=Path)
     parser.add_argument("--keep-workdir", action="store_true")
@@ -294,14 +338,32 @@ def main():
     parser.add_argument("--offline", action="store_true")
     parser.add_argument("--driver", type=Path, default=ROOT / "target/release/examples" / ("comparison_driver.exe" if os.name == "nt" else "comparison_driver"))
     args = parser.parse_args()
-    dimensions = {
-        "files": args.files if args.files is not None else (1000 if args.quick else 100_000),
-        "commits": args.commits if args.commits is not None else (1000 if args.quick else 10_000),
-        "branch_commits": args.branch_commits if args.branch_commits is not None else (100 if args.quick else 1000),
-        "samples": args.samples if args.samples is not None else (7 if args.quick else 31),
-        "fanout": args.fanout, "blob_bytes": args.blob_bytes, "variants": args.variants,
-        "warmup": args.warmup,
-    }
+    reused = None
+    if args.reuse_report is not None:
+        if args.quick or args.work_root is not None or any(value is not None for value in (args.files, args.commits, args.branch_commits, args.fanout, args.blob_bytes, args.variants)):
+            parser.error("--reuse-report keeps fixture dimensions; only --samples and --warmup may override them")
+        try:
+            dimensions, fixture, retained_work, reused = retained_fixture(args.reuse_report)
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            parser.error(f"cannot reuse fixture: {error}")
+        protected = {args.reuse_report.resolve(), (retained_work / "fixture.json").resolve()}
+        outputs = (args.output.with_suffix(".json"), args.output.with_suffix(".csv"), args.output.with_name(args.output.name + "-summary.csv"))
+        if any(output.resolve() in protected for output in outputs):
+            parser.error("--output must not overwrite the source report or retained fixture marker")
+        if args.samples is not None: dimensions["samples"] = args.samples
+        if args.warmup is not None: dimensions["warmup"] = args.warmup
+    else:
+        dimensions = {
+            "files": args.files if args.files is not None else (1000 if args.quick else 100_000),
+            "commits": args.commits if args.commits is not None else (1000 if args.quick else 10_000),
+            "branch_commits": args.branch_commits if args.branch_commits is not None else (100 if args.quick else 1000),
+            "samples": args.samples if args.samples is not None else (7 if args.quick else 31),
+            "fanout": args.fanout if args.fanout is not None else 100,
+            "blob_bytes": args.blob_bytes if args.blob_bytes is not None else 1024,
+            "variants": args.variants if args.variants is not None else 128,
+            "warmup": args.warmup if args.warmup is not None else 3,
+        }
+    args.fanout, args.blob_bytes, args.variants, args.warmup = (dimensions[key] for key in ("fanout", "blob_bytes", "variants", "warmup"))
     if min(value for key, value in dimensions.items() if key != "warmup") < 1 or args.warmup < 0 or args.blob_bytes < 32:
         parser.error("dimensions must be positive, warmup nonnegative, and blob size at least 32 bytes")
     source_before = source_metadata()
@@ -314,70 +376,79 @@ def main():
     source_after = source_metadata()
     driver = args.driver.resolve()
     if not driver.is_file(): parser.error(f"driver does not exist: {driver}")
-    work = Path(tempfile.mkdtemp(prefix="scion-git-comparison-", dir=args.work_root))
+    work = retained_work if reused is not None else Path(tempfile.mkdtemp(prefix="scion-git-comparison-", dir=args.work_root))
     git_dir, scion_dir = work / "git", work / "scion"
     result = {
-        "schema": 1, "dimensions": dimensions, "host": host_metadata(work), "source": source_after,
+        "schema": 1, "mode": "queries_only" if reused is not None else "full", "dimensions": dimensions, "host": host_metadata(work), "source": source_after,
         "build": {"command": build, "performed": not args.no_build, "incremental": False, "source_changed_during_build": source_before["source_sha256"] != source_after["source_sha256"], "driver_sha256": hashlib.sha256(driver.read_bytes()).hexdigest()},
         "configuration": {"git": GIT_CONFIG, "scion": {"backend": "LocalStore", "sqlite": "WAL, synchronous=FULL", "object_durability": "small objects and publication metadata in FULL-synchronous SQLite; larger loose objects use file fsync and directory fsync on Unix", "read_queries": "read-only SQLite connection with live WAL; no schema migrations"}, "cache": f"warm OS cache; {args.warmup} warmups; fresh query processes; no cache dropping", "sample_order": "alternating Scion/Git, then Git/Scion", "git_object_format": "sha1", "scion_object_format": "blake3", "fixture": f"files share {args.variants} deterministic {args.blob_bytes}-byte text bodies; metadata-heavy fixture, not a real repository"},
         "work_directory": str(work), "setup": [], "samples": [], "verification": {},
     }
+    if reused is not None:
+        result["reuse"] = reused
     rows = result["samples"]
     scion = git = reader = None
     try:
-        run(["git", "init", "--bare", "--object-format=sha1", git_dir])
+        if reused is None:
+            run(["git", "init", "--bare", "--object-format=sha1", git_dir])
         for key, value in GIT_CONFIG.items(): run(["git", "-C", git_dir, "config", key, value])
         result["configuration"]["git_effective"] = run(["git", "-C", git_dir, "config", "--list", "--local"])[0].stdout.decode()
-        scion = ScionWorker(driver, scion_dir, work / "scion.stderr")
-        git = GitWorker(git_dir, work / "git.stderr")
-        print(f"Initializing {dimensions['files']} paths in {work}", file=sys.stderr, flush=True)
-        initial = {"op": "initialize", **{key: dimensions[key] for key in ("files", "fanout", "variants", "blob_bytes")}}
-        response, elapsed = scion.request(initial)
-        scion_root = scion_tip = response["result"]
-        result["setup"].append({"operation": "initialize", "implementation": "scion", "wall_ns": elapsed})
-        git_root, elapsed, root_mark = git.initialize(dimensions["files"], args.fanout, args.variants, args.blob_bytes)
-        git_tip = git_root
-        result["setup"].append({"operation": "initialize", "implementation": "git", "wall_ns": elapsed})
-        for sample in range(dimensions["samples"]):
-            for implementation in (["scion", "git"] if sample % 2 == 0 else ["git", "scion"]):
-                if implementation == "scion":
-                    response, elapsed = scion.request({"op": "noop"})
-                    record(rows, "noop", "resident", implementation, sample, elapsed, response["operation_ns"])
-                else:
-                    _, elapsed = git.noop(root_mark)
-                    record(rows, "noop", "resident", implementation, sample, elapsed)
-        print("Measuring durable prepared commits", file=sys.stderr, flush=True)
-        changed_path = file_path(0, args.fanout)
-        for sample in range(args.warmup + dimensions["samples"]):
-            sequence = sample + 1
-            content = (f"edit {sequence:06}\n".encode() + body(0, args.blob_bytes))[0:args.blob_bytes - 1] + b"\n"
-            text = content.decode()
-            old_scion, old_git = scion_tip, git_tip
-            for implementation in (["scion", "git"] if sample % 2 == 0 else ["git", "scion"]):
-                if implementation == "scion":
-                    response, elapsed = scion.request({"op": "commit", "parent": scion_tip, "path": changed_path, "content": text, "sequence": sequence})
-                    scion_tip = response["result"]
-                    internal = response["operation_ns"]
-                else:
-                    git_tip, elapsed = git.commit(git_tip, changed_path, text, sequence)
-                    internal = None
-                if sample >= args.warmup:
-                    record(rows, "prepared_commit", "resident", implementation, sample - args.warmup, elapsed, internal)
-        fixture = {"scion": {"root": scion_root, "tip": scion_tip, "previous": old_scion}, "git": {"root": git_root, "tip": git_tip, "previous": old_git}, "path": changed_path, "content": text}
-        for label, count, parent_label in [("trunk", dimensions["commits"], "root"), ("left", dimensions["branch_commits"], "trunk"), ("right", dimensions["branch_commits"], "trunk"), ("side", 1, "root")]:
-            print(f"Preparing {label}: {count} commits (setup excluded from comparisons)", file=sys.stderr, flush=True)
-            response, elapsed = scion.request({"op": "chain", "parent": fixture["scion"][parent_label], "count": count, "label": label})
-            fixture["scion"][label] = response["result"]
-            result["setup"].append({"operation": f"chain_{label}", "implementation": "scion", "wall_ns": elapsed})
-            identifier, elapsed = git.chain(fixture["git"][parent_label], count, label)
-            fixture["git"][label] = identifier
-            result["setup"].append({"operation": f"chain_{label}", "implementation": "git", "wall_ns": elapsed})
-        git.close(); git = None
-        scion.close(); scion = None
+        if reused is None:
+            scion = ScionWorker(driver, scion_dir, work / "scion.stderr")
+            git = GitWorker(git_dir, work / "git.stderr")
+            print(f"Initializing {dimensions['files']} paths in {work}", file=sys.stderr, flush=True)
+            initial = {"op": "initialize", **{key: dimensions[key] for key in ("files", "fanout", "variants", "blob_bytes")}}
+            response, elapsed = scion.request(initial)
+            scion_root = scion_tip = response["result"]
+            result["setup"].append({"operation": "initialize", "implementation": "scion", "wall_ns": elapsed})
+            git_root, elapsed, root_mark = git.initialize(dimensions["files"], args.fanout, args.variants, args.blob_bytes)
+            git_tip = git_root
+            result["setup"].append({"operation": "initialize", "implementation": "git", "wall_ns": elapsed})
+            for sample in range(dimensions["samples"]):
+                for implementation in (["scion", "git"] if sample % 2 == 0 else ["git", "scion"]):
+                    if implementation == "scion":
+                        response, elapsed = scion.request({"op": "noop"})
+                        record(rows, "noop", "resident", implementation, sample, elapsed, response["operation_ns"])
+                    else:
+                        _, elapsed = git.noop(root_mark)
+                        record(rows, "noop", "resident", implementation, sample, elapsed)
+            print("Measuring durable prepared commits", file=sys.stderr, flush=True)
+            changed_path = file_path(0, args.fanout)
+            for sample in range(args.warmup + dimensions["samples"]):
+                sequence = sample + 1
+                content = (f"edit {sequence:06}\n".encode() + body(0, args.blob_bytes))[0:args.blob_bytes - 1] + b"\n"
+                text = content.decode()
+                old_scion, old_git = scion_tip, git_tip
+                for implementation in (["scion", "git"] if sample % 2 == 0 else ["git", "scion"]):
+                    if implementation == "scion":
+                        response, elapsed = scion.request({"op": "commit", "parent": scion_tip, "path": changed_path, "content": text, "sequence": sequence})
+                        scion_tip = response["result"]
+                        internal = response["operation_ns"]
+                    else:
+                        git_tip, elapsed = git.commit(git_tip, changed_path, text, sequence)
+                        internal = None
+                    if sample >= args.warmup:
+                        record(rows, "prepared_commit", "resident", implementation, sample - args.warmup, elapsed, internal)
+            fixture = {"scion": {"root": scion_root, "tip": scion_tip, "previous": old_scion}, "git": {"root": git_root, "tip": git_tip, "previous": old_git}, "path": changed_path, "content": text}
+            for label, count, parent_label in [("trunk", dimensions["commits"], "root"), ("left", dimensions["branch_commits"], "trunk"), ("right", dimensions["branch_commits"], "trunk"), ("side", 1, "root")]:
+                print(f"Preparing {label}: {count} commits (setup excluded from comparisons)", file=sys.stderr, flush=True)
+                response, elapsed = scion.request({"op": "chain", "parent": fixture["scion"][parent_label], "count": count, "label": label})
+                fixture["scion"][label] = response["result"]
+                result["setup"].append({"operation": f"chain_{label}", "implementation": "scion", "wall_ns": elapsed})
+                identifier, elapsed = git.chain(fixture["git"][parent_label], count, label)
+                fixture["git"][label] = identifier
+                result["setup"].append({"operation": f"chain_{label}", "implementation": "git", "wall_ns": elapsed})
+            git.close(); git = None
+            scion.close(); scion = None
+        else:
+            print(f"Reusing retained fixture in {work}; measuring queries only", file=sys.stderr, flush=True)
+        changed_path, text = fixture["path"], fixture["content"]
+        content = text.encode()
         for command in [["git", "-C", git_dir, "repack", "-ad"], ["git", "-C", git_dir, "commit-graph", "write", "--reachable", "--changed-paths"]]:
             _, elapsed = run(command)
             result["setup"].append({"operation": "git_query_preparation", "command": [str(part) for part in command], "wall_ns": elapsed})
-        (work / "fixture.json").write_text(json.dumps(fixture, indent=2) + "\n")
+        if reused is None:
+            (work / "fixture.json").write_text(json.dumps(fixture, indent=2) + "\n")
         result["fixture"] = fixture
         sc, gt = fixture["scion"], fixture["git"]
         operations = [
@@ -447,6 +518,9 @@ def main():
         reader.close(); reader = None
         scion.close(); scion = None
         result["verification"] = {"query_results": "all checked", "file_contents": "byte-identical", "changed_paths": "one matching path", "commit_parents": "identical logical DAG topology", "commit_graph": "Git --reachable --changed-paths written before query timings"}
+        if reused is not None:
+            result["verification"]["prepared_commits"] = "not measured; queries-only reuse"
+            result["verification"]["fixture_marker"] = "identical to the source report"
         result["summary"] = summarize(rows)
         save(args.output, result)
         lookup = {(row["operation"], row["scope"], row["implementation"]): row for row in result["summary"]}
@@ -456,7 +530,7 @@ def main():
             git_p50 = lookup[operation, scope, "git"]["p50_us"]
             print(f"{operation},{scope},{scion_p50:.3f},{git_p50:.3f},{git_p50 / scion_p50:.3f}")
         print(f"Raw results: {args.output.with_suffix('.json')}", file=sys.stderr)
-        if args.keep_workdir: print(f"Fixture retained: {work}", file=sys.stderr)
+        if args.keep_workdir or reused is not None: print(f"Fixture retained: {work}", file=sys.stderr)
     finally:
         for worker in (git, scion, reader):
             if worker is not None:
@@ -465,7 +539,7 @@ def main():
                     worker.process.kill()
                     worker.process.wait(timeout=5)
                     worker.log.close()
-        if not args.keep_workdir: shutil.rmtree(work)
+        if not args.keep_workdir and reused is None: shutil.rmtree(work)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,6618 @@
+{
+  "schema": 1,
+  "mode": "full",
+  "dimensions": {
+    "files": 100000,
+    "commits": 10000,
+    "branch_commits": 1000,
+    "samples": 31,
+    "fanout": 100,
+    "blob_bytes": 1024,
+    "variants": 128,
+    "warmup": 3
+  },
+  "host": {
+    "utc": "2026-10-25T15:58:23Z",
+    "platform": "Linux-6.18.55-x86_64-with-glibc2.39",
+    "machine": "x86_64",
+    "cpu": "AMD EPYC 9V74 80-Core Processor",
+    "logical_cpus": 9,
+    "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+    "git": "git version 2.56.0",
+    "git_binary": "/tmp/scion-git-current/bin/git",
+    "git_sha256": "652ab642ac26b3c5441dc5a73950bcfe252ff8c411f76ab2ba0e4a3cc4fd16be",
+    "git_exec_path": "/tmp/scion-git-current/libexec/git-core",
+    "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+    "filesystem": "Filesystem     Type    1K-blocks     Used Available Use% Mounted on\noverlay        overlay  32978704 26367360   4917240  85% /workspace/scratch/481213027244\n",
+    "memory_kib": "10206484"
+  },
+  "source": {
+    "commit": "78f3b0d21e2539b6fb6197e08749860ab5db1385",
+    "dirty": false,
+    "status": "",
+    "tracked_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "source_sha256": {
+      "Cargo.lock": "efdd369408b1ca365db9d9850f91afe09d23e0f4a2cb77c68adb702ba279544c",
+      "Cargo.toml": "fc205f8646a0e750121043340940bb5b87737be3816ab94a0184b9e40b44cad0",
+      "crates/scion-engine/Cargo.toml": "aaf0451e48d4e5cfb459ca3dabfb07563aab1781523cb9020f51a0d1cd11b1b3",
+      "crates/scion-engine/benches/scaling.rs": "a3aabcb63f820fe2ac566c7f9b36856ec45612cda2c3604e22986ccc3ec93a00",
+      "crates/scion-engine/examples/comparison_driver.rs": "fd858450c3fb87608639c52b4e5671e4ba5c3882c56758694a5d16ed6ce79fd1",
+      "crates/scion-engine/src/derived.rs": "ece3627697d7ed832ef6a3015ed8623baa870b4d37a14b9374e86598c6acc568",
+      "crates/scion-engine/src/history.rs": "0604451a8e00995e8f53767f5ed66ca9dcb1dd9baf5d6fb72067e53f11234f68",
+      "crates/scion-engine/src/lib.rs": "cc9d4dc051cf61337783fe4df11cf116e0e49167a655ae0499d7e8bba43b4a1e",
+      "crates/scion-engine/src/merge.rs": "7eb5314770b4ff671b7983841170d51b87293f1728577a28fdf06f75f2af19ed",
+      "crates/scion-engine/src/tree.rs": "3806f74662f9a766469c6783af27b6eca1c316862b05519e869a7dfe0e5a3c78",
+      "crates/scion-engine/src/tree_cache.rs": "fc7ed8a9d33959c2ce82f4541c640bab9c09c6623990e32050d14f06093d4268",
+      "crates/scion-engine/src/virtual_base.rs": "a7981e391457ca93bab240209892e95bec35754f241a412194f18488844ecd74",
+      "crates/scion-engine/tests/repository.rs": "9f60b166d33572eb9f891bc0bdf64269ca0908a67c2e6259f291805c0a56b6f5",
+      "crates/scion-engine/tests/virtual_bases.rs": "d75ebde96e42778a703ae54b21fb6a77abc0d3430f4ccd1ed3ce9dd120e3f960",
+      "crates/scion-graph/Cargo.toml": "c53bd1f36967ed07277f24e1e950b5fadad5bb78811162593f3f954538d3b069",
+      "crates/scion-graph/src/lib.rs": "1a2f3472b25764d9919072ce5650a5c51acd79a183a476b0827773e49272be07",
+      "crates/scion-store/Cargo.toml": "6556ff8cd423eaf439f5918b5a9e89e728cdce7ea29fdb047ffcaf339a989cba",
+      "crates/scion-store/src/codec.rs": "18c44445cd9bd8615d3c79008cd3ef92b579932b3ef4f3935081fa075a1852d8",
+      "crates/scion-store/src/lib.rs": "b3aebb80616897aa3d0f0069bdc3d22e3d3f476af6ba89ff388a11ee7ee9c257",
+      "crates/scion-store/src/local.rs": "374e094c66ff9d01699dafcb3ca446728bed42ba02cd9b4840eb5d39a682aac9",
+      "crates/scion-store/src/memory.rs": "22865812f5c77bdbd9750322aaa8ce4b78ed694b457afc1bc39d7bacd6599d75",
+      "crates/scion-store/src/pg.rs": "5eca615f98c0c87bf46c42e396673beac2ca4bd3a5060a1d5ffcf1d5aabe3997",
+      "crates/scion-store/src/sharded.rs": "82055a836f68ab761883969ec26978ccfbafe5e50f0c316825ed700e19db7209",
+      "crates/scion-store/tests/postgres.rs": "8a99772be9209493b0e06b0cdadb2bb1aff7eb70f3dcf24e8a36b3012d29e0e4",
+      "crates/scion-store/tests/publication.rs": "b1564b4e4c63ecb06812d7ec452517bcc0de45dd8187461d7b901489aedba8c6",
+      "crates/scion-store/tests/read_only.rs": "8d4e52ce5e3d759cadaa7fe6d875ae82923ae6419e579c0cca5d285e1cee1156",
+      "crates/scion-store/tests/review_publication.rs": "ae0536e4d2f7f368b16315cad704c808c6ea777927926dd8a9c78ba43c38c5e0",
+      "crates/scion-store/tests/sqlite_version.rs": "02b0d537a57ba087fa572f7b37143f1d43cb29ad890e616d6d8f5871c2902715",
+      "crates/scion-types/Cargo.toml": "24e6fd36d2647464356308c0bc33a91b01972a91eba016c270366c334fd185ed",
+      "crates/scion-types/src/lib.rs": "e913f52148af22f4710bae99b0507b90061f296561f4068ef88213802e25dc99",
+      "crates/scion-types/src/tree_json.rs": "ff711877ae8b1d72ed85e8230732817fc34cfc1e41d97f5a34e7327de4ee0d71",
+      "crates/scion-types/tests/tree_json.rs": "9695647fe9b0f0a29ba23441b685583407065320de144002edf9cc9b2d9fccba",
+      "scripts/compare_git.py": "888fb4d622c38418d2b9421120198103a19881367463188ce314a8a7f70a5dd4"
+    }
+  },
+  "build": {
+    "command": [
+      "cargo",
+      "build",
+      "--release",
+      "--locked",
+      "-p",
+      "scion-engine",
+      "--example",
+      "comparison_driver",
+      "--offline"
+    ],
+    "performed": true,
+    "incremental": false,
+    "source_changed_during_build": false,
+    "driver_sha256": "ff6a44c736b135d4ec920f4d497a92fa3cac4a2936ff284a6c4abeb1ef6aa6c6"
+  },
+  "configuration": {
+    "git": {
+      "core.fsync": "all",
+      "core.fsyncMethod": "fsync",
+      "feature.manyFiles": "true",
+      "core.commitGraph": "true",
+      "fastimport.unpackLimit": "0",
+      "gc.auto": "0",
+      "maintenance.auto": "false",
+      "user.name": "Benchmark",
+      "user.email": "benchmark@example.invalid"
+    },
+    "scion": {
+      "backend": "LocalStore",
+      "sqlite": "WAL, synchronous=FULL",
+      "object_durability": "small objects and publication metadata in FULL-synchronous SQLite; larger loose objects use file fsync and directory fsync on Unix",
+      "read_queries": "read-only SQLite connection with live WAL; no schema migrations"
+    },
+    "cache": "warm OS cache; 3 warmups; fresh query processes; no cache dropping",
+    "sample_order": "alternating Scion/Git, then Git/Scion",
+    "git_object_format": "sha1",
+    "scion_object_format": "blake3",
+    "fixture": "files share 128 deterministic 1024-byte text bodies; metadata-heavy fixture, not a real repository",
+    "git_effective": "core.repositoryformatversion=0\ncore.filemode=true\ncore.bare=true\ncore.fsync=all\ncore.fsyncmethod=fsync\ncore.commitgraph=true\nfeature.manyfiles=true\nfastimport.unpacklimit=0\ngc.auto=0\nmaintenance.auto=false\nuser.name=Benchmark\nuser.email=benchmark@example.invalid\n",
+    "resident_reads": {
+      "path_indices": [
+        0,
+        4729,
+        9458,
+        14187,
+        18916,
+        23645,
+        28374,
+        33103,
+        37832,
+        42561,
+        47290,
+        52019,
+        56748,
+        61477,
+        66206,
+        70935,
+        75664,
+        80393,
+        85122,
+        89851,
+        94580,
+        99309,
+        4038,
+        8767,
+        13496,
+        18225,
+        22954,
+        27683,
+        32412,
+        37141,
+        41870
+      ],
+      "warmup_passes": 3,
+      "scope": "resident Scion worker and resident git cat-file --batch;one request/response each",
+      "cache": "each selected path is read once in every warmup pass before measurement"
+    }
+  },
+  "work_directory": "/workspace/scratch/481213027244/scion/target/git-comparison/scion-git-comparison-n72j5oks",
+  "setup": [
+    {
+      "operation": "initialize",
+      "implementation": "scion",
+      "wall_ns": 1597984887
+    },
+    {
+      "operation": "initialize",
+      "implementation": "git",
+      "wall_ns": 622068229
+    },
+    {
+      "operation": "chain_trunk",
+      "implementation": "scion",
+      "wall_ns": 7280504940
+    },
+    {
+      "operation": "chain_trunk",
+      "implementation": "git",
+      "wall_ns": 129288446
+    },
+    {
+      "operation": "chain_left",
+      "implementation": "scion",
+      "wall_ns": 895467971
+    },
+    {
+      "operation": "chain_left",
+      "implementation": "git",
+      "wall_ns": 20963789
+    },
+    {
+      "operation": "chain_right",
+      "implementation": "scion",
+      "wall_ns": 928522389
+    },
+    {
+      "operation": "chain_right",
+      "implementation": "git",
+      "wall_ns": 19198145
+    },
+    {
+      "operation": "chain_side",
+      "implementation": "scion",
+      "wall_ns": 1109838
+    },
+    {
+      "operation": "chain_side",
+      "implementation": "git",
+      "wall_ns": 3616444
+    },
+    {
+      "operation": "git_query_preparation",
+      "command": [
+        "git",
+        "-C",
+        "/workspace/scratch/481213027244/scion/target/git-comparison/scion-git-comparison-n72j5oks/git",
+        "repack",
+        "-ad"
+      ],
+      "wall_ns": 149879426
+    },
+    {
+      "operation": "git_query_preparation",
+      "command": [
+        "git",
+        "-C",
+        "/workspace/scratch/481213027244/scion/target/git-comparison/scion-git-comparison-n72j5oks/git",
+        "commit-graph",
+        "write",
+        "--reachable",
+        "--changed-paths"
+      ],
+      "wall_ns": 611869032
+    }
+  ],
+  "samples": [
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 0,
+      "wall_ns": 127491,
+      "internal_ns": 881,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 0,
+      "wall_ns": 44057,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 1,
+      "wall_ns": 15874,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 1,
+      "wall_ns": 29204,
+      "internal_ns": 130,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 2,
+      "wall_ns": 34271,
+      "internal_ns": 30,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 2,
+      "wall_ns": 16194,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 3,
+      "wall_ns": 14732,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 3,
+      "wall_ns": 34021,
+      "internal_ns": 20,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 4,
+      "wall_ns": 21172,
+      "internal_ns": 30,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 4,
+      "wall_ns": 14812,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 5,
+      "wall_ns": 14321,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 5,
+      "wall_ns": 37857,
+      "internal_ns": 20,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 6,
+      "wall_ns": 20621,
+      "internal_ns": 20,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 6,
+      "wall_ns": 14752,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 7,
+      "wall_ns": 13740,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 7,
+      "wall_ns": 20091,
+      "internal_ns": 30,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 8,
+      "wall_ns": 21603,
+      "internal_ns": 20,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 8,
+      "wall_ns": 16054,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 9,
+      "wall_ns": 13470,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 9,
+      "wall_ns": 22574,
+      "internal_ns": 30,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 10,
+      "wall_ns": 42674,
+      "internal_ns": 30,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 10,
+      "wall_ns": 32208,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 11,
+      "wall_ns": 14472,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 11,
+      "wall_ns": 53030,
+      "internal_ns": 30,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 12,
+      "wall_ns": 20621,
+      "internal_ns": 30,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 12,
+      "wall_ns": 30917,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 13,
+      "wall_ns": 14441,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 13,
+      "wall_ns": 20731,
+      "internal_ns": 20,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 14,
+      "wall_ns": 19339,
+      "internal_ns": 30,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 14,
+      "wall_ns": 15333,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 15,
+      "wall_ns": 14272,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 15,
+      "wall_ns": 19610,
+      "internal_ns": 30,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 16,
+      "wall_ns": 19669,
+      "internal_ns": 20,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 16,
+      "wall_ns": 14702,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 17,
+      "wall_ns": 14702,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 17,
+      "wall_ns": 19509,
+      "internal_ns": 30,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 18,
+      "wall_ns": 19980,
+      "internal_ns": 20,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 18,
+      "wall_ns": 21062,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 19,
+      "wall_ns": 15003,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 19,
+      "wall_ns": 19620,
+      "internal_ns": 20,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 20,
+      "wall_ns": 20711,
+      "internal_ns": 30,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 20,
+      "wall_ns": 14812,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 21,
+      "wall_ns": 13831,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 21,
+      "wall_ns": 21452,
+      "internal_ns": 30,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 22,
+      "wall_ns": 21152,
+      "internal_ns": 30,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 22,
+      "wall_ns": 15893,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 23,
+      "wall_ns": 14511,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 23,
+      "wall_ns": 20471,
+      "internal_ns": 20,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 24,
+      "wall_ns": 20861,
+      "internal_ns": 30,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 24,
+      "wall_ns": 14842,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 25,
+      "wall_ns": 15162,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 25,
+      "wall_ns": 20701,
+      "internal_ns": 30,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 26,
+      "wall_ns": 19920,
+      "internal_ns": 20,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 26,
+      "wall_ns": 14922,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 27,
+      "wall_ns": 13740,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 27,
+      "wall_ns": 20641,
+      "internal_ns": 20,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 28,
+      "wall_ns": 20291,
+      "internal_ns": 30,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 28,
+      "wall_ns": 15333,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 29,
+      "wall_ns": 14832,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 29,
+      "wall_ns": 20100,
+      "internal_ns": 30,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 30,
+      "wall_ns": 20621,
+      "internal_ns": 20,
+      "output_bytes": null
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 30,
+      "wall_ns": 14402,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 0,
+      "wall_ns": 2777247,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 0,
+      "wall_ns": 2722140,
+      "internal_ns": 2639756,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 1,
+      "wall_ns": 1975538,
+      "internal_ns": 1910770,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 1,
+      "wall_ns": 3064774,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 2,
+      "wall_ns": 2863531,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 2,
+      "wall_ns": 2299635,
+      "internal_ns": 2213766,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 3,
+      "wall_ns": 1923620,
+      "internal_ns": 1867425,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 3,
+      "wall_ns": 2980968,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 4,
+      "wall_ns": 2878705,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 4,
+      "wall_ns": 2317001,
+      "internal_ns": 2236780,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 5,
+      "wall_ns": 2007306,
+      "internal_ns": 1945213,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 5,
+      "wall_ns": 3845947,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 6,
+      "wall_ns": 3832687,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 6,
+      "wall_ns": 2380366,
+      "internal_ns": 2298813,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 7,
+      "wall_ns": 2374838,
+      "internal_ns": 2188558,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 7,
+      "wall_ns": 3176181,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 8,
+      "wall_ns": 2925495,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 8,
+      "wall_ns": 2279264,
+      "internal_ns": 2188668,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 9,
+      "wall_ns": 2471633,
+      "internal_ns": 2409690,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 9,
+      "wall_ns": 3009661,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 10,
+      "wall_ns": 2713987,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 10,
+      "wall_ns": 2599786,
+      "internal_ns": 2504913,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 11,
+      "wall_ns": 1855958,
+      "internal_ns": 1781346,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 11,
+      "wall_ns": 2732325,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 12,
+      "wall_ns": 2614959,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 12,
+      "wall_ns": 3114088,
+      "internal_ns": 3030007,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 13,
+      "wall_ns": 1863469,
+      "internal_ns": 1810470,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 13,
+      "wall_ns": 2822049,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 14,
+      "wall_ns": 2986556,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 14,
+      "wall_ns": 2224883,
+      "internal_ns": 2111612,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 15,
+      "wall_ns": 2245564,
+      "internal_ns": 2171823,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 15,
+      "wall_ns": 2611353,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 16,
+      "wall_ns": 2817082,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 16,
+      "wall_ns": 2631533,
+      "internal_ns": 2542770,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 17,
+      "wall_ns": 1938692,
+      "internal_ns": 1872483,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 17,
+      "wall_ns": 2952635,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 18,
+      "wall_ns": 3290313,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 18,
+      "wall_ns": 2301277,
+      "internal_ns": 2221718,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 19,
+      "wall_ns": 2230822,
+      "internal_ns": 2167712,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 19,
+      "wall_ns": 2901989,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 20,
+      "wall_ns": 2644523,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 20,
+      "wall_ns": 2352283,
+      "internal_ns": 2237451,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 21,
+      "wall_ns": 2130130,
+      "internal_ns": 2060255,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 21,
+      "wall_ns": 2592374,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 22,
+      "wall_ns": 2763692,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 22,
+      "wall_ns": 2219164,
+      "internal_ns": 2122478,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 23,
+      "wall_ns": 2396310,
+      "internal_ns": 2336490,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 23,
+      "wall_ns": 2771794,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 24,
+      "wall_ns": 2589180,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 24,
+      "wall_ns": 2404592,
+      "internal_ns": 2305072,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 25,
+      "wall_ns": 2088458,
+      "internal_ns": 2015157,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 25,
+      "wall_ns": 2782690,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 26,
+      "wall_ns": 2950052,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 26,
+      "wall_ns": 2064221,
+      "internal_ns": 1985032,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 27,
+      "wall_ns": 2217160,
+      "internal_ns": 2159153,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 27,
+      "wall_ns": 2923331,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 28,
+      "wall_ns": 2975460,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 28,
+      "wall_ns": 2098993,
+      "internal_ns": 2011531,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 29,
+      "wall_ns": 6111180,
+      "internal_ns": 6052441,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 29,
+      "wall_ns": 2864072,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 30,
+      "wall_ns": 3076592,
+      "internal_ns": null,
+      "output_bytes": null
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 30,
+      "wall_ns": 2732875,
+      "internal_ns": 2632535,
+      "output_bytes": null
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 0,
+      "wall_ns": 1158911,
+      "internal_ns": null,
+      "output_bytes": 5
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 0,
+      "wall_ns": 3174831,
+      "internal_ns": 130,
+      "output_bytes": 45
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 1,
+      "wall_ns": 2742360,
+      "internal_ns": 141,
+      "output_bytes": 45
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 1,
+      "wall_ns": 1194876,
+      "internal_ns": null,
+      "output_bytes": 5
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 2,
+      "wall_ns": 1430915,
+      "internal_ns": null,
+      "output_bytes": 5
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 2,
+      "wall_ns": 2092995,
+      "internal_ns": 561,
+      "output_bytes": 45
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 3,
+      "wall_ns": 1701157,
+      "internal_ns": 150,
+      "output_bytes": 45
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 3,
+      "wall_ns": 1102156,
+      "internal_ns": null,
+      "output_bytes": 5
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 4,
+      "wall_ns": 1061945,
+      "internal_ns": null,
+      "output_bytes": 5
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 4,
+      "wall_ns": 1490450,
+      "internal_ns": 130,
+      "output_bytes": 45
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 5,
+      "wall_ns": 2442460,
+      "internal_ns": 140,
+      "output_bytes": 45
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 5,
+      "wall_ns": 1982429,
+      "internal_ns": null,
+      "output_bytes": 5
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 6,
+      "wall_ns": 1357990,
+      "internal_ns": null,
+      "output_bytes": 5
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 6,
+      "wall_ns": 1803971,
+      "internal_ns": 360,
+      "output_bytes": 45
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 7,
+      "wall_ns": 1471561,
+      "internal_ns": 140,
+      "output_bytes": 45
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 7,
+      "wall_ns": 1104840,
+      "internal_ns": null,
+      "output_bytes": 5
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 8,
+      "wall_ns": 1134505,
+      "internal_ns": null,
+      "output_bytes": 5
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 8,
+      "wall_ns": 1697080,
+      "internal_ns": 391,
+      "output_bytes": 45
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 9,
+      "wall_ns": 1477480,
+      "internal_ns": 141,
+      "output_bytes": 45
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 9,
+      "wall_ns": 1159302,
+      "internal_ns": null,
+      "output_bytes": 5
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 10,
+      "wall_ns": 1189192,
+      "internal_ns": null,
+      "output_bytes": 5
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 10,
+      "wall_ns": 1666418,
+      "internal_ns": 240,
+      "output_bytes": 45
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 11,
+      "wall_ns": 1609718,
+      "internal_ns": 230,
+      "output_bytes": 45
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 11,
+      "wall_ns": 1309879,
+      "internal_ns": null,
+      "output_bytes": 5
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 12,
+      "wall_ns": 1030438,
+      "internal_ns": null,
+      "output_bytes": 5
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 12,
+      "wall_ns": 1482107,
+      "internal_ns": 140,
+      "output_bytes": 45
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 13,
+      "wall_ns": 1411080,
+      "internal_ns": 130,
+      "output_bytes": 45
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 13,
+      "wall_ns": 1197870,
+      "internal_ns": null,
+      "output_bytes": 5
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 14,
+      "wall_ns": 1239482,
+      "internal_ns": null,
+      "output_bytes": 5
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 14,
+      "wall_ns": 1493424,
+      "internal_ns": 130,
+      "output_bytes": 45
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 15,
+      "wall_ns": 1699874,
+      "internal_ns": 150,
+      "output_bytes": 45
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 15,
+      "wall_ns": 1222618,
+      "internal_ns": null,
+      "output_bytes": 5
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 16,
+      "wall_ns": 1180594,
+      "internal_ns": null,
+      "output_bytes": 5
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 16,
+      "wall_ns": 1621206,
+      "internal_ns": 351,
+      "output_bytes": 45
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 17,
+      "wall_ns": 1990681,
+      "internal_ns": 761,
+      "output_bytes": 45
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 17,
+      "wall_ns": 1095677,
+      "internal_ns": null,
+      "output_bytes": 5
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 18,
+      "wall_ns": 1078831,
+      "internal_ns": null,
+      "output_bytes": 5
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 18,
+      "wall_ns": 2070682,
+      "internal_ns": 311,
+      "output_bytes": 45
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 19,
+      "wall_ns": 1285322,
+      "internal_ns": 130,
+      "output_bytes": 45
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 19,
+      "wall_ns": 1300985,
+      "internal_ns": null,
+      "output_bytes": 5
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 20,
+      "wall_ns": 1350099,
+      "internal_ns": null,
+      "output_bytes": 5
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 20,
+      "wall_ns": 2407258,
+      "internal_ns": 431,
+      "output_bytes": 45
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 21,
+      "wall_ns": 1489358,
+      "internal_ns": 340,
+      "output_bytes": 45
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 21,
+      "wall_ns": 1180184,
+      "internal_ns": null,
+      "output_bytes": 5
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 22,
+      "wall_ns": 1214024,
+      "internal_ns": null,
+      "output_bytes": 5
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 22,
+      "wall_ns": 1482517,
+      "internal_ns": 360,
+      "output_bytes": 45
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 23,
+      "wall_ns": 1570860,
+      "internal_ns": 301,
+      "output_bytes": 45
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 23,
+      "wall_ns": 1413203,
+      "internal_ns": null,
+      "output_bytes": 5
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 24,
+      "wall_ns": 1120454,
+      "internal_ns": null,
+      "output_bytes": 5
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 24,
+      "wall_ns": 1436609,
+      "internal_ns": 381,
+      "output_bytes": 45
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 25,
+      "wall_ns": 1459363,
+      "internal_ns": 180,
+      "output_bytes": 45
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 25,
+      "wall_ns": 1170289,
+      "internal_ns": null,
+      "output_bytes": 5
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 26,
+      "wall_ns": 946553,
+      "internal_ns": null,
+      "output_bytes": 5
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 26,
+      "wall_ns": 1818628,
+      "internal_ns": 290,
+      "output_bytes": 45
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 27,
+      "wall_ns": 1801978,
+      "internal_ns": 411,
+      "output_bytes": 45
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 27,
+      "wall_ns": 1035045,
+      "internal_ns": null,
+      "output_bytes": 5
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 28,
+      "wall_ns": 1004499,
+      "internal_ns": null,
+      "output_bytes": 5
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 28,
+      "wall_ns": 1490049,
+      "internal_ns": 231,
+      "output_bytes": 45
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 29,
+      "wall_ns": 1876850,
+      "internal_ns": 480,
+      "output_bytes": 45
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 29,
+      "wall_ns": 1529448,
+      "internal_ns": null,
+      "output_bytes": 5
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 30,
+      "wall_ns": 1136788,
+      "internal_ns": null,
+      "output_bytes": 5
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 30,
+      "wall_ns": 1432913,
+      "internal_ns": 251,
+      "output_bytes": 45
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 0,
+      "wall_ns": 3720891,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 0,
+      "wall_ns": 1911382,
+      "internal_ns": 309635,
+      "output_bytes": 48
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 1,
+      "wall_ns": 2324323,
+      "internal_ns": 363176,
+      "output_bytes": 48
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 1,
+      "wall_ns": 3662243,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 2,
+      "wall_ns": 4107151,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 2,
+      "wall_ns": 2056550,
+      "internal_ns": 333120,
+      "output_bytes": 48
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 3,
+      "wall_ns": 1737952,
+      "internal_ns": 272559,
+      "output_bytes": 48
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 3,
+      "wall_ns": 5851993,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 4,
+      "wall_ns": 4198549,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 4,
+      "wall_ns": 2430622,
+      "internal_ns": 355955,
+      "output_bytes": 48
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 5,
+      "wall_ns": 5132663,
+      "internal_ns": 716321,
+      "output_bytes": 48
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 5,
+      "wall_ns": 3984057,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 6,
+      "wall_ns": 4823447,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 6,
+      "wall_ns": 2389010,
+      "internal_ns": 398468,
+      "output_bytes": 48
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 7,
+      "wall_ns": 2077222,
+      "internal_ns": 310466,
+      "output_bytes": 48
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 7,
+      "wall_ns": 5927757,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 8,
+      "wall_ns": 5004280,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 8,
+      "wall_ns": 2237742,
+      "internal_ns": 318969,
+      "output_bytes": 48
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 9,
+      "wall_ns": 2084042,
+      "internal_ns": 309946,
+      "output_bytes": 48
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 9,
+      "wall_ns": 4079169,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 10,
+      "wall_ns": 4309756,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 10,
+      "wall_ns": 2233176,
+      "internal_ns": 413191,
+      "output_bytes": 48
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 11,
+      "wall_ns": 1908357,
+      "internal_ns": 368343,
+      "output_bytes": 48
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 11,
+      "wall_ns": 4284428,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 12,
+      "wall_ns": 3786359,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 12,
+      "wall_ns": 1646915,
+      "internal_ns": 278248,
+      "output_bytes": 48
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 13,
+      "wall_ns": 2225524,
+      "internal_ns": 522305,
+      "output_bytes": 48
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 13,
+      "wall_ns": 4758160,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 14,
+      "wall_ns": 3195321,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 14,
+      "wall_ns": 1667005,
+      "internal_ns": 232820,
+      "output_bytes": 48
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 15,
+      "wall_ns": 2471653,
+      "internal_ns": 361694,
+      "output_bytes": 48
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 15,
+      "wall_ns": 3601201,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 16,
+      "wall_ns": 4090326,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 16,
+      "wall_ns": 1935539,
+      "internal_ns": 327182,
+      "output_bytes": 48
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 17,
+      "wall_ns": 2823793,
+      "internal_ns": 316967,
+      "output_bytes": 48
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 17,
+      "wall_ns": 3554441,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 18,
+      "wall_ns": 3297044,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 18,
+      "wall_ns": 1866024,
+      "internal_ns": 287512,
+      "output_bytes": 48
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 19,
+      "wall_ns": 2323661,
+      "internal_ns": 378869,
+      "output_bytes": 48
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 19,
+      "wall_ns": 3165797,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 20,
+      "wall_ns": 4757759,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 20,
+      "wall_ns": 1709298,
+      "internal_ns": 266471,
+      "output_bytes": 48
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 21,
+      "wall_ns": 1813946,
+      "internal_ns": 274903,
+      "output_bytes": 48
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 21,
+      "wall_ns": 4465745,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 22,
+      "wall_ns": 5142357,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 22,
+      "wall_ns": 1945273,
+      "internal_ns": 297888,
+      "output_bytes": 48
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 23,
+      "wall_ns": 2171353,
+      "internal_ns": 445008,
+      "output_bytes": 48
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 23,
+      "wall_ns": 3394010,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 24,
+      "wall_ns": 5324000,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 24,
+      "wall_ns": 2798033,
+      "internal_ns": 315123,
+      "output_bytes": 48
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 25,
+      "wall_ns": 1962409,
+      "internal_ns": 275124,
+      "output_bytes": 48
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 25,
+      "wall_ns": 4145344,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 26,
+      "wall_ns": 5191251,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 26,
+      "wall_ns": 2296270,
+      "internal_ns": 380202,
+      "output_bytes": 48
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 27,
+      "wall_ns": 1650099,
+      "internal_ns": 249194,
+      "output_bytes": 48
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 27,
+      "wall_ns": 4380893,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 28,
+      "wall_ns": 3683645,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 28,
+      "wall_ns": 2236971,
+      "internal_ns": 360112,
+      "output_bytes": 48
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 29,
+      "wall_ns": 2981910,
+      "internal_ns": 459461,
+      "output_bytes": 48
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 29,
+      "wall_ns": 3208851,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 30,
+      "wall_ns": 4477618,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 30,
+      "wall_ns": 1993526,
+      "internal_ns": 302655,
+      "output_bytes": 48
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 0,
+      "wall_ns": 3278527,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 0,
+      "wall_ns": 3198956,
+      "internal_ns": 835936,
+      "output_bytes": 49
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 1,
+      "wall_ns": 2452755,
+      "internal_ns": 672750,
+      "output_bytes": 49
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 1,
+      "wall_ns": 4068383,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 2,
+      "wall_ns": 3318456,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 2,
+      "wall_ns": 2565765,
+      "internal_ns": 777018,
+      "output_bytes": 49
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 3,
+      "wall_ns": 2178654,
+      "internal_ns": 595665,
+      "output_bytes": 49
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 3,
+      "wall_ns": 6662130,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 4,
+      "wall_ns": 4476967,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 4,
+      "wall_ns": 2175950,
+      "internal_ns": 629116,
+      "output_bytes": 49
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 5,
+      "wall_ns": 2515059,
+      "internal_ns": 772100,
+      "output_bytes": 49
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 5,
+      "wall_ns": 3680610,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 6,
+      "wall_ns": 3216353,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 6,
+      "wall_ns": 2394117,
+      "internal_ns": 627794,
+      "output_bytes": 49
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 7,
+      "wall_ns": 2225563,
+      "internal_ns": 630227,
+      "output_bytes": 49
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 7,
+      "wall_ns": 3397154,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 8,
+      "wall_ns": 3110394,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 8,
+      "wall_ns": 2176340,
+      "internal_ns": 621073,
+      "output_bytes": 49
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 9,
+      "wall_ns": 2300586,
+      "internal_ns": 618379,
+      "output_bytes": 49
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 9,
+      "wall_ns": 4258930,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 10,
+      "wall_ns": 3464937,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 10,
+      "wall_ns": 2461379,
+      "internal_ns": 697268,
+      "output_bytes": 49
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 11,
+      "wall_ns": 2144893,
+      "internal_ns": 612490,
+      "output_bytes": 49
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 11,
+      "wall_ns": 5016809,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 12,
+      "wall_ns": 4035683,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 12,
+      "wall_ns": 2548669,
+      "internal_ns": 686522,
+      "output_bytes": 49
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 13,
+      "wall_ns": 2048598,
+      "internal_ns": 557477,
+      "output_bytes": 49
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 13,
+      "wall_ns": 4543357,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 14,
+      "wall_ns": 4271288,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 14,
+      "wall_ns": 1983601,
+      "internal_ns": 537708,
+      "output_bytes": 49
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 15,
+      "wall_ns": 2820799,
+      "internal_ns": 866802,
+      "output_bytes": 49
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 15,
+      "wall_ns": 3563765,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 16,
+      "wall_ns": 3760982,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 16,
+      "wall_ns": 2064102,
+      "internal_ns": 596837,
+      "output_bytes": 49
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 17,
+      "wall_ns": 2500808,
+      "internal_ns": 696106,
+      "output_bytes": 49
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 17,
+      "wall_ns": 4897589,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 18,
+      "wall_ns": 4166710,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 18,
+      "wall_ns": 2913287,
+      "internal_ns": 766071,
+      "output_bytes": 49
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 19,
+      "wall_ns": 2913208,
+      "internal_ns": 863238,
+      "output_bytes": 49
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 19,
+      "wall_ns": 4136966,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 20,
+      "wall_ns": 3472488,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 20,
+      "wall_ns": 2419070,
+      "internal_ns": 625790,
+      "output_bytes": 49
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 21,
+      "wall_ns": 2853227,
+      "internal_ns": 709005,
+      "output_bytes": 49
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 21,
+      "wall_ns": 3363865,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 22,
+      "wall_ns": 4552286,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 22,
+      "wall_ns": 2392535,
+      "internal_ns": 659992,
+      "output_bytes": 49
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 23,
+      "wall_ns": 3074544,
+      "internal_ns": 700362,
+      "output_bytes": 49
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 23,
+      "wall_ns": 5085141,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 24,
+      "wall_ns": 4735887,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 24,
+      "wall_ns": 2595640,
+      "internal_ns": 704929,
+      "output_bytes": 49
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 25,
+      "wall_ns": 2637834,
+      "internal_ns": 745671,
+      "output_bytes": 49
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 25,
+      "wall_ns": 6738400,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 26,
+      "wall_ns": 3763185,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 26,
+      "wall_ns": 2743142,
+      "internal_ns": 717549,
+      "output_bytes": 49
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 27,
+      "wall_ns": 2454799,
+      "internal_ns": 712510,
+      "output_bytes": 49
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 27,
+      "wall_ns": 3433439,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 28,
+      "wall_ns": 3543534,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 28,
+      "wall_ns": 2654859,
+      "internal_ns": 689085,
+      "output_bytes": 49
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 29,
+      "wall_ns": 2325084,
+      "internal_ns": 690237,
+      "output_bytes": 49
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 29,
+      "wall_ns": 4610287,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 30,
+      "wall_ns": 3514421,
+      "internal_ns": null,
+      "output_bytes": 0
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 30,
+      "wall_ns": 2464633,
+      "internal_ns": 790648,
+      "output_bytes": 49
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 0,
+      "wall_ns": 3983095,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 0,
+      "wall_ns": 1846484,
+      "internal_ns": 321593,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 1,
+      "wall_ns": 2055759,
+      "internal_ns": 343577,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 1,
+      "wall_ns": 3065006,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 2,
+      "wall_ns": 3798468,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 2,
+      "wall_ns": 2757063,
+      "internal_ns": 418289,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 3,
+      "wall_ns": 1838633,
+      "internal_ns": 268704,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 3,
+      "wall_ns": 3322923,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 4,
+      "wall_ns": 3882744,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 4,
+      "wall_ns": 1897872,
+      "internal_ns": 291037,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 5,
+      "wall_ns": 1704231,
+      "internal_ns": 314282,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 5,
+      "wall_ns": 3020569,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 6,
+      "wall_ns": 3528401,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 6,
+      "wall_ns": 2586546,
+      "internal_ns": 388273,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 7,
+      "wall_ns": 1822669,
+      "internal_ns": 268844,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 7,
+      "wall_ns": 3033548,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 8,
+      "wall_ns": 2972637,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 8,
+      "wall_ns": 1831351,
+      "internal_ns": 277046,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 9,
+      "wall_ns": 1685813,
+      "internal_ns": 279881,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 9,
+      "wall_ns": 3140268,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 10,
+      "wall_ns": 5194595,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 10,
+      "wall_ns": 1602252,
+      "internal_ns": 288053,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 11,
+      "wall_ns": 1650329,
+      "internal_ns": 234913,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 11,
+      "wall_ns": 3170113,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 12,
+      "wall_ns": 4017036,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 12,
+      "wall_ns": 1603069,
+      "internal_ns": 225199,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 13,
+      "wall_ns": 2086404,
+      "internal_ns": 351408,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 13,
+      "wall_ns": 3560575,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 14,
+      "wall_ns": 3232387,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 14,
+      "wall_ns": 2650352,
+      "internal_ns": 429475,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 15,
+      "wall_ns": 2258524,
+      "internal_ns": 297357,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 15,
+      "wall_ns": 2883963,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 16,
+      "wall_ns": 3215101,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 16,
+      "wall_ns": 1625272,
+      "internal_ns": 248934,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 17,
+      "wall_ns": 1471170,
+      "internal_ns": 223165,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 17,
+      "wall_ns": 4491879,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 18,
+      "wall_ns": 3123112,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 18,
+      "wall_ns": 1728637,
+      "internal_ns": 261322,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 19,
+      "wall_ns": 1579023,
+      "internal_ns": 218679,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 19,
+      "wall_ns": 3541301,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 20,
+      "wall_ns": 3191015,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 20,
+      "wall_ns": 1758913,
+      "internal_ns": 291468,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 21,
+      "wall_ns": 2253941,
+      "internal_ns": 339460,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 21,
+      "wall_ns": 4450983,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 22,
+      "wall_ns": 4496341,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 22,
+      "wall_ns": 2017827,
+      "internal_ns": 274963,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 23,
+      "wall_ns": 2133441,
+      "internal_ns": 355935,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 23,
+      "wall_ns": 3816354,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 24,
+      "wall_ns": 3032367,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 24,
+      "wall_ns": 1803650,
+      "internal_ns": 268423,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 25,
+      "wall_ns": 1917612,
+      "internal_ns": 307352,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 25,
+      "wall_ns": 4022184,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 26,
+      "wall_ns": 3328962,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 26,
+      "wall_ns": 2164732,
+      "internal_ns": 364277,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 27,
+      "wall_ns": 1795478,
+      "internal_ns": 267992,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 27,
+      "wall_ns": 3712438,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 28,
+      "wall_ns": 3125877,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 28,
+      "wall_ns": 1911522,
+      "internal_ns": 283145,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 29,
+      "wall_ns": 1874897,
+      "internal_ns": 313601,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 29,
+      "wall_ns": 2938065,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 30,
+      "wall_ns": 3512427,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 30,
+      "wall_ns": 2548168,
+      "internal_ns": 318809,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 0,
+      "wall_ns": 3824777,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 0,
+      "wall_ns": 2207097,
+      "internal_ns": 766933,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 1,
+      "wall_ns": 2906687,
+      "internal_ns": 779691,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 1,
+      "wall_ns": 1969369,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 2,
+      "wall_ns": 2328920,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 2,
+      "wall_ns": 2465054,
+      "internal_ns": 769346,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 3,
+      "wall_ns": 2432055,
+      "internal_ns": 686952,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 3,
+      "wall_ns": 2031092,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 4,
+      "wall_ns": 1843510,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 4,
+      "wall_ns": 2565936,
+      "internal_ns": 795946,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 5,
+      "wall_ns": 2242399,
+      "internal_ns": 704819,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 5,
+      "wall_ns": 1782598,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 6,
+      "wall_ns": 2177852,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 6,
+      "wall_ns": 2214778,
+      "internal_ns": 674033,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 7,
+      "wall_ns": 2395730,
+      "internal_ns": 690107,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 7,
+      "wall_ns": 2061567,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 8,
+      "wall_ns": 2041518,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 8,
+      "wall_ns": 2076400,
+      "internal_ns": 630096,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 9,
+      "wall_ns": 2263340,
+      "internal_ns": 653101,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 9,
+      "wall_ns": 1720134,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 10,
+      "wall_ns": 1703279,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 10,
+      "wall_ns": 2946647,
+      "internal_ns": 556276,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 11,
+      "wall_ns": 2364523,
+      "internal_ns": 659361,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 11,
+      "wall_ns": 1814346,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 12,
+      "wall_ns": 1666915,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 12,
+      "wall_ns": 2407578,
+      "internal_ns": 722405,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 13,
+      "wall_ns": 2357162,
+      "internal_ns": 764939,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 13,
+      "wall_ns": 4885471,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 14,
+      "wall_ns": 1841847,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 14,
+      "wall_ns": 2523472,
+      "internal_ns": 707333,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 15,
+      "wall_ns": 2095910,
+      "internal_ns": 638830,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 15,
+      "wall_ns": 4159620,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 16,
+      "wall_ns": 1779293,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 16,
+      "wall_ns": 3910516,
+      "internal_ns": 729907,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 17,
+      "wall_ns": 2479496,
+      "internal_ns": 612030,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 17,
+      "wall_ns": 2125143,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 18,
+      "wall_ns": 2593947,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 18,
+      "wall_ns": 2486315,
+      "internal_ns": 775786,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 19,
+      "wall_ns": 2302990,
+      "internal_ns": 661163,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 19,
+      "wall_ns": 1955338,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 20,
+      "wall_ns": 2445705,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 20,
+      "wall_ns": 2503482,
+      "internal_ns": 643808,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 21,
+      "wall_ns": 3192417,
+      "internal_ns": 819792,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 21,
+      "wall_ns": 2051833,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 22,
+      "wall_ns": 1833375,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 22,
+      "wall_ns": 2292765,
+      "internal_ns": 655275,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 23,
+      "wall_ns": 2441659,
+      "internal_ns": 677958,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 23,
+      "wall_ns": 1642678,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 24,
+      "wall_ns": 2507197,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 24,
+      "wall_ns": 2439126,
+      "internal_ns": 757188,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 25,
+      "wall_ns": 2206796,
+      "internal_ns": 582015,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 25,
+      "wall_ns": 2191513,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 26,
+      "wall_ns": 2339815,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 26,
+      "wall_ns": 2254797,
+      "internal_ns": 699711,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 27,
+      "wall_ns": 2180847,
+      "internal_ns": 670577,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 27,
+      "wall_ns": 1893305,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 28,
+      "wall_ns": 1839154,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 28,
+      "wall_ns": 2044643,
+      "internal_ns": 559922,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 29,
+      "wall_ns": 2273286,
+      "internal_ns": 656006,
+      "output_bytes": 112
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 29,
+      "wall_ns": 1673515,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 30,
+      "wall_ns": 1774166,
+      "internal_ns": null,
+      "output_bytes": 41
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 30,
+      "wall_ns": 2433166,
+      "internal_ns": 658469,
+      "output_bytes": 112
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 0,
+      "wall_ns": 1876059,
+      "internal_ns": null,
+      "output_bytes": 304
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 0,
+      "wall_ns": 4416095,
+      "internal_ns": 2602911,
+      "output_bytes": 535
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 1,
+      "wall_ns": 4360232,
+      "internal_ns": 2056370,
+      "output_bytes": 535
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 1,
+      "wall_ns": 1856049,
+      "internal_ns": null,
+      "output_bytes": 304
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 2,
+      "wall_ns": 1943691,
+      "internal_ns": null,
+      "output_bytes": 304
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 2,
+      "wall_ns": 3403274,
+      "internal_ns": 1855628,
+      "output_bytes": 535
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 3,
+      "wall_ns": 3537585,
+      "internal_ns": 1900916,
+      "output_bytes": 535
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 3,
+      "wall_ns": 1667195,
+      "internal_ns": null,
+      "output_bytes": 304
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 4,
+      "wall_ns": 1727836,
+      "internal_ns": null,
+      "output_bytes": 304
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 4,
+      "wall_ns": 3577055,
+      "internal_ns": 1943190,
+      "output_bytes": 535
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 5,
+      "wall_ns": 3473409,
+      "internal_ns": 2002269,
+      "output_bytes": 535
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 5,
+      "wall_ns": 1864131,
+      "internal_ns": null,
+      "output_bytes": 304
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 6,
+      "wall_ns": 2048358,
+      "internal_ns": null,
+      "output_bytes": 304
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 6,
+      "wall_ns": 3625517,
+      "internal_ns": 1898973,
+      "output_bytes": 535
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 7,
+      "wall_ns": 3656594,
+      "internal_ns": 1873124,
+      "output_bytes": 535
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 7,
+      "wall_ns": 1805393,
+      "internal_ns": null,
+      "output_bytes": 304
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 8,
+      "wall_ns": 1700005,
+      "internal_ns": null,
+      "output_bytes": 304
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 8,
+      "wall_ns": 4144898,
+      "internal_ns": 2279795,
+      "output_bytes": 535
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 9,
+      "wall_ns": 3404386,
+      "internal_ns": 1882349,
+      "output_bytes": 535
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 9,
+      "wall_ns": 1964982,
+      "internal_ns": null,
+      "output_bytes": 304
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 10,
+      "wall_ns": 1643319,
+      "internal_ns": null,
+      "output_bytes": 304
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 10,
+      "wall_ns": 3461000,
+      "internal_ns": 1900135,
+      "output_bytes": 535
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 11,
+      "wall_ns": 3620890,
+      "internal_ns": 1879294,
+      "output_bytes": 535
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 11,
+      "wall_ns": 1869028,
+      "internal_ns": null,
+      "output_bytes": 304
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 12,
+      "wall_ns": 1607896,
+      "internal_ns": null,
+      "output_bytes": 304
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 12,
+      "wall_ns": 3341280,
+      "internal_ns": 1834577,
+      "output_bytes": 535
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 13,
+      "wall_ns": 4558360,
+      "internal_ns": 2129589,
+      "output_bytes": 535
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 13,
+      "wall_ns": 2098393,
+      "internal_ns": null,
+      "output_bytes": 304
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 14,
+      "wall_ns": 1639193,
+      "internal_ns": null,
+      "output_bytes": 304
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 14,
+      "wall_ns": 3419598,
+      "internal_ns": 1782328,
+      "output_bytes": 535
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 15,
+      "wall_ns": 3443394,
+      "internal_ns": 1850981,
+      "output_bytes": 535
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 15,
+      "wall_ns": 2029430,
+      "internal_ns": null,
+      "output_bytes": 304
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 16,
+      "wall_ns": 1656219,
+      "internal_ns": null,
+      "output_bytes": 304
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 16,
+      "wall_ns": 4091808,
+      "internal_ns": 2061368,
+      "output_bytes": 535
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 17,
+      "wall_ns": 3426679,
+      "internal_ns": 1911612,
+      "output_bytes": 535
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 17,
+      "wall_ns": 2040315,
+      "internal_ns": null,
+      "output_bytes": 304
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 18,
+      "wall_ns": 1615908,
+      "internal_ns": null,
+      "output_bytes": 304
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 18,
+      "wall_ns": 3713430,
+      "internal_ns": 1966895,
+      "output_bytes": 535
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 19,
+      "wall_ns": 4453362,
+      "internal_ns": 2603752,
+      "output_bytes": 535
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 19,
+      "wall_ns": 1995879,
+      "internal_ns": null,
+      "output_bytes": 304
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 20,
+      "wall_ns": 1644421,
+      "internal_ns": null,
+      "output_bytes": 304
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 20,
+      "wall_ns": 3646158,
+      "internal_ns": 2049980,
+      "output_bytes": 535
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 21,
+      "wall_ns": 4236966,
+      "internal_ns": 2391413,
+      "output_bytes": 535
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 21,
+      "wall_ns": 4526451,
+      "internal_ns": null,
+      "output_bytes": 304
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 22,
+      "wall_ns": 1766664,
+      "internal_ns": null,
+      "output_bytes": 304
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 22,
+      "wall_ns": 3507020,
+      "internal_ns": 1854456,
+      "output_bytes": 535
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 23,
+      "wall_ns": 3570034,
+      "internal_ns": 2142960,
+      "output_bytes": 535
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 23,
+      "wall_ns": 1942174,
+      "internal_ns": null,
+      "output_bytes": 304
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 24,
+      "wall_ns": 1876119,
+      "internal_ns": null,
+      "output_bytes": 304
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 24,
+      "wall_ns": 3677350,
+      "internal_ns": 2019764,
+      "output_bytes": 535
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 25,
+      "wall_ns": 4423777,
+      "internal_ns": 2174608,
+      "output_bytes": 535
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 25,
+      "wall_ns": 1834807,
+      "internal_ns": null,
+      "output_bytes": 304
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 26,
+      "wall_ns": 2014877,
+      "internal_ns": null,
+      "output_bytes": 304
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 26,
+      "wall_ns": 3715983,
+      "internal_ns": 2178413,
+      "output_bytes": 535
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 27,
+      "wall_ns": 3902204,
+      "internal_ns": 2154027,
+      "output_bytes": 535
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 27,
+      "wall_ns": 1777051,
+      "internal_ns": null,
+      "output_bytes": 304
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 28,
+      "wall_ns": 1599754,
+      "internal_ns": null,
+      "output_bytes": 304
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 28,
+      "wall_ns": 3525667,
+      "internal_ns": 1928358,
+      "output_bytes": 535
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 29,
+      "wall_ns": 3425897,
+      "internal_ns": 1852614,
+      "output_bytes": 535
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 29,
+      "wall_ns": 1903300,
+      "internal_ns": null,
+      "output_bytes": 304
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 30,
+      "wall_ns": 1633294,
+      "internal_ns": null,
+      "output_bytes": 304
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 30,
+      "wall_ns": 5105591,
+      "internal_ns": 2492836,
+      "output_bytes": 535
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 0,
+      "wall_ns": 1389378,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 0,
+      "wall_ns": 2425194,
+      "internal_ns": 992221,
+      "output_bytes": 1093
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 1,
+      "wall_ns": 2355709,
+      "internal_ns": 1026482,
+      "output_bytes": 1094
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 1,
+      "wall_ns": 1323609,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 2,
+      "wall_ns": 1591101,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 2,
+      "wall_ns": 2595770,
+      "internal_ns": 1004048,
+      "output_bytes": 1094
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 3,
+      "wall_ns": 2644013,
+      "internal_ns": 1141846,
+      "output_bytes": 1094
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 3,
+      "wall_ns": 3169903,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 4,
+      "wall_ns": 1413454,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 4,
+      "wall_ns": 2382149,
+      "internal_ns": 959291,
+      "output_bytes": 1093
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 5,
+      "wall_ns": 2312756,
+      "internal_ns": 1006593,
+      "output_bytes": 1094
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 5,
+      "wall_ns": 1685893,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 6,
+      "wall_ns": 1470990,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 6,
+      "wall_ns": 3451596,
+      "internal_ns": 1347165,
+      "output_bytes": 1094
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 7,
+      "wall_ns": 2574328,
+      "internal_ns": 984199,
+      "output_bytes": 1093
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 7,
+      "wall_ns": 1700826,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 8,
+      "wall_ns": 1485101,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 8,
+      "wall_ns": 3059287,
+      "internal_ns": 1101646,
+      "output_bytes": 1094
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 9,
+      "wall_ns": 2483682,
+      "internal_ns": 1040924,
+      "output_bytes": 1094
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 9,
+      "wall_ns": 1265091,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 10,
+      "wall_ns": 1297440,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 10,
+      "wall_ns": 2516241,
+      "internal_ns": 1006442,
+      "output_bytes": 1094
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 11,
+      "wall_ns": 3252277,
+      "internal_ns": 1258151,
+      "output_bytes": 1094
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 11,
+      "wall_ns": 2097661,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 12,
+      "wall_ns": 1360584,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 12,
+      "wall_ns": 3095691,
+      "internal_ns": 1111320,
+      "output_bytes": 1094
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 13,
+      "wall_ns": 2771184,
+      "internal_ns": 1120854,
+      "output_bytes": 1094
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 13,
+      "wall_ns": 1848197,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 14,
+      "wall_ns": 2173526,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 14,
+      "wall_ns": 2340747,
+      "internal_ns": 993032,
+      "output_bytes": 1093
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 15,
+      "wall_ns": 2262169,
+      "internal_ns": 942225,
+      "output_bytes": 1093
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 15,
+      "wall_ns": 2083581,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 16,
+      "wall_ns": 2112394,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 16,
+      "wall_ns": 2923453,
+      "internal_ns": 1059072,
+      "output_bytes": 1094
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 17,
+      "wall_ns": 3651978,
+      "internal_ns": 1451971,
+      "output_bytes": 1094
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 17,
+      "wall_ns": 2117322,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 18,
+      "wall_ns": 1519022,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 18,
+      "wall_ns": 2459947,
+      "internal_ns": 987433,
+      "output_bytes": 1093
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 19,
+      "wall_ns": 2374578,
+      "internal_ns": 995836,
+      "output_bytes": 1093
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 19,
+      "wall_ns": 2070501,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 20,
+      "wall_ns": 1373483,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 20,
+      "wall_ns": 3435612,
+      "internal_ns": 1460214,
+      "output_bytes": 1094
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 21,
+      "wall_ns": 3299568,
+      "internal_ns": 1151250,
+      "output_bytes": 1094
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 21,
+      "wall_ns": 1574446,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 22,
+      "wall_ns": 2514879,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 22,
+      "wall_ns": 2938075,
+      "internal_ns": 1052702,
+      "output_bytes": 1094
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 23,
+      "wall_ns": 2735420,
+      "internal_ns": 1006452,
+      "output_bytes": 1094
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 23,
+      "wall_ns": 1383960,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 24,
+      "wall_ns": 1391131,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 24,
+      "wall_ns": 2302289,
+      "internal_ns": 974704,
+      "output_bytes": 1093
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 25,
+      "wall_ns": 2495660,
+      "internal_ns": 947403,
+      "output_bytes": 1093
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 25,
+      "wall_ns": 1267665,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 26,
+      "wall_ns": 2335274,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 26,
+      "wall_ns": 2402991,
+      "internal_ns": 970178,
+      "output_bytes": 1093
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 27,
+      "wall_ns": 2334232,
+      "internal_ns": 978631,
+      "output_bytes": 1093
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 27,
+      "wall_ns": 1326153,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 28,
+      "wall_ns": 1288246,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 28,
+      "wall_ns": 2522275,
+      "internal_ns": 979041,
+      "output_bytes": 1093
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 29,
+      "wall_ns": 3210299,
+      "internal_ns": 1083428,
+      "output_bytes": 1094
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 29,
+      "wall_ns": 2027196,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 30,
+      "wall_ns": 2018773,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 30,
+      "wall_ns": 2532515,
+      "internal_ns": 1048435,
+      "output_bytes": 1094
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 0,
+      "wall_ns": 1125871,
+      "internal_ns": null,
+      "output_bytes": 30
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 0,
+      "wall_ns": 1434466,
+      "internal_ns": null,
+      "output_bytes": 19
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 1,
+      "wall_ns": 1081215,
+      "internal_ns": null,
+      "output_bytes": 19
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 1,
+      "wall_ns": 1120714,
+      "internal_ns": null,
+      "output_bytes": 30
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 2,
+      "wall_ns": 972551,
+      "internal_ns": null,
+      "output_bytes": 30
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 2,
+      "wall_ns": 1147314,
+      "internal_ns": null,
+      "output_bytes": 19
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 3,
+      "wall_ns": 1147835,
+      "internal_ns": null,
+      "output_bytes": 19
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 3,
+      "wall_ns": 950559,
+      "internal_ns": null,
+      "output_bytes": 30
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 4,
+      "wall_ns": 923358,
+      "internal_ns": null,
+      "output_bytes": 30
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 4,
+      "wall_ns": 917028,
+      "internal_ns": null,
+      "output_bytes": 19
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 5,
+      "wall_ns": 1040344,
+      "internal_ns": null,
+      "output_bytes": 19
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 5,
+      "wall_ns": 1063818,
+      "internal_ns": null,
+      "output_bytes": 30
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 6,
+      "wall_ns": 879141,
+      "internal_ns": null,
+      "output_bytes": 30
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 6,
+      "wall_ns": 1232392,
+      "internal_ns": null,
+      "output_bytes": 19
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 7,
+      "wall_ns": 1032722,
+      "internal_ns": null,
+      "output_bytes": 19
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 7,
+      "wall_ns": 1458141,
+      "internal_ns": null,
+      "output_bytes": 30
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 8,
+      "wall_ns": 988836,
+      "internal_ns": null,
+      "output_bytes": 30
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 8,
+      "wall_ns": 1025180,
+      "internal_ns": null,
+      "output_bytes": 19
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 9,
+      "wall_ns": 1234615,
+      "internal_ns": null,
+      "output_bytes": 19
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 9,
+      "wall_ns": 1138661,
+      "internal_ns": null,
+      "output_bytes": 30
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 10,
+      "wall_ns": 1258081,
+      "internal_ns": null,
+      "output_bytes": 30
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 10,
+      "wall_ns": 975736,
+      "internal_ns": null,
+      "output_bytes": 19
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 11,
+      "wall_ns": 922386,
+      "internal_ns": null,
+      "output_bytes": 19
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 11,
+      "wall_ns": 909957,
+      "internal_ns": null,
+      "output_bytes": 30
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 12,
+      "wall_ns": 956066,
+      "internal_ns": null,
+      "output_bytes": 30
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 12,
+      "wall_ns": 912421,
+      "internal_ns": null,
+      "output_bytes": 19
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 13,
+      "wall_ns": 880593,
+      "internal_ns": null,
+      "output_bytes": 19
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 13,
+      "wall_ns": 885311,
+      "internal_ns": null,
+      "output_bytes": 30
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 14,
+      "wall_ns": 879482,
+      "internal_ns": null,
+      "output_bytes": 30
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 14,
+      "wall_ns": 1152041,
+      "internal_ns": null,
+      "output_bytes": 19
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 15,
+      "wall_ns": 1291080,
+      "internal_ns": null,
+      "output_bytes": 19
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 15,
+      "wall_ns": 1091631,
+      "internal_ns": null,
+      "output_bytes": 30
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 16,
+      "wall_ns": 958440,
+      "internal_ns": null,
+      "output_bytes": 30
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 16,
+      "wall_ns": 927444,
+      "internal_ns": null,
+      "output_bytes": 19
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 17,
+      "wall_ns": 883738,
+      "internal_ns": null,
+      "output_bytes": 19
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 17,
+      "wall_ns": 871900,
+      "internal_ns": null,
+      "output_bytes": 30
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 18,
+      "wall_ns": 1112722,
+      "internal_ns": null,
+      "output_bytes": 30
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 18,
+      "wall_ns": 1283579,
+      "internal_ns": null,
+      "output_bytes": 19
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 19,
+      "wall_ns": 1023097,
+      "internal_ns": null,
+      "output_bytes": 19
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 19,
+      "wall_ns": 952862,
+      "internal_ns": null,
+      "output_bytes": 30
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 20,
+      "wall_ns": 999312,
+      "internal_ns": null,
+      "output_bytes": 30
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 20,
+      "wall_ns": 1118972,
+      "internal_ns": null,
+      "output_bytes": 19
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 21,
+      "wall_ns": 1030238,
+      "internal_ns": null,
+      "output_bytes": 19
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 21,
+      "wall_ns": 894294,
+      "internal_ns": null,
+      "output_bytes": 30
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 22,
+      "wall_ns": 1149557,
+      "internal_ns": null,
+      "output_bytes": 30
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 22,
+      "wall_ns": 840193,
+      "internal_ns": null,
+      "output_bytes": 19
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 23,
+      "wall_ns": 866432,
+      "internal_ns": null,
+      "output_bytes": 19
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 23,
+      "wall_ns": 1017539,
+      "internal_ns": null,
+      "output_bytes": 30
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 24,
+      "wall_ns": 983578,
+      "internal_ns": null,
+      "output_bytes": 30
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 24,
+      "wall_ns": 971660,
+      "internal_ns": null,
+      "output_bytes": 19
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 25,
+      "wall_ns": 878910,
+      "internal_ns": null,
+      "output_bytes": 19
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 25,
+      "wall_ns": 1421225,
+      "internal_ns": null,
+      "output_bytes": 30
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 26,
+      "wall_ns": 1073403,
+      "internal_ns": null,
+      "output_bytes": 30
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 26,
+      "wall_ns": 1135115,
+      "internal_ns": null,
+      "output_bytes": 19
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 27,
+      "wall_ns": 931220,
+      "internal_ns": null,
+      "output_bytes": 19
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 27,
+      "wall_ns": 882967,
+      "internal_ns": null,
+      "output_bytes": 30
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 28,
+      "wall_ns": 1078561,
+      "internal_ns": null,
+      "output_bytes": 30
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 28,
+      "wall_ns": 1082958,
+      "internal_ns": null,
+      "output_bytes": 19
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 29,
+      "wall_ns": 985901,
+      "internal_ns": null,
+      "output_bytes": 19
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 29,
+      "wall_ns": 919722,
+      "internal_ns": null,
+      "output_bytes": 30
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "sample": 30,
+      "wall_ns": 1443699,
+      "internal_ns": null,
+      "output_bytes": 30
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "sample": 30,
+      "wall_ns": 1059382,
+      "internal_ns": null,
+      "output_bytes": 19
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 0,
+      "wall_ns": 20331,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 0,
+      "wall_ns": 40741,
+      "internal_ns": 23756,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 1,
+      "wall_ns": 37186,
+      "internal_ns": 20341,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 1,
+      "wall_ns": 35804,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 2,
+      "wall_ns": 34352,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 2,
+      "wall_ns": 38659,
+      "internal_ns": 21452,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 3,
+      "wall_ns": 36845,
+      "internal_ns": 19960,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 3,
+      "wall_ns": 38117,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 4,
+      "wall_ns": 35493,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 4,
+      "wall_ns": 38989,
+      "internal_ns": 22284,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 5,
+      "wall_ns": 38067,
+      "internal_ns": 20401,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 5,
+      "wall_ns": 39359,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 6,
+      "wall_ns": 38298,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 6,
+      "wall_ns": 38969,
+      "internal_ns": 22253,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 7,
+      "wall_ns": 37176,
+      "internal_ns": 20281,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 7,
+      "wall_ns": 40040,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 8,
+      "wall_ns": 53060,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 8,
+      "wall_ns": 41763,
+      "internal_ns": 24156,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 9,
+      "wall_ns": 37286,
+      "internal_ns": 20351,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 9,
+      "wall_ns": 42193,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 10,
+      "wall_ns": 41393,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 10,
+      "wall_ns": 38828,
+      "internal_ns": 22334,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 11,
+      "wall_ns": 37566,
+      "internal_ns": 20390,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 11,
+      "wall_ns": 41793,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 12,
+      "wall_ns": 41842,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 12,
+      "wall_ns": 38908,
+      "internal_ns": 22203,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 13,
+      "wall_ns": 37015,
+      "internal_ns": 20220,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 13,
+      "wall_ns": 88042,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 14,
+      "wall_ns": 44476,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 14,
+      "wall_ns": 45428,
+      "internal_ns": 27011,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 15,
+      "wall_ns": 38588,
+      "internal_ns": 20772,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 15,
+      "wall_ns": 47161,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 16,
+      "wall_ns": 45799,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 16,
+      "wall_ns": 39409,
+      "internal_ns": 22353,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 17,
+      "wall_ns": 37256,
+      "internal_ns": 20461,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 17,
+      "wall_ns": 49094,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 18,
+      "wall_ns": 60080,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 18,
+      "wall_ns": 42274,
+      "internal_ns": 24487,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 19,
+      "wall_ns": 37667,
+      "internal_ns": 20471,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 19,
+      "wall_ns": 50336,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 20,
+      "wall_ns": 48493,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 20,
+      "wall_ns": 39289,
+      "internal_ns": 22644,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 21,
+      "wall_ns": 36746,
+      "internal_ns": 19950,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 21,
+      "wall_ns": 50696,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 22,
+      "wall_ns": 32920,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 22,
+      "wall_ns": 38468,
+      "internal_ns": 21873,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 23,
+      "wall_ns": 37076,
+      "internal_ns": 20170,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 23,
+      "wall_ns": 36785,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 24,
+      "wall_ns": 35373,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 24,
+      "wall_ns": 39169,
+      "internal_ns": 21583,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 25,
+      "wall_ns": 276436,
+      "internal_ns": 20170,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 25,
+      "wall_ns": 59189,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 26,
+      "wall_ns": 74882,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 26,
+      "wall_ns": 49794,
+      "internal_ns": 30035,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 27,
+      "wall_ns": 38688,
+      "internal_ns": 21131,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 27,
+      "wall_ns": 42914,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 28,
+      "wall_ns": 38397,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 28,
+      "wall_ns": 38858,
+      "internal_ns": 21943,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 29,
+      "wall_ns": 37787,
+      "internal_ns": 20962,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 29,
+      "wall_ns": 41833,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "git",
+      "sample": 30,
+      "wall_ns": 39610,
+      "internal_ns": null,
+      "output_bytes": 1024
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "scion",
+      "sample": 30,
+      "wall_ns": 39960,
+      "internal_ns": 22945,
+      "output_bytes": 1024
+    }
+  ],
+  "verification": {
+    "query_results": "all checked",
+    "file_contents": "byte-identical",
+    "changed_paths": "one matching path",
+    "commit_parents": "identical logical DAG topology",
+    "commit_graph": "Git --reachable --changed-paths written before query timings"
+  },
+  "fixture": {
+    "scion": {
+      "root": "5785c70fe35c662655f18b5992e24f6458d6a6ecb754093a1210deb0c258c138",
+      "tip": "dd98caaca1595ead0792f484be4d83df672b2e2af533a5e4066d6016a194bb08",
+      "previous": "84202c8201888c1b200c596293668ffb4f3670dbe3d18cefe43a46596396aece",
+      "trunk": "8e66b47a70abae446b77885a355f0152a023d438ada6867d430498d3c0f0bfb1",
+      "left": "58545e92baf8507934b5a4ed0c0c87a047cab7b9065e84e80d4f57c32f8322ac",
+      "right": "7413c73cf8c6bdf52da721e5e8f5f9d31a3e120cb4ed91547a66a31d0f3c3744",
+      "side": "f5ca70ca53cf8a274985fbe1fbead4af34453e9dac5e48bcd9e50f6503cbb6bc"
+    },
+    "git": {
+      "root": "b08d052bad407f00577c0ad67f5a40f96c61eec5",
+      "tip": "c42fd7c77d8b2bd9d48a28784f56cbc90f829cdf",
+      "previous": "6b362ec628a072c340f82a95f4a30df2015b8314",
+      "trunk": "3100060ac45a5ed732b3e2b37eda54e48c396f3e",
+      "left": "e1c2cd219135aabdd879e445c4cf11c44dcc5e54",
+      "right": "a392d3c3737b1b5c7360901dbc7e28c2f7cac5a8",
+      "side": "06cf4fcff6043742c49c5335a370b8241b1eb938"
+    },
+    "path": "dir0000/file000000.txt",
+    "content": "edit 000034\nfixture 000\none two three four five six seven eight nine ten\none two three four five six seven eight nine ten\none two three four five six seven eight nine ten\none two three four five six seven eight nine ten\none two three four five six seven eight nine ten\none two three four five six seven eight nine ten\none two three four five six seven eight nine ten\none two three four five six seven eight nine ten\none two three four five six seven eight nine ten\none two three four five six seven eight nine ten\none two three four five six seven eight nine ten\none two three four five six seven eight nine ten\none two three four five six seven eight nine ten\none two three four five six seven eight nine ten\none two three four five six seven eight nine ten\none two three four five six seven eight nine ten\none two three four five six seven eight nine ten\none two three four five six seven eight nine ten\none two three four five six seven eight nine ten\none two three four five six seven eight nine ten\none two three four \n"
+  },
+  "summary": [
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "samples": 31,
+      "p50_us": 4035.683,
+      "p95_us": 6662.13,
+      "min_us": 3110.394,
+      "max_us": 6738.4
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "samples": 31,
+      "p50_us": 2461.379,
+      "p95_us": 3074.544,
+      "min_us": 1983.601,
+      "max_us": 3198.956
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "samples": 31,
+      "p50_us": 4145.344,
+      "p95_us": 5851.993,
+      "min_us": 3165.797,
+      "max_us": 5927.757
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "samples": 31,
+      "p50_us": 2084.042,
+      "p95_us": 2981.91,
+      "min_us": 1646.915,
+      "max_us": 5132.663
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "samples": 31,
+      "p50_us": 1574.446,
+      "p95_us": 2514.879,
+      "min_us": 1265.091,
+      "max_us": 3169.903
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "samples": 31,
+      "p50_us": 2532.515,
+      "p95_us": 3451.596,
+      "min_us": 2262.169,
+      "max_us": 3651.978
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "git",
+      "samples": 31,
+      "p50_us": 41.833,
+      "p95_us": 74.882,
+      "min_us": 20.331,
+      "max_us": 88.042
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "scion",
+      "samples": 31,
+      "p50_us": 38.688,
+      "p95_us": 49.794,
+      "min_us": 36.746,
+      "max_us": 276.436
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "samples": 31,
+      "p50_us": 3328.962,
+      "p95_us": 4496.341,
+      "min_us": 2883.963,
+      "max_us": 5194.595
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "samples": 31,
+      "p50_us": 1846.484,
+      "p95_us": 2650.352,
+      "min_us": 1471.17,
+      "max_us": 2757.063
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "samples": 31,
+      "p50_us": 1969.369,
+      "p95_us": 4159.62,
+      "min_us": 1642.678,
+      "max_us": 4885.471
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "samples": 31,
+      "p50_us": 2395.73,
+      "p95_us": 3192.417,
+      "min_us": 2044.643,
+      "max_us": 3910.516
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "git",
+      "samples": 31,
+      "p50_us": 14.812,
+      "p95_us": 32.208,
+      "min_us": 13.47,
+      "max_us": 44.057
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "scion",
+      "samples": 31,
+      "p50_us": 20.701,
+      "p95_us": 53.03,
+      "min_us": 19.339,
+      "max_us": 127.491
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "git",
+      "samples": 31,
+      "p50_us": 2878.705,
+      "p95_us": 3832.687,
+      "min_us": 2589.18,
+      "max_us": 3845.947
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "scion",
+      "samples": 31,
+      "p50_us": 2279.264,
+      "p95_us": 3114.088,
+      "min_us": 1855.958,
+      "max_us": 6111.18
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "samples": 31,
+      "p50_us": 1030.238,
+      "p95_us": 1291.08,
+      "min_us": 840.193,
+      "max_us": 1434.466
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "samples": 31,
+      "p50_us": 988.836,
+      "p95_us": 1443.699,
+      "min_us": 871.9,
+      "max_us": 1458.141
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "samples": 31,
+      "p50_us": 1180.184,
+      "p95_us": 1529.448,
+      "min_us": 946.553,
+      "max_us": 1982.429
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "samples": 31,
+      "p50_us": 1621.206,
+      "p95_us": 2742.36,
+      "min_us": 1285.322,
+      "max_us": 3174.831
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "samples": 31,
+      "p50_us": 1856.049,
+      "p95_us": 2098.393,
+      "min_us": 1599.754,
+      "max_us": 4526.451
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "samples": 31,
+      "p50_us": 3625.517,
+      "p95_us": 4558.36,
+      "min_us": 3341.28,
+      "max_us": 5105.591
+    }
+  ]
+}
