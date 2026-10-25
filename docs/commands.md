@@ -34,6 +34,8 @@ scn clone main lazy --sparse src --lazy
 ```sh
 cd work
 scn status
+scn status --stats
+scn status --refresh
 scn commit -m "Implement parser" --author "Ada <ada@example.test>"
 scn commit -m "Fix parser" --author "Ada <ada@example.test>" --ref main
 ```
@@ -42,7 +44,7 @@ There is no staging area. A commit records current changes in the selected worki
 
 If that CAS loses a race, the commit is still durable and the working copy records its new revision. The error identifies the created commit. Read the updated ref, decide how to reconcile the histories, and update the ref with the expected old value. Do not retry as an unconditional ref overwrite.
 
-`status` distinguishes added, modified, and deleted materialized files. A tracked lazy file that has never been hydrated is not a deletion.
+`status` distinguishes added, modified, and deleted materialized files. A tracked lazy file that has never been hydrated is not a deletion. `--stats` includes examined/hashed file counts, bytes hashed, verified cache hits, and untracked entries. `--refresh` discards cached fingerprints before scanning. See [status caching](working-copies.md#status-caching) for timestamp and platform behavior.
 
 ```sh
 scn hydrate src
@@ -107,6 +109,8 @@ scn bisect GOOD BAD --skip UNTESTABLE_CHANGESET
 
 These operations run on the authority and do not modify a working copy or move a ref. For a merge, single-commit rebase, or revert, inspect the returned `changeset` and `conflicts`. A successful result has an ID and no conflicts. A conflict result has a null ID and explicit conflict records; callers must not treat a successful HTTP exchange alone as a successful merge.
 
+A merge with multiple maximal bases recursively synthesizes a deterministic virtual base. Ambiguity that survives synthesis is returned as an explicit conflict; synthetic bases do not create visible changesets or move refs.
+
 The CLI rebase command replays one first-parent delta by default. With `--base BASE`, it replays the first-parent range `(BASE, TIP]` and returns `rewritten` (the old-to-new changeset mapping), `tip` (the last successfully replayed commit), and `conflicts`. It stops at the first conflict; completed rewrites remain available. The base must be on that first-parent chain. Rebase of a merge changeset flattens its first-parent delta. Revert uses a **zero-based** mainline parent; `0` means the first parent. Bisection returns a candidate; your automation executes tests and records good/bad outcomes.
 
 After a successful operation, update a ref with the resulting ID and its expected old value, or check out the new ID directly.
@@ -169,9 +173,36 @@ scn --cache-dir ./mount-cache mount main /tmp/scion-view \
   --sparse src --uid "$(id -u)" --gid "$(id -g)"
 ```
 
-The mount is read-only and remains attached to the selected immutable revision. File contents are fetched when opened and served through local handles; directory metadata comes from the sparse manifest. The host needs `/dev/fuse` and permission to mount a FUSE filesystem. Unmount using the host's FUSE tooling, for example `fusermount3 -u /tmp/scion-view`.
+Without `--writable`, the mount is read-only and remains attached to the selected immutable revision. File contents are fetched when opened and served through local handles; directory metadata comes from the sparse manifest. The host needs `/dev/fuse` and permission to mount a FUSE filesystem. Unmount using the host's FUSE tooling, for example `fusermount3 -u /tmp/scion-view`.
 
-Writable transparent virtualization, Windows ProjFS, and macOS File Provider integration are not provided. Editable lazy checkouts use the explicit hydration workflow described above.
+Add `--writable --overlay DIRECTORY` to use a durable editable namespace:
+
+```sh
+mkdir -p /tmp/scion-work
+scn mount main /tmp/scion-work --writable --overlay ./work-overlay \
+  --sparse src --uid "$(id -u)" --gid "$(id -g)"
+# Use another terminal for the following commands while the mount runs.
+scn overlay status ./work-overlay
+scn overlay diff ./work-overlay
+scn overlay commit ./work-overlay -m "Update source" --author "Ada" --ref main
+```
+
+Keep the backing directory outside the mountpoint, with neither directory containing the other. Commit flushes the validated mount's kernel writeback before taking the overlay write lease. Quiesce concurrent application writers for an application-consistent checkpoint. Remount an existing overlay at the revision reported by `scn overlay info`, which may differ from a moving branch ref.
+
+## Overlay management
+
+```sh
+scn overlay init main ./work-overlay --sparse src
+scn overlay info ./work-overlay
+scn overlay status ./work-overlay
+scn overlay diff ./work-overlay
+scn --cache-bytes 536870912 overlay prune ./work-overlay
+scn overlay gc ./work-overlay
+```
+
+`init` creates a sparse virtual manifest without downloading file contents. `diff` reports the precise first-parent delta including copy/rename provenance. `prune` evicts only clean hydrated contents and retains dirty or open inodes. `gc` requires an unmounted overlay and reclaims unlinked data and interrupted temporary files while protecting direct API handles. A failed optional reference CAS leaves the successful server commit recorded as the overlay's new revision.
+
+The portable overlay API is reusable on Linux, macOS, and Windows; transparent kernel mounting is Linux-only. Native Windows ProjFS and macOS File Provider integrations are not included. See [working copies](working-copies.md) for file operations, durability, lifetime handling, recovery, and API examples.
 
 ## Exit codes
 

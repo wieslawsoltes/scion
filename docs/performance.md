@@ -6,6 +6,8 @@ repository manifest for each commit. These measurements describe this independen
 implementation; they are not measurements of Anthropic's service or predictions
 of fleet throughput.
 
+For disk-durable measurements against Git, see the separate [Git comparison](git-comparison.md). The historical in-memory results below isolate algorithm and object-encoding costs and are retained as a baseline; they are not a substitute for the durable comparison or a claim that the latest implementation has these exact timings.
+
 ## Reproduce
 
 ```sh
@@ -82,8 +84,8 @@ cargo test -p scion-engine -p scion-graph
 | Changesets | Validate changed blobs; create a canonical delta; publish the log separately from reference updates. |
 | Trees | Batch path-copy updates; content-identical subtrees are shared. Directory fanout contributes to node cost. |
 | First-parent history | Binary lifting provides logarithmic jumps. |
-| General ancestry | Generation pruning and linear skip spans retain every merge-parent edge. |
-| Merge bases | Descending-generation frontier painting; returns all maximal bases. |
+| General ancestry | Generation pruning and linear skip spans retain every merge-parent edge; positive first-parent proofs use binary lifting. |
+| Merge bases | Paired linear-span skips and descending-generation frontier painting; returns all maximal bases. |
 | Merge/diff | Traverse changed subtrees; merge only changed-path maps. No full flattened manifest is required. |
 | Path history | Persistent path trie and linked records skip unrelated changes; deletion records remain queryable. |
 | Copy lookup | Persistent 256-way content-hash trie, with only changed paths updated. |
@@ -93,9 +95,8 @@ cargo test -p scion-engine -p scion-graph
 | Automatic text merge | Concurrent changes larger than 16 MiB return a structured conflict; binary, symbolic-link and submodule conflicts require explicit resolution. |
 | Bisection | Loads graph records once; scores every eligible candidate for small ranges and 65 spaced candidates for ranges above 512 eligible revisions. |
 
-The local backend serializes its SQLite metadata transactions. Shared deployments
-use the PostgreSQL backend and can partition immutable objects with `ShardedStore`.
-No benchmark here establishes PostgreSQL throughput, replication behavior, cluster
+The local backend batches small objects and metadata into durable SQLite publication transactions and serializes writers. Shared deployments use PostgreSQL or Spanner and can partition immutable objects with `ShardedStore` or use S3/GCS/Azure adapters.
+No benchmark here establishes shared-database throughput, replication behavior, cluster
 availability, regional-cache hit rates or production SLOs. Those require a workload
 and deployment-specific load and failure test.
 

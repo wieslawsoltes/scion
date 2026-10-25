@@ -8,10 +8,13 @@ Scion separates immutable source-control data, mutable repository metadata, deri
 |---|---|---|
 | Data model | `scion-types` | Serialization, hashing, shared errors |
 | Persistence | `scion-store` | Model; local, memory, or optional PostgreSQL storage |
+| Cloud objects | `scion-store-cloud` | Storage contract and provider SDKs |
+| Shared metadata | `scion-store-spanner` | Storage contract and official Spanner SDK |
 | Graph | `scion-graph` | Model and a graph-access trait |
 | Repository semantics | `scion-engine` | Model, storage, graph, text diff/merge |
 | Network contract | `scion-protocol` | Model and capability encoding |
-| Authority | `scion-server` | Engine, protocol, access policy, HTTP runtime |
+| Identity | `scion-auth` | Policy model, JWT verification, bounded discovery/JWKS client |
+| Authority | `scion-server` | Engine, protocol, identity, HTTP runtime |
 | Client and materialization | `scion-client` | Protocol, object codec, working-copy filesystem |
 | Cache services | `scion-cache` | Protocol, bounded client cache, HTTP runtime |
 | Migration | `scion-git` | Engine and Git subprocess protocols |
@@ -31,7 +34,7 @@ An encoded object includes a magic/version marker, kind, uncompressed size, expe
 
 A `Changeset` contains ordered parent IDs, author, optional committer, timestamp, message, ordered path changes, and optional metadata. Each file change is a put or delete relative to the first parent. A put carries the blob ID, size, mode, and optional copy provenance. File content is never embedded in the changeset.
 
-Commit creation validates parents and referenced content, updates persistent trees, builds the graph record, persists immutable objects and derived pointers, and finally publishes repository membership with a deduplicated log entry. A crash before publication may leave unreachable immutable objects. It must not expose a partially prepared commit as a repository member.
+Commit creation validates parents and referenced content, updates persistent trees, builds the graph record, persists immutable objects and derived pointers, and finally publishes repository membership with a deduplicated log entry. `publish_commit_with_objects` lets backends combine prepared objects and metadata into an atomic durable publication. The default writes through the outer backend before publishing, so cloud/shard compositions retain their object routing. LocalStore batches small encoded objects, records, membership, and the log in one final SQLite transaction, spilling bounded overflow durably before that transaction. A crash before publication may leave unreachable immutable objects. It must not expose a partially prepared commit as a repository member.
 
 The change-log sequence orders published records for consumers. It is not a changeset ID, branch position, or substitute for DAG ancestry. Log reads use an exclusive lower bound: `after=N` returns records following sequence `N`.
 
@@ -45,13 +48,13 @@ Changes are grouped by directory prefix. Only affected directory nodes are read 
 
 File/directory replacement is explicit. A live file cannot coexist with live descendants. Deleting `a` and adding `a/b` changes a file into a directory. A conflicting put at `a` alongside a put below it is rejected.
 
-Tree differences compare IDs before descending. Equal subtree IDs terminate the traversal. Content bytes are loaded only when a caller requests a text patch or a merge needs them. Binary changes still have exact before/after file entries even when no text patch is emitted.
+Tree differences compare IDs before descending. Equal subtree IDs terminate the traversal. Content bytes are loaded only when a caller requests a text patch or a merge needs them. Binary changes still have exact before/after file entries even when no text patch is emitted. Each `Repository` also maintains a byte-bounded decoded-tree LRU cache, configurable through its public API, to reuse immutable directory maps across operations.
 
 ## Commit graph
 
 `GraphAccess` supplies immutable `GraphNode` values. Nodes record parents, generation information, and first-parent binary-lifting links. First-parent jumps use the skip index. General ancestry examines every relevant DAG parent, including merge parents, and uses graph metadata to prune work.
 
-Merge-base queries return all maximal common ancestors. The merge engine accepts multiple bases when their trees are identical. When criss-cross history has different base trees, it returns a structured virtual-base conflict rather than choosing an arbitrary base.
+Merge-base queries return all maximal common ancestors. Paired skip traversal accelerates divergent linear histories while retaining the full DAG fallback. The merge engine recursively synthesizes differing merge-base trees using deterministic ordering, balanced combination, and memoized ancestry/tree work. It creates temporary immutable trees without publishing synthetic commits or moving refs. Unresolvable virtual-base differences return structured conflicts. Limits of 64 recursion levels, 256 heads, 4,096 subproblems, and 100,000 graph visits bound this synthesis.
 
 Graph queries have explicit traversal limits. These protect the service from unbounded requests; they do not imply that all arbitrary DAG queries are logarithmic.
 
@@ -80,11 +83,13 @@ Revert creates a new changeset that applies the inverse delta onto a specified r
 | Backend | Intended use |
 |---|---|
 | `MemoryStore` | Deterministic tests and embedded ephemeral repositories |
-| `LocalStore` | Compressed object files plus SQLite metadata for a single local authority |
+| `LocalStore` | Small encoded objects and metadata in FULL-synchronous SQLite WAL, larger synced files |
 | `PostgresStore` | Shared durable metadata and encoded objects with pooled connections and TLS support |
 | `ShardedStore` | One metadata authority and independently selected object backends, partitioned by object hash |
+| `CloudStore` | Conditional immutable objects in S3/GCS/Azure, with delegated transactional metadata |
+| `SpannerStore` | Transactional metadata and ordered publication in Spanner, with delegated immutable objects |
 
-The repository engine does not coordinate changes through a global branch mutex. Durable storage still coordinates transactions: SQLite serializes writers, PostgreSQL ref updates use atomic SQL operations, and log visibility uses a committed frontier. See [operations](operations.md#change-log-ordering) for that distinction.
+The repository engine does not coordinate changes through a global branch mutex. Durable storage still coordinates transactions: SQLite serializes writers, PostgreSQL ref updates use atomic SQL operations, and log visibility uses a committed frontier. Spanner serializes publication through a per-repository sequence counter. See [operations](operations.md#change-log-ordering) for that distinction.
 
 ## Thin clients and working copies
 
@@ -92,13 +97,13 @@ The repository engine does not coordinate changes through a global branch mutex.
 
 Working-copy state records revision, repository, endpoint configuration, sparse paths, tracked file entries, and whether each file has been materialized. Missing materialized files are deletions. Missing lazy files are still tracked and unchanged. The distinction is essential to safe commits from sparse workspaces.
 
-The writable client supports explicit hydration, change monitoring, dirty-file checks, and repository-relative path validation. On Linux, the optional FUSE feature exposes a read-only revision as a filesystem that obtains file contents on read. These are separate workflows: explicit lazy hydration supports editable working copies; FUSE supplies transparent read access to an immutable revision.
+The ordinary client supports explicit hydration, filesystem notifications, dirty-file checks, and a disposable verified status cache. The portable `Overlay` adds a transactional namespace and local inode data over an immutable sparse manifest. It fetches base contents on access, preserves open handles across rename/unlink, and commits a stable overlay snapshot through the server. The optional Linux FUSE adapter exposes either a read-only revision or a writable overlay. Its commit path validates the active mount and flushes kernel writeback before acquiring the overlay write lease; applications must quiesce concurrent writers for an application-consistent checkpoint. See [working copies](working-copies.md).
 
 Checkout uses a staged transaction with a durable recovery journal and backup files. Installation does not overwrite an unexpected destination; local modifications are checked again after downloads. Reopening an interrupted transaction rolls it back, including an interrupted rollback, while preserving files modified outside the transaction. Windows and macOS materialization rejects case-equivalent and Unicode-equivalent path collisions. Change monitoring releases the working-copy lock between status reads.
 
 ## Authorization and cache reuse
 
-The authority checks bearer identity and repository/path policy for control operations. For object reads it validates a revision/path witness and issues a short-lived MAC-protected ticket. Tickets include object identity, repository, revision, path, kind, and expiry. The object endpoint does not expose a bare unauthenticated hash lookup.
+The authority verifies static bearer credentials or signed JWTs from explicitly configured OIDC/JWKS providers. Exact issuer/subject bindings select a principal; claims cannot grant permissions implicitly. A fully validated policy replacement becomes visible atomically, and authorization rechecks the proof after body buffering. The authority then checks repository/path policy for control operations. See [identity](identity.md) for rotation, expiry, and revocation semantics. For object reads it validates a revision/path witness and issues a short-lived MAC-protected ticket. Tickets include object identity, repository, revision, path, kind, and expiry. The object endpoint does not expose a bare unauthenticated hash lookup.
 
 Shared caches validate authorization before serving a hit and only accept the expected upstream tier. They coalesce concurrent misses for one object and bound upstream concurrency. Cached bytes do not become authority: integrity checking and capability validation remain required independently.
 

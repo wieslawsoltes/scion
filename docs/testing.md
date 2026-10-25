@@ -2,17 +2,69 @@
 
 ## Correctness
 
-The main workspace test command includes library, binary, integration, and documentation tests:
+The workspace test commands cover library, binary, integration, example, benchmark-target, and documentation tests:
 
 ```sh
-cargo test --workspace --all-features --locked
+cargo test --workspace --all-targets --all-features --locked
+cargo test --workspace --doc --all-features --locked
 ```
 
 Storage tests should use fresh temporary directories or isolated databases. A backend is conforming only when immutable insertion is idempotent, acknowledged data survives restart, reference updates compare the old value atomically, and change-log insertion deduplicates retries.
 
-Repository tests exercise DAG ancestry, tree updates, merges, rebases, path history, and line attribution. Client tests exercise dirty and untracked files, sparse selection, absent lazy files, and explicit file/directory replacements involving virtual entries. Service tests verify authorization at both control and object endpoints, and admission remains reserved while response bodies or their data frames are retained by slow consumers.
+Repository tests exercise DAG ancestry, tree updates, merges, rebases, path history, and line attribution. Client tests exercise dirty and untracked files, sparse selection, absent lazy files, status fingerprints and timestamp races, checkout recovery, and explicit file/directory replacements involving virtual entries. Portable overlay tests cover namespace transactions, writes/truncation/holes, rename/unlink identity, Windows lifetime pins, cache accounting, dirty-ledger reset, synchronization, sparse guards, and orphan recovery. Service tests verify authorization at both control and object endpoints, and admission remains reserved while response bodies or their data frames are retained by slow consumers.
 
 Passing unit tests establishes the behavior those tests cover. It does not establish availability under region failures or throughput for an arbitrary production workload.
+
+## Recorded integration evidence
+
+All six workflows below completed successfully for published commit
+[`c6ec7d1`](https://github.com/wieslawsoltes/scion/commit/c6ec7d161ffa9c981119f5308ff11e4b314f55a0)
+on October 25, 2026. This records sixteen completed jobs at that source revision;
+new commits must pass their own applicable checks before merge.
+
+| Gate | Completed run | What it establishes |
+|---|---|---|
+| Main CI, nine jobs | [40192253386](https://github.com/wieslawsoltes/scion/actions/runs/40192253386) | Linux/macOS/Windows all-target/all-feature builds and tests; Rust 1.88; formatting, Clippy and rustdoc; all thirteen crate archives; dependency checks; PostgreSQL and running three-tier containers |
+| Linux FUSE | [40192253414](https://github.com/wieslawsoltes/scion/actions/runs/40192253414) | Real kernel mount, lazy reads, create/write/append/holes/truncate, rename, symlinks/modes, fsync, mmap publication, two authority commits, open/unlink and `O_PATH` lifetimes, cleanup, and reopen |
+| Cloud storage | [40192253393](https://github.com/wieslawsoltes/scion/actions/runs/40192253393) | Actual S3/GCS/Azure SDK HTTP contracts and pinned official MinIO integration with conditional writes, integrity checks, concurrency, and metadata restart |
+| Spanner transactions | [40192253470](https://github.com/wieslawsoltes/scion/actions/runs/40192253470) | Official emulator 1.5.59 through the official Rust SDK: two clients, concurrent CAS/publication, committed cursor reads, immutable conflicts, rollback, and restart |
+| Fuzz, three jobs | [40192253464](https://github.com/wieslawsoltes/scion/actions/runs/40192253464) | Sanitizer execution of generated and seeded path, canonical-object, and envelope inputs |
+| Git comparison | [40192253395](https://github.com/wieslawsoltes/scion/actions/runs/40192253395) | Release comparison workers, equivalent query results, and retained raw timing data; no noisy shared-runner speed threshold |
+
+The Windows run includes the regression for multiple writable handles protected
+by separate lifetime-pin files. Linux FUSE success is an actual mount result,
+not only a feature compilation check. Its [fixture](../scripts/smoke_fuse.py)
+fails when `/dev/fuse` or the required mount capability is missing.
+
+Identity tests use temporary loopback discovery/JWKS services and public test
+keys. They exercise asymmetric signatures, issuer/audience/expiry checks,
+algorithm confusion, key rotation, document bounds, coalescing, provider outages,
+and atomic policy revocation. Authority integration additionally checks that an
+unauthorized large upload is rejected before its body is sent. See
+[identity verification](identity.md#verification).
+
+### Run backend and filesystem fixtures
+
+```sh
+# PostgreSQL, with a disposable database supplied by the caller:
+SCION_TEST_DATABASE_URL=postgres://localhost/scion_test \
+  cargo test -p scion-store --features postgres --test postgres --test publication --locked
+# MinIO binary built from the pinned official release:
+python3 scripts/test-s3.py --minio /path/to/minio
+# Official Spanner emulator exposed on loopback, or --gateway /path/to/gateway_main:
+python3 scripts/test-spanner.py
+# FUSE-capable Linux host:
+cargo build --release -p scion-cli -p scion-server --features scion-cli/fuse --locked
+python3 scripts/smoke_fuse.py
+```
+
+The [cloud](cloud-storage.md) and [Spanner](spanner.md) guides specify fixture
+versions, credential isolation, schema setup, and the distinction between an
+emulator contract and production service behavior. Process-exit/reopen tests
+exercise durable publication without relying on Rust destructors; they do not
+simulate physical power loss, filesystem damage, or a regional outage.
+
+The storage suite also checks that the linked bundled SQLite includes the upstream [WAL-reset corruption fix](https://sqlite.org/releaselog/3_51_3.html). The dependency update and subsequent changes require checks at their new commit; the recorded CI snapshot above does not certify later source changes.
 
 ## Fuzzing
 
@@ -21,7 +73,7 @@ The independent `fuzz` workspace is development tooling and is not a product cra
 | Target | Oracle |
 |---|---|
 | `paths` | Constructor and JSON deserializer agree; accepted paths preserve traversal and metadata-directory invariants |
-| `canonical` | Parsed trees and changesets round-trip to stable bytes, IDs, and validation results |
+| `canonical` | Parsed trees and changesets round-trip to stable bytes, IDs, and validation results; optimized tree parsing matches the original derived decoder's acceptance and normalized values |
 | `envelope` | Compression round-trips, domain/ID mismatches fail, arbitrary envelope decoding never accepts mismatched content |
 
 ```sh
@@ -63,4 +115,4 @@ Use separate cold-cache and warm-cache runs. Record commit, target architecture,
 
 The performance ratios in Anthropic's article belong to its own infrastructure and workload. This project does not adopt those ratios as measured results.
 
-The repository's own [engine benchmark results](performance.md) include the command, workload sizes, sample counts, and limits of the measurements. Raw rows are emitted by `cargo bench -p scion-engine --bench scaling` for comparison against future changes.
+The [durable Git comparison](git-comparison.md) records equivalent repository fixtures, durability settings, process/cache state, median and tail latencies, and raw samples, including operations where Git wins. The repository's separate [engine benchmark results](performance.md) include the command, workload sizes, sample counts, and limits of the in-memory measurements. Raw rows are emitted by `cargo bench -p scion-engine --bench scaling` for comparison against future changes.

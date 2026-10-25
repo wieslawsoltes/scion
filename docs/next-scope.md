@@ -4,7 +4,21 @@ This pass builds on the initial implementation merged in PR #1. Each completed
 capability must include a concrete API, operational documentation, regression
 coverage and passing package/build checks before merging.
 
-## Implementation objectives
+## Implemented follow-up scope
+
+The follow-up adds recursive virtual-base synthesis, conservative status caching,
+durable writable overlays with real Linux FUSE commit tests, cloud object
+adapters, Spanner metadata, and OIDC/JWKS identity with atomic policy reload.
+Thirteen crates now separate these reusable components. The maintained
+[coverage matrix](public-design.md), [working-copy guide](working-copies.md),
+and [verification evidence](testing.md) describe their concrete behavior.
+
+The performance work includes graph skip traversal, bounded decoded-tree reuse,
+streaming hashes, batched durable SQLite publication, and a reproducible Git
+comparison. [Raw measurements and analysis](git-comparison.md) record both
+improvements and remaining Git advantages.
+
+## Original implementation objectives
 
 - Recursively synthesize virtual merge bases for criss-cross histories, retain
   explicit unresolved conflicts, and verify symmetry and ancestry behavior.

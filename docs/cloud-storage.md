@@ -1,6 +1,6 @@
 # Cloud object storage
 
-`scion-store-cloud` stores immutable Scion objects in Amazon S3 and compatible services, Google Cloud Storage, or Azure Blob Storage. Transactional metadata remains in a separately selected `Storage` backend. A single authority can use SQLite metadata; multiple authorities should use the shared PostgreSQL backend with the same cloud configuration.
+`scion-store-cloud` stores immutable Scion objects in Amazon S3 and compatible services, Google Cloud Storage, or Azure Blob Storage. Transactional metadata remains in a separately selected `Storage` backend. A single authority can use SQLite metadata; multiple authorities should use shared PostgreSQL or [Spanner metadata](spanner.md) with the same cloud configuration.
 
 The adapter uses Apache Arrow's maintained [`object_store`](https://docs.rs/object_store/0.14.2/object_store/) SDK. Version 0.14.2 supports Rust 1.85 and is compatible with this workspace's Rust 1.88 minimum. This is an object-storage adapter: it does not turn an object bucket into a transactional reference or change-log database.
 

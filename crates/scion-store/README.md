@@ -46,4 +46,25 @@ on open. Back up SQLite (including any live WAL) together with the object direct
 copying only loose files no longer captures every immutable object. Older Scion
 binaries that do not understand the inline table cannot read newly inlined objects.
 
+Duplicate writes verify the existing envelope and content hash before they are
+acknowledged. A corrupt duplicate in the final publication transaction rolls back
+that transaction's objects, records, membership, and log. Alternate valid
+compression of the same content remains accepted.
+
+## Read-only access
+
+`LocalStore::open_read_only(path)` opens an existing store without creating its
+directories, migrating its schema, or changing journal settings. Object, record,
+log, and prefix reads reuse prepared statements. All mutation methods reject
+writes, including idempotent writes and loose-object insertion. Readers observe
+concurrent commits through the live WAL; this does not use SQLite's immutable
+mode. SQLite can maintain WAL reader coordination sidecars, so the API is not a
+promise that no filesystem coordination files are touched.
+
+Existing file-only schemas remain readable without migration. If a writer later
+upgrades the store, an open reader detects and reads the new inline object table.
+The workspace bundles SQLite 3.51.3, including the upstream
+[concurrent WAL-reset corruption fix](https://sqlite.org/releaselog/3_51_3.html),
+and tests the linked version to prevent a vulnerable dependency regression.
+
 Licensed under MIT OR Apache-2.0.
