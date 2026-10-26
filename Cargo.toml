@@ -30,9 +30,9 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 blake3 = "1"
-zstd = "0.13"
+zstd = "0.14"
 # 0.39 bundles SQLite 3.51.3, including the concurrent WAL-reset corruption fix.
-rusqlite = { version = "0.39", features = ["bundled"] }
+rusqlite = { version = "0.40", features = ["bundled"] }
 parking_lot = "0.12"
 tempfile = "3"
 tokio = { version = "1", features = ["full"] }
@@ -41,15 +41,15 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 clap = { version = "4", features = ["derive", "env"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
-base64 = "0.22"
-similar = "2"
-diffy = "0.4"
+base64 = "0.23"
+similar = "3"
+diffy = "0.5"
 notify = "8"
 ignore = "0.4"
 futures = "0.3"
 http = "1"
 tower = { version = "0.5", features = ["util", "limit", "timeout"] }
-tower-http = { version = "0.6", features = ["trace", "limit", "timeout", "request-id"] }
+tower-http = { version = "0.7", features = ["trace", "limit", "timeout", "request-id"] }
 postgres = "0.19"
 tokio-postgres-rustls = { version = "0.14", features = ["ring", "native-certs"] }
 url = "2"

@@ -43,5 +43,5 @@ fuse = ["dep:fuser", "dep:libc"]
 
 [target.'cfg(target_os = "linux")'.dependencies]
 rustix = { version = "1", features = ["fs"] }
-fuser = { version = "0.16", default-features = false, features = ["abi-7-31"], optional = true }
+fuser = { version = "0.17", default-features = false, features = ["abi-7-31"], optional = true }
 libc = { workspace = true, optional = true }
