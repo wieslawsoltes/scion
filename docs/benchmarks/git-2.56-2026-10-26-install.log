@@ -1,0 +1,62 @@
+    SUBDIR templates
+install -d -m 755 '/tmp/scion-git-current/bin'
+install -d -m 755 '/tmp/scion-git-current/libexec/git-core'
+install   git-daemon git-http-backend git-imap-send git-sh-i18n--envsubst git-shell '/tmp/scion-git-current/libexec/git-core'
+install git-difftool--helper git-filter-branch git-merge-octopus git-merge-one-file git-merge-resolve git-mergetool git-quiltimport git-request-pull git-submodule git-web--browse git-archimport git-cvsexportcommit git-cvsimport git-cvsserver git-send-email git-svn git-p4 git-instaweb '/tmp/scion-git-current/libexec/git-core'
+install -m 644 git-mergetool--lib git-sh-i18n git-sh-setup '/tmp/scion-git-current/libexec/git-core'
+install  git scalar git-receive-pack git-shell git-upload-archive git-upload-pack '/tmp/scion-git-current/bin'
+install git-cvsserver '/tmp/scion-git-current/bin'
+make -C templates DESTDIR='' install
+make[1]: Entering directory '/tmp/scion-git-build/git-2.56.0/templates'
+install -d -m 755 '/tmp/scion-git-current/share/git-core/templates'
+(cd blt && tar cf - .) | \
+(cd '/tmp/scion-git-current/share/git-core/templates' && umask 022 && tar xof -)
+make[1]: Leaving directory '/tmp/scion-git-build/git-2.56.0/templates'
+install -d -m 755 '/tmp/scion-git-current/libexec/git-core/mergetools'
+install -m 644 mergetools/* '/tmp/scion-git-current/libexec/git-core/mergetools'
+install -d -m 755 '/tmp/scion-git-current/share/bash-completion/completions' && \
+install -m 644 contrib/completion/git-completion.bash '/tmp/scion-git-current/share/bash-completion/completions/git'
+bindir=$(cd '/tmp/scion-git-current/bin' && pwd) && \
+execdir=$(cd '/tmp/scion-git-current/libexec/git-core' && pwd) && \
+destdir_from_execdir_SQ=$(echo 'libexec/git-core' | sed -e 's|[^/][^/]*|..|g') && \
+{ test "$bindir/" = "$execdir/" || \
+  for p in git scalar git-shell git-cvsserver; do \
+	rm -f "$execdir/$p" && \
+	test -n "" && \
+	ln -s "$destdir_from_execdir_SQ/bin/$p" "$execdir/$p" || \
+	{ test -z "" && \
+	  ln "$bindir/$p" "$execdir/$p" 2>/dev/null || \
+	  cp "$bindir/$p" "$execdir/$p" || exit; } \
+  done; \
+} && \
+for p in git-receive-pack git-upload-archive git-upload-pack; do \
+	rm -f "$bindir/$p" && \
+	test -n "" && \
+	ln -s "git" "$bindir/$p" || \
+	{ test -z "" && \
+	  ln "$bindir/git" "$bindir/$p" 2>/dev/null || \
+	  ln -s "git" "$bindir/$p" 2>/dev/null || \
+	  cp "$bindir/git" "$bindir/$p" || exit; }; \
+done && \
+for p in git-add git-am git-annotate git-apply git-archive git-backfill git-bisect git-blame git-branch git-bugreport git-bundle git-cat-file git-check-attr git-check-ignore git-check-mailmap git-check-ref-format git-checkout--worker git-checkout-index git-checkout git-clean git-clone git-column git-commit-graph git-commit-tree git-commit git-config git-count-objects git-credential-cache--daemon git-credential-cache git-credential-store git-credential git-describe git-diagnose git-diff-files git-diff-index git-diff-pairs git-diff-tree git-diff git-difftool git-fast-export git-fast-import git-fetch-pack git-fetch git-fmt-merge-msg git-for-each-ref git-for-each-repo git-fsck git-fsmonitor--daemon git-gc git-get-tar-commit-id git-grep git-hash-object git-help git-history git-hook git-index-pack git-init-db git-interpret-trailers git-last-modified git-log git-ls-files git-ls-remote git-ls-tree git-mailinfo git-mailsplit git-merge-base git-merge-file git-merge-index git-merge-ours git-merge-recursive git-merge-tree git-merge git-mktag git-mktree git-multi-pack-index git-mv git-name-rev git-notes git-pack-objects git-pack-redundant git-pack-refs git-patch-id git-prune-packed git-prune git-pull git-push git-range-diff git-read-tree git-rebase git-receive-pack git-reflog git-refs git-remote-ext git-remote-fd git-remote git-repack git-replace git-replay git-repo git-rerere git-reset git-rev-list git-rev-parse git-revert git-rm git-send-pack git-shortlog git-show-branch git-show-index git-show-ref git-sparse-checkout git-stash git-stripspace git-submodule--helper git-symbolic-ref git-tag git-unpack-file git-unpack-objects git-update-index git-update-ref git-update-server-info git-upload-archive git-upload-pack git-url-parse git-var git-verify-commit git-verify-pack git-verify-tag git-worktree git-write-tree git-cherry git-cherry-pick git-format-patch git-format-rev git-fsck-objects git-init git-maintenance git-merge-subtree git-restore git-show git-stage git-status git-switch git-version git-whatchanged; do \
+	rm -f "$execdir/$p" && \
+	if test -z ""; \
+	then \
+		test -n "" && \
+		ln -s "$destdir_from_execdir_SQ/bin/git" "$execdir/$p" || \
+		{ test -z "" && \
+		  ln "$execdir/git" "$execdir/$p" 2>/dev/null || \
+		  ln -s "git" "$execdir/$p" 2>/dev/null || \
+		  cp "$execdir/git" "$execdir/$p" || exit; }; \
+	fi \
+done && \
+remote_curl_aliases="" && \
+for p in $remote_curl_aliases; do \
+	rm -f "$execdir/$p" && \
+	test -n "" && \
+	ln -s "git-remote-http" "$execdir/$p" || \
+	{ test -z "" && \
+	  ln "$execdir/git-remote-http" "$execdir/$p" 2>/dev/null || \
+	  ln -s "git-remote-http" "$execdir/$p" 2>/dev/null || \
+	  cp "$execdir/git-remote-http" "$execdir/$p" || exit; } \
+done

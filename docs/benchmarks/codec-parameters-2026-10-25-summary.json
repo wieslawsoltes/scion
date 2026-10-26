@@ -1,0 +1,1204 @@
+{
+  "scope": "codec-only; median across 31 trial means, each comprising 32 calls per object; not end-to-end commit p50",
+  "results": "/tmp/scion-codec-diagnostic-results/codec-results.json",
+  "results_sha256": "2fe9664b5789675f6f3bbe1dccf5bcea0db963feb70c5a73740485f7fbed2d18",
+  "build_report_sha256": "3d587caf634a4f8967cf42d9ff414656e0164a7c77a99f3bc976b28101aa506e",
+  "summary": [
+    {
+      "configuration": "level1",
+      "metadata_encoded_bytes": 39528,
+      "median_trial_mean_metadata_encode_us": 212.14478125000002,
+      "median_trial_mean_metadata_decode_verify_us": 81.12440624999999,
+      "objects": [
+        {
+          "object": "directory_100",
+          "raw_bytes": 14413,
+          "encoded_bytes": 3783,
+          "median_trial_mean_encode_us": 23.03153125,
+          "median_trial_mean_decode_verify_us": 14.30065625
+        },
+        {
+          "object": "root_1000",
+          "raw_bytes": 103013,
+          "encoded_bytes": 35425,
+          "median_trial_mean_encode_us": 183.891,
+          "median_trial_mean_decode_verify_us": 64.3600625
+        },
+        {
+          "object": "changeset",
+          "raw_bytes": 339,
+          "encoded_bytes": 320,
+          "median_trial_mean_encode_us": 4.0991875,
+          "median_trial_mean_decode_verify_us": 1.936125
+        },
+        {
+          "object": "blob_level3_control",
+          "raw_bytes": 1024,
+          "encoded_bytes": 127,
+          "median_trial_mean_encode_us": 3.351,
+          "median_trial_mean_decode_verify_us": 2.5898125
+        }
+      ],
+      "trials": [
+        {
+          "trial": 0,
+          "mean_encode_us": 213.77215625000002,
+          "mean_decode_verify_us": 80.41996875
+        },
+        {
+          "trial": 1,
+          "mean_encode_us": 220.81343750000002,
+          "mean_decode_verify_us": 85.55065625
+        },
+        {
+          "trial": 2,
+          "mean_encode_us": 218.1025625,
+          "mean_decode_verify_us": 84.6769375
+        },
+        {
+          "trial": 3,
+          "mean_encode_us": 215.23965625000002,
+          "mean_decode_verify_us": 79.81471875
+        },
+        {
+          "trial": 4,
+          "mean_encode_us": 210.53384375,
+          "mean_decode_verify_us": 88.512
+        },
+        {
+          "trial": 5,
+          "mean_encode_us": 204.53890625,
+          "mean_decode_verify_us": 80.017125
+        },
+        {
+          "trial": 6,
+          "mean_encode_us": 205.5048125,
+          "mean_decode_verify_us": 79.42990625
+        },
+        {
+          "trial": 7,
+          "mean_encode_us": 209.6129375,
+          "mean_decode_verify_us": 82.84740625
+        },
+        {
+          "trial": 8,
+          "mean_encode_us": 206.8816875,
+          "mean_decode_verify_us": 78.791625
+        },
+        {
+          "trial": 9,
+          "mean_encode_us": 218.08271875,
+          "mean_decode_verify_us": 87.09196874999999
+        },
+        {
+          "trial": 10,
+          "mean_encode_us": 204.50915625,
+          "mean_decode_verify_us": 80.72506249999999
+        },
+        {
+          "trial": 11,
+          "mean_encode_us": 212.6293125,
+          "mean_decode_verify_us": 81.12440624999999
+        },
+        {
+          "trial": 12,
+          "mean_encode_us": 216.46615625,
+          "mean_decode_verify_us": 82.38634375
+        },
+        {
+          "trial": 13,
+          "mean_encode_us": 263.62078125,
+          "mean_decode_verify_us": 80.7811875
+        },
+        {
+          "trial": 14,
+          "mean_encode_us": 210.5220625,
+          "mean_decode_verify_us": 82.97396875
+        },
+        {
+          "trial": 15,
+          "mean_encode_us": 205.95578125,
+          "mean_decode_verify_us": 80.29056250000001
+        },
+        {
+          "trial": 16,
+          "mean_encode_us": 206.56790625,
+          "mean_decode_verify_us": 80.78259375
+        },
+        {
+          "trial": 17,
+          "mean_encode_us": 220.65428125,
+          "mean_decode_verify_us": 81.344875
+        },
+        {
+          "trial": 18,
+          "mean_encode_us": 219.5355,
+          "mean_decode_verify_us": 82.2713125
+        },
+        {
+          "trial": 19,
+          "mean_encode_us": 206.93165625,
+          "mean_decode_verify_us": 80.658
+        },
+        {
+          "trial": 20,
+          "mean_encode_us": 229.04528125000002,
+          "mean_decode_verify_us": 86.901125
+        },
+        {
+          "trial": 21,
+          "mean_encode_us": 210.55671875,
+          "mean_decode_verify_us": 80.81709375
+        },
+        {
+          "trial": 22,
+          "mean_encode_us": 213.056375,
+          "mean_decode_verify_us": 87.066
+        },
+        {
+          "trial": 23,
+          "mean_encode_us": 207.30440625,
+          "mean_decode_verify_us": 80.0091875
+        },
+        {
+          "trial": 24,
+          "mean_encode_us": 212.14478125000002,
+          "mean_decode_verify_us": 83.83878125
+        },
+        {
+          "trial": 25,
+          "mean_encode_us": 207.24506250000002,
+          "mean_decode_verify_us": 79.12771875
+        },
+        {
+          "trial": 26,
+          "mean_encode_us": 212.3826875,
+          "mean_decode_verify_us": 89.5366875
+        },
+        {
+          "trial": 27,
+          "mean_encode_us": 221.87525,
+          "mean_decode_verify_us": 82.86175
+        },
+        {
+          "trial": 28,
+          "mean_encode_us": 207.80884375,
+          "mean_decode_verify_us": 85.136375
+        },
+        {
+          "trial": 29,
+          "mean_encode_us": 214.37528125,
+          "mean_decode_verify_us": 79.5296875
+        },
+        {
+          "trial": 30,
+          "mean_encode_us": 204.81312499999999,
+          "mean_decode_verify_us": 80.21131249999999
+        }
+      ],
+      "metadata_encode_saved_us": 0.0,
+      "metadata_encoded_size_ratio": 1.0
+    },
+    {
+      "configuration": "level1_target4",
+      "metadata_encoded_bytes": 77348,
+      "median_trial_mean_metadata_encode_us": 88.0829375,
+      "median_trial_mean_metadata_decode_verify_us": 50.898125,
+      "objects": [
+        {
+          "object": "directory_100",
+          "raw_bytes": 14413,
+          "encoded_bytes": 7209,
+          "median_trial_mean_encode_us": 10.9630625,
+          "median_trial_mean_decode_verify_us": 10.219375
+        },
+        {
+          "object": "root_1000",
+          "raw_bytes": 103013,
+          "encoded_bytes": 69741,
+          "median_trial_mean_encode_us": 75.55103125,
+          "median_trial_mean_decode_verify_us": 39.76728125
+        },
+        {
+          "object": "changeset",
+          "raw_bytes": 339,
+          "encoded_bytes": 398,
+          "median_trial_mean_encode_us": 1.44846875,
+          "median_trial_mean_decode_verify_us": 0.60846875
+        },
+        {
+          "object": "blob_level3_control",
+          "raw_bytes": 1024,
+          "encoded_bytes": 127,
+          "median_trial_mean_encode_us": 3.38134375,
+          "median_trial_mean_decode_verify_us": 2.686
+        }
+      ],
+      "trials": [
+        {
+          "trial": 0,
+          "mean_encode_us": 88.63575,
+          "mean_decode_verify_us": 50.46803125
+        },
+        {
+          "trial": 1,
+          "mean_encode_us": 89.00746875,
+          "mean_decode_verify_us": 50.53890625
+        },
+        {
+          "trial": 2,
+          "mean_encode_us": 88.6943125,
+          "mean_decode_verify_us": 48.86590625
+        },
+        {
+          "trial": 3,
+          "mean_encode_us": 89.08743750000001,
+          "mean_decode_verify_us": 49.01709375
+        },
+        {
+          "trial": 4,
+          "mean_encode_us": 92.66640625,
+          "mean_decode_verify_us": 52.4970625
+        },
+        {
+          "trial": 5,
+          "mean_encode_us": 84.00015625,
+          "mean_decode_verify_us": 50.81346875
+        },
+        {
+          "trial": 6,
+          "mean_encode_us": 88.0829375,
+          "mean_decode_verify_us": 49.820687500000005
+        },
+        {
+          "trial": 7,
+          "mean_encode_us": 85.13971875,
+          "mean_decode_verify_us": 51.029343749999995
+        },
+        {
+          "trial": 8,
+          "mean_encode_us": 86.47653125000001,
+          "mean_decode_verify_us": 50.898125
+        },
+        {
+          "trial": 9,
+          "mean_encode_us": 85.45621874999999,
+          "mean_decode_verify_us": 49.74353125
+        },
+        {
+          "trial": 10,
+          "mean_encode_us": 85.48525000000001,
+          "mean_decode_verify_us": 49.536406250000006
+        },
+        {
+          "trial": 11,
+          "mean_encode_us": 85.13759375000001,
+          "mean_decode_verify_us": 49.59709375
+        },
+        {
+          "trial": 12,
+          "mean_encode_us": 90.404,
+          "mean_decode_verify_us": 51.7241875
+        },
+        {
+          "trial": 13,
+          "mean_encode_us": 87.7834375,
+          "mean_decode_verify_us": 50.5360625
+        },
+        {
+          "trial": 14,
+          "mean_encode_us": 85.98168749999999,
+          "mean_decode_verify_us": 49.50790625
+        },
+        {
+          "trial": 15,
+          "mean_encode_us": 98.2608125,
+          "mean_decode_verify_us": 53.51231249999999
+        },
+        {
+          "trial": 16,
+          "mean_encode_us": 88.822875,
+          "mean_decode_verify_us": 51.552843749999994
+        },
+        {
+          "trial": 17,
+          "mean_encode_us": 92.4815625,
+          "mean_decode_verify_us": 51.726718749999996
+        },
+        {
+          "trial": 18,
+          "mean_encode_us": 87.82459374999999,
+          "mean_decode_verify_us": 56.926468750000005
+        },
+        {
+          "trial": 19,
+          "mean_encode_us": 89.62362499999999,
+          "mean_decode_verify_us": 50.732156249999996
+        },
+        {
+          "trial": 20,
+          "mean_encode_us": 87.94975,
+          "mean_decode_verify_us": 55.209062499999995
+        },
+        {
+          "trial": 21,
+          "mean_encode_us": 93.44696875000001,
+          "mean_decode_verify_us": 53.52575
+        },
+        {
+          "trial": 22,
+          "mean_encode_us": 89.08346875000001,
+          "mean_decode_verify_us": 57.0153125
+        },
+        {
+          "trial": 23,
+          "mean_encode_us": 85.6454375,
+          "mean_decode_verify_us": 58.955968750000004
+        },
+        {
+          "trial": 24,
+          "mean_encode_us": 86.15396874999999,
+          "mean_decode_verify_us": 51.88209375
+        },
+        {
+          "trial": 25,
+          "mean_encode_us": 91.27609375,
+          "mean_decode_verify_us": 50.614437499999994
+        },
+        {
+          "trial": 26,
+          "mean_encode_us": 87.709375,
+          "mean_decode_verify_us": 55.14025
+        },
+        {
+          "trial": 27,
+          "mean_encode_us": 89.292625,
+          "mean_decode_verify_us": 50.176625
+        },
+        {
+          "trial": 28,
+          "mean_encode_us": 85.71134375,
+          "mean_decode_verify_us": 51.763
+        },
+        {
+          "trial": 29,
+          "mean_encode_us": 84.18846875,
+          "mean_decode_verify_us": 51.058218749999995
+        },
+        {
+          "trial": 30,
+          "mean_encode_us": 89.0699375,
+          "mean_decode_verify_us": 50.5988125
+        }
+      ],
+      "metadata_encode_saved_us": 124.06184375000002,
+      "metadata_encoded_size_ratio": 1.9567901234567902
+    },
+    {
+      "configuration": "level1_target8",
+      "metadata_encoded_bytes": 82632,
+      "median_trial_mean_metadata_encode_us": 71.56115625,
+      "median_trial_mean_metadata_decode_verify_us": 51.78096875000001,
+      "objects": [
+        {
+          "object": "directory_100",
+          "raw_bytes": 14413,
+          "encoded_bytes": 8120,
+          "median_trial_mean_encode_us": 8.9453125,
+          "median_trial_mean_decode_verify_us": 10.2515625
+        },
+        {
+          "object": "root_1000",
+          "raw_bytes": 103013,
+          "encoded_bytes": 74114,
+          "median_trial_mean_encode_us": 61.0974375,
+          "median_trial_mean_decode_verify_us": 39.90246875
+        },
+        {
+          "object": "changeset",
+          "raw_bytes": 339,
+          "encoded_bytes": 398,
+          "median_trial_mean_encode_us": 1.38428125,
+          "median_trial_mean_decode_verify_us": 0.60971875
+        },
+        {
+          "object": "blob_level3_control",
+          "raw_bytes": 1024,
+          "encoded_bytes": 127,
+          "median_trial_mean_encode_us": 3.361625,
+          "median_trial_mean_decode_verify_us": 2.66528125
+        }
+      ],
+      "trials": [
+        {
+          "trial": 0,
+          "mean_encode_us": 70.207125,
+          "mean_decode_verify_us": 49.701
+        },
+        {
+          "trial": 1,
+          "mean_encode_us": 79.03721875000001,
+          "mean_decode_verify_us": 54.175125
+        },
+        {
+          "trial": 2,
+          "mean_encode_us": 70.00021875,
+          "mean_decode_verify_us": 78.83453125
+        },
+        {
+          "trial": 3,
+          "mean_encode_us": 70.80187500000001,
+          "mean_decode_verify_us": 50.031124999999996
+        },
+        {
+          "trial": 4,
+          "mean_encode_us": 70.8881875,
+          "mean_decode_verify_us": 49.71471875
+        },
+        {
+          "trial": 5,
+          "mean_encode_us": 68.70465625,
+          "mean_decode_verify_us": 55.1425
+        },
+        {
+          "trial": 6,
+          "mean_encode_us": 71.75984375,
+          "mean_decode_verify_us": 51.0181875
+        },
+        {
+          "trial": 7,
+          "mean_encode_us": 75.884,
+          "mean_decode_verify_us": 51.815687499999996
+        },
+        {
+          "trial": 8,
+          "mean_encode_us": 72.984625,
+          "mean_decode_verify_us": 50.0378125
+        },
+        {
+          "trial": 9,
+          "mean_encode_us": 74.749375,
+          "mean_decode_verify_us": 51.55475
+        },
+        {
+          "trial": 10,
+          "mean_encode_us": 71.705875,
+          "mean_decode_verify_us": 53.10003125
+        },
+        {
+          "trial": 11,
+          "mean_encode_us": 70.4284375,
+          "mean_decode_verify_us": 50.948437500000004
+        },
+        {
+          "trial": 12,
+          "mean_encode_us": 74.59634375,
+          "mean_decode_verify_us": 52.0784375
+        },
+        {
+          "trial": 13,
+          "mean_encode_us": 70.2959375,
+          "mean_decode_verify_us": 49.99521875
+        },
+        {
+          "trial": 14,
+          "mean_encode_us": 77.10137499999999,
+          "mean_decode_verify_us": 55.361656249999996
+        },
+        {
+          "trial": 15,
+          "mean_encode_us": 73.2525625,
+          "mean_decode_verify_us": 55.2201875
+        },
+        {
+          "trial": 16,
+          "mean_encode_us": 71.32243749999999,
+          "mean_decode_verify_us": 51.78096875000001
+        },
+        {
+          "trial": 17,
+          "mean_encode_us": 74.134375,
+          "mean_decode_verify_us": 55.373593750000005
+        },
+        {
+          "trial": 18,
+          "mean_encode_us": 76.789375,
+          "mean_decode_verify_us": 54.9218125
+        },
+        {
+          "trial": 19,
+          "mean_encode_us": 71.56115625,
+          "mean_decode_verify_us": 52.66884375
+        },
+        {
+          "trial": 20,
+          "mean_encode_us": 69.98884375,
+          "mean_decode_verify_us": 67.11609374999999
+        },
+        {
+          "trial": 21,
+          "mean_encode_us": 77.177375,
+          "mean_decode_verify_us": 54.41765625
+        },
+        {
+          "trial": 22,
+          "mean_encode_us": 69.9561875,
+          "mean_decode_verify_us": 50.21796875
+        },
+        {
+          "trial": 23,
+          "mean_encode_us": 70.99793749999999,
+          "mean_decode_verify_us": 52.427187499999995
+        },
+        {
+          "trial": 24,
+          "mean_encode_us": 73.25265625,
+          "mean_decode_verify_us": 50.77946875
+        },
+        {
+          "trial": 25,
+          "mean_encode_us": 75.7226875,
+          "mean_decode_verify_us": 53.252906249999995
+        },
+        {
+          "trial": 26,
+          "mean_encode_us": 71.68715625,
+          "mean_decode_verify_us": 51.10678125
+        },
+        {
+          "trial": 27,
+          "mean_encode_us": 70.536,
+          "mean_decode_verify_us": 50.508624999999995
+        },
+        {
+          "trial": 28,
+          "mean_encode_us": 70.70834375,
+          "mean_decode_verify_us": 50.25953125
+        },
+        {
+          "trial": 29,
+          "mean_encode_us": 69.67303125,
+          "mean_decode_verify_us": 50.2803125
+        },
+        {
+          "trial": 30,
+          "mean_encode_us": 70.90134375000001,
+          "mean_decode_verify_us": 50.50128125
+        }
+      ],
+      "metadata_encode_saved_us": 140.58362500000004,
+      "metadata_encoded_size_ratio": 2.090467516697025
+    },
+    {
+      "configuration": "level1_target16",
+      "metadata_encoded_bytes": 93719,
+      "median_trial_mean_metadata_encode_us": 58.068343750000004,
+      "median_trial_mean_metadata_decode_verify_us": 51.28803125,
+      "objects": [
+        {
+          "object": "directory_100",
+          "raw_bytes": 14413,
+          "encoded_bytes": 8652,
+          "median_trial_mean_encode_us": 7.9144375,
+          "median_trial_mean_decode_verify_us": 10.3243125
+        },
+        {
+          "object": "root_1000",
+          "raw_bytes": 103013,
+          "encoded_bytes": 84669,
+          "median_trial_mean_encode_us": 49.70171875,
+          "median_trial_mean_decode_verify_us": 40.09009375
+        },
+        {
+          "object": "changeset",
+          "raw_bytes": 339,
+          "encoded_bytes": 398,
+          "median_trial_mean_encode_us": 0.585875,
+          "median_trial_mean_decode_verify_us": 0.6040625
+        },
+        {
+          "object": "blob_level3_control",
+          "raw_bytes": 1024,
+          "encoded_bytes": 127,
+          "median_trial_mean_encode_us": 3.49334375,
+          "median_trial_mean_decode_verify_us": 2.6599375
+        }
+      ],
+      "trials": [
+        {
+          "trial": 0,
+          "mean_encode_us": 60.3175625,
+          "mean_decode_verify_us": 51.84928125
+        },
+        {
+          "trial": 1,
+          "mean_encode_us": 59.557625,
+          "mean_decode_verify_us": 50.861625
+        },
+        {
+          "trial": 2,
+          "mean_encode_us": 56.5416875,
+          "mean_decode_verify_us": 49.40353125
+        },
+        {
+          "trial": 3,
+          "mean_encode_us": 56.77528125,
+          "mean_decode_verify_us": 50.141625
+        },
+        {
+          "trial": 4,
+          "mean_encode_us": 62.460625,
+          "mean_decode_verify_us": 51.28803125
+        },
+        {
+          "trial": 5,
+          "mean_encode_us": 66.73971875000001,
+          "mean_decode_verify_us": 52.986906250000004
+        },
+        {
+          "trial": 6,
+          "mean_encode_us": 58.068343750000004,
+          "mean_decode_verify_us": 51.97896875
+        },
+        {
+          "trial": 7,
+          "mean_encode_us": 58.89040625,
+          "mean_decode_verify_us": 53.697562500000004
+        },
+        {
+          "trial": 8,
+          "mean_encode_us": 59.19384375,
+          "mean_decode_verify_us": 54.23121875
+        },
+        {
+          "trial": 9,
+          "mean_encode_us": 56.703093749999994,
+          "mean_decode_verify_us": 50.425093749999995
+        },
+        {
+          "trial": 10,
+          "mean_encode_us": 58.691593749999996,
+          "mean_decode_verify_us": 60.99909375
+        },
+        {
+          "trial": 11,
+          "mean_encode_us": 56.345,
+          "mean_decode_verify_us": 49.70059375
+        },
+        {
+          "trial": 12,
+          "mean_encode_us": 58.224343749999996,
+          "mean_decode_verify_us": 51.69259375
+        },
+        {
+          "trial": 13,
+          "mean_encode_us": 55.94265625,
+          "mean_decode_verify_us": 50.496625
+        },
+        {
+          "trial": 14,
+          "mean_encode_us": 57.918375,
+          "mean_decode_verify_us": 54.38421875
+        },
+        {
+          "trial": 15,
+          "mean_encode_us": 64.992625,
+          "mean_decode_verify_us": 55.7033125
+        },
+        {
+          "trial": 16,
+          "mean_encode_us": 57.03634375,
+          "mean_decode_verify_us": 50.43490625
+        },
+        {
+          "trial": 17,
+          "mean_encode_us": 89.03653125,
+          "mean_decode_verify_us": 50.62221875
+        },
+        {
+          "trial": 18,
+          "mean_encode_us": 56.15596875,
+          "mean_decode_verify_us": 50.3425
+        },
+        {
+          "trial": 19,
+          "mean_encode_us": 57.06096875,
+          "mean_decode_verify_us": 50.9248125
+        },
+        {
+          "trial": 20,
+          "mean_encode_us": 56.507718749999995,
+          "mean_decode_verify_us": 50.273624999999996
+        },
+        {
+          "trial": 21,
+          "mean_encode_us": 63.758468750000006,
+          "mean_decode_verify_us": 54.4216875
+        },
+        {
+          "trial": 22,
+          "mean_encode_us": 57.7725,
+          "mean_decode_verify_us": 49.9765
+        },
+        {
+          "trial": 23,
+          "mean_encode_us": 55.81815625,
+          "mean_decode_verify_us": 53.3411875
+        },
+        {
+          "trial": 24,
+          "mean_encode_us": 58.53215625,
+          "mean_decode_verify_us": 53.377
+        },
+        {
+          "trial": 25,
+          "mean_encode_us": 58.415437499999996,
+          "mean_decode_verify_us": 51.88034375
+        },
+        {
+          "trial": 26,
+          "mean_encode_us": 57.134875,
+          "mean_decode_verify_us": 52.89628125
+        },
+        {
+          "trial": 27,
+          "mean_encode_us": 56.82328125,
+          "mean_decode_verify_us": 50.172
+        },
+        {
+          "trial": 28,
+          "mean_encode_us": 57.071625000000004,
+          "mean_decode_verify_us": 49.906749999999995
+        },
+        {
+          "trial": 29,
+          "mean_encode_us": 61.1750625,
+          "mean_decode_verify_us": 49.3631875
+        },
+        {
+          "trial": 30,
+          "mean_encode_us": 64.0545625,
+          "mean_decode_verify_us": 57.5131875
+        }
+      ],
+      "metadata_encode_saved_us": 154.07643750000003,
+      "metadata_encoded_size_ratio": 2.3709522363893947
+    },
+    {
+      "configuration": "level_minus1",
+      "metadata_encoded_bytes": 74874,
+      "median_trial_mean_metadata_encode_us": 145.8589375,
+      "median_trial_mean_metadata_decode_verify_us": 53.821937500000004,
+      "objects": [
+        {
+          "object": "directory_100",
+          "raw_bytes": 14413,
+          "encoded_bytes": 6916,
+          "median_trial_mean_encode_us": 14.9355625,
+          "median_trial_mean_decode_verify_us": 10.49775
+        },
+        {
+          "object": "root_1000",
+          "raw_bytes": 103013,
+          "encoded_bytes": 67560,
+          "median_trial_mean_encode_us": 128.14971875,
+          "median_trial_mean_decode_verify_us": 42.367375
+        },
+        {
+          "object": "changeset",
+          "raw_bytes": 339,
+          "encoded_bytes": 398,
+          "median_trial_mean_encode_us": 1.771125,
+          "median_trial_mean_decode_verify_us": 0.61021875
+        },
+        {
+          "object": "blob_level3_control",
+          "raw_bytes": 1024,
+          "encoded_bytes": 127,
+          "median_trial_mean_encode_us": 3.453,
+          "median_trial_mean_decode_verify_us": 2.7080625
+        }
+      ],
+      "trials": [
+        {
+          "trial": 0,
+          "mean_encode_us": 152.3500625,
+          "mean_decode_verify_us": 61.467999999999996
+        },
+        {
+          "trial": 1,
+          "mean_encode_us": 143.76671875,
+          "mean_decode_verify_us": 55.2980625
+        },
+        {
+          "trial": 2,
+          "mean_encode_us": 146.69706250000002,
+          "mean_decode_verify_us": 53.821937500000004
+        },
+        {
+          "trial": 3,
+          "mean_encode_us": 140.1218125,
+          "mean_decode_verify_us": 52.16584375
+        },
+        {
+          "trial": 4,
+          "mean_encode_us": 143.59578125000002,
+          "mean_decode_verify_us": 51.8334375
+        },
+        {
+          "trial": 5,
+          "mean_encode_us": 145.8589375,
+          "mean_decode_verify_us": 57.80290625
+        },
+        {
+          "trial": 6,
+          "mean_encode_us": 156.54215625,
+          "mean_decode_verify_us": 54.6938125
+        },
+        {
+          "trial": 7,
+          "mean_encode_us": 148.84871875000002,
+          "mean_decode_verify_us": 57.4795625
+        },
+        {
+          "trial": 8,
+          "mean_encode_us": 156.83906249999998,
+          "mean_decode_verify_us": 64.38918749999999
+        },
+        {
+          "trial": 9,
+          "mean_encode_us": 137.91862500000002,
+          "mean_decode_verify_us": 53.0185
+        },
+        {
+          "trial": 10,
+          "mean_encode_us": 142.86284375,
+          "mean_decode_verify_us": 53.722249999999995
+        },
+        {
+          "trial": 11,
+          "mean_encode_us": 155.35718749999998,
+          "mean_decode_verify_us": 53.73046875
+        },
+        {
+          "trial": 12,
+          "mean_encode_us": 141.00646875,
+          "mean_decode_verify_us": 51.86746875
+        },
+        {
+          "trial": 13,
+          "mean_encode_us": 140.61225,
+          "mean_decode_verify_us": 52.596687499999994
+        },
+        {
+          "trial": 14,
+          "mean_encode_us": 145.3524375,
+          "mean_decode_verify_us": 53.219406250000006
+        },
+        {
+          "trial": 15,
+          "mean_encode_us": 149.9269375,
+          "mean_decode_verify_us": 55.672625
+        },
+        {
+          "trial": 16,
+          "mean_encode_us": 141.00525,
+          "mean_decode_verify_us": 51.719
+        },
+        {
+          "trial": 17,
+          "mean_encode_us": 140.27671875000001,
+          "mean_decode_verify_us": 52.821125
+        },
+        {
+          "trial": 18,
+          "mean_encode_us": 140.51721874999998,
+          "mean_decode_verify_us": 55.545531249999996
+        },
+        {
+          "trial": 19,
+          "mean_encode_us": 148.88303125,
+          "mean_decode_verify_us": 53.83459375
+        },
+        {
+          "trial": 20,
+          "mean_encode_us": 140.7446875,
+          "mean_decode_verify_us": 52.22175
+        },
+        {
+          "trial": 21,
+          "mean_encode_us": 150.22121875000002,
+          "mean_decode_verify_us": 54.36684375
+        },
+        {
+          "trial": 22,
+          "mean_encode_us": 149.08409375,
+          "mean_decode_verify_us": 52.32634375
+        },
+        {
+          "trial": 23,
+          "mean_encode_us": 137.62396875000002,
+          "mean_decode_verify_us": 53.93628125
+        },
+        {
+          "trial": 24,
+          "mean_encode_us": 162.35684375,
+          "mean_decode_verify_us": 54.178875
+        },
+        {
+          "trial": 25,
+          "mean_encode_us": 160.28878125,
+          "mean_decode_verify_us": 53.55046875
+        },
+        {
+          "trial": 26,
+          "mean_encode_us": 147.6268125,
+          "mean_decode_verify_us": 53.968875000000004
+        },
+        {
+          "trial": 27,
+          "mean_encode_us": 142.80615625,
+          "mean_decode_verify_us": 52.019625000000005
+        },
+        {
+          "trial": 28,
+          "mean_encode_us": 153.908625,
+          "mean_decode_verify_us": 57.163875000000004
+        },
+        {
+          "trial": 29,
+          "mean_encode_us": 153.4476875,
+          "mean_decode_verify_us": 58.004
+        },
+        {
+          "trial": 30,
+          "mean_encode_us": 142.53009375,
+          "mean_decode_verify_us": 53.31359375
+        }
+      ],
+      "metadata_encode_saved_us": 66.28584375000003,
+      "metadata_encoded_size_ratio": 1.8942015786278081
+    },
+    {
+      "configuration": "level_minus2",
+      "metadata_encoded_bytes": 76294,
+      "median_trial_mean_metadata_encode_us": 116.5664375,
+      "median_trial_mean_metadata_decode_verify_us": 54.34478125,
+      "objects": [
+        {
+          "object": "directory_100",
+          "raw_bytes": 14413,
+          "encoded_bytes": 7033,
+          "median_trial_mean_encode_us": 12.0734375,
+          "median_trial_mean_decode_verify_us": 10.45925
+        },
+        {
+          "object": "root_1000",
+          "raw_bytes": 103013,
+          "encoded_bytes": 68863,
+          "median_trial_mean_encode_us": 102.5895,
+          "median_trial_mean_decode_verify_us": 42.376875
+        },
+        {
+          "object": "changeset",
+          "raw_bytes": 339,
+          "encoded_bytes": 398,
+          "median_trial_mean_encode_us": 1.634,
+          "median_trial_mean_decode_verify_us": 0.61659375
+        },
+        {
+          "object": "blob_level3_control",
+          "raw_bytes": 1024,
+          "encoded_bytes": 127,
+          "median_trial_mean_encode_us": 3.48584375,
+          "median_trial_mean_decode_verify_us": 2.6999375
+        }
+      ],
+      "trials": [
+        {
+          "trial": 0,
+          "mean_encode_us": 124.14456249999999,
+          "mean_decode_verify_us": 53.27028125
+        },
+        {
+          "trial": 1,
+          "mean_encode_us": 116.5664375,
+          "mean_decode_verify_us": 56.278875
+        },
+        {
+          "trial": 2,
+          "mean_encode_us": 110.84593749999999,
+          "mean_decode_verify_us": 51.7864375
+        },
+        {
+          "trial": 3,
+          "mean_encode_us": 110.93237500000001,
+          "mean_decode_verify_us": 52.072531250000004
+        },
+        {
+          "trial": 4,
+          "mean_encode_us": 120.9321875,
+          "mean_decode_verify_us": 55.85434375
+        },
+        {
+          "trial": 5,
+          "mean_encode_us": 127.62503124999999,
+          "mean_decode_verify_us": 56.82278125
+        },
+        {
+          "trial": 6,
+          "mean_encode_us": 117.53725,
+          "mean_decode_verify_us": 53.206875
+        },
+        {
+          "trial": 7,
+          "mean_encode_us": 115.05834375,
+          "mean_decode_verify_us": 53.072625
+        },
+        {
+          "trial": 8,
+          "mean_encode_us": 113.54425,
+          "mean_decode_verify_us": 53.40178125
+        },
+        {
+          "trial": 9,
+          "mean_encode_us": 114.54599999999999,
+          "mean_decode_verify_us": 55.325843750000004
+        },
+        {
+          "trial": 10,
+          "mean_encode_us": 117.0978125,
+          "mean_decode_verify_us": 54.6406875
+        },
+        {
+          "trial": 11,
+          "mean_encode_us": 143.03340624999998,
+          "mean_decode_verify_us": 59.622968750000005
+        },
+        {
+          "trial": 12,
+          "mean_encode_us": 109.32771874999999,
+          "mean_decode_verify_us": 52.577625
+        },
+        {
+          "trial": 13,
+          "mean_encode_us": 118.92403125,
+          "mean_decode_verify_us": 53.3086875
+        },
+        {
+          "trial": 14,
+          "mean_encode_us": 114.897375,
+          "mean_decode_verify_us": 52.88525
+        },
+        {
+          "trial": 15,
+          "mean_encode_us": 118.62356249999999,
+          "mean_decode_verify_us": 54.845312500000006
+        },
+        {
+          "trial": 16,
+          "mean_encode_us": 110.4446875,
+          "mean_decode_verify_us": 53.03140625
+        },
+        {
+          "trial": 17,
+          "mean_encode_us": 111.56212500000001,
+          "mean_decode_verify_us": 52.6781875
+        },
+        {
+          "trial": 18,
+          "mean_encode_us": 114.5993125,
+          "mean_decode_verify_us": 60.0705
+        },
+        {
+          "trial": 19,
+          "mean_encode_us": 118.21837500000001,
+          "mean_decode_verify_us": 56.23784375
+        },
+        {
+          "trial": 20,
+          "mean_encode_us": 121.56578125,
+          "mean_decode_verify_us": 55.714718749999996
+        },
+        {
+          "trial": 21,
+          "mean_encode_us": 116.22028125,
+          "mean_decode_verify_us": 51.705312500000005
+        },
+        {
+          "trial": 22,
+          "mean_encode_us": 112.779875,
+          "mean_decode_verify_us": 52.150062500000004
+        },
+        {
+          "trial": 23,
+          "mean_encode_us": 110.905625,
+          "mean_decode_verify_us": 57.1178125
+        },
+        {
+          "trial": 24,
+          "mean_encode_us": 117.18040625,
+          "mean_decode_verify_us": 56.6028125
+        },
+        {
+          "trial": 25,
+          "mean_encode_us": 115.80934375,
+          "mean_decode_verify_us": 54.4748125
+        },
+        {
+          "trial": 26,
+          "mean_encode_us": 115.59778125000001,
+          "mean_decode_verify_us": 54.614343749999996
+        },
+        {
+          "trial": 27,
+          "mean_encode_us": 121.14334375,
+          "mean_decode_verify_us": 56.80853125
+        },
+        {
+          "trial": 28,
+          "mean_encode_us": 119.1934375,
+          "mean_decode_verify_us": 54.147875
+        },
+        {
+          "trial": 29,
+          "mean_encode_us": 120.02221875000001,
+          "mean_decode_verify_us": 53.446999999999996
+        },
+        {
+          "trial": 30,
+          "mean_encode_us": 116.67553125,
+          "mean_decode_verify_us": 54.34478125
+        }
+      ],
+      "metadata_encode_saved_us": 95.57834375000002,
+      "metadata_encoded_size_ratio": 1.9301254806719288
+    }
+  ],
+  "host": {
+    "platform": "Linux-6.18.55-x86_64-with-glibc2.39",
+    "machine": "x86_64",
+    "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+    "cpu_count": 9,
+    "cpu_affinity": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ]
+  },
+  "parameter_semantics": {
+    "zstd_h_source": "https://github.com/facebook/zstd/blob/v1.5.7/lib/zstd.h",
+    "internal_source": "https://github.com/facebook/zstd/blob/v1.5.7/lib/compress/zstd_compress_internal.h",
+    "zstd_h_sha256": "9b4bc8245565c98ccfc61c07749928b57e7c0f6fddb0530c4f6aa1971893d88b",
+    "internal_sha256": "ab7754413cef565da559bda7eb738bc2b3708c48877cb9ec37aff767d32c57d1",
+    "target_length": "Stable API changes distance between match sampling in fast strategy; nonzero targetLength also disables literal entropy compression under the default AUTO policy in this bundled version.",
+    "literal_override": "Forcing entropy coding back on is exposed only behind the Rust zstd experimental feature, currently disabled. Not evaluated here."
+  },
+  "recommendation": "Do not infer a prepared-commit win from codec savings alone: TargetLength4/8 save124/141us but almost double stored metadata bytes; measure end-to-end FULL-synchronous transaction and report WAL/DB size tradeoff before adoption."
+}

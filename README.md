@@ -159,47 +159,68 @@ All product crates carry package metadata and versioned internal dependencies. C
 
 ## Measured performance
 
-The latest complete three-way comparison uses **Git 2.56.0**, a preserved Scion
-baseline, 100,000 file paths, a 10,000-commit trunk, 1,000 commits per divergent
-arm, 31 samples per operation, and warm operating-system caches. Both systems
-retain their documented durable-write settings. Fresh queries include process
-startup and shutdown; prepared commits and spread reads use resident workers.
+A declared batch of **five complete comparisons** on October 26, 2026 measures
+published source
+[`bd393c7`](https://github.com/wieslawsoltes/scion/commit/bd393c7cd064d03d231d6b0af8a05afb181f13c0)
+against **Git 2.56.0** and the byte-identical preserved Scion baseline. Every run
+uses 100,000 file paths, a 10,000-commit trunk, 1,000 commits per divergent arm,
+31 samples per operation, three warmups, independent stores, rotating execution
+order, and warm operating-system caches. Scion retains FULL-synchronous
+publication; Git retains its recorded fsync settings. Fresh queries include
+process startup and shutdown;
+prepared commits and spread reads use resident workers.
+
+The table reports **medians of the five run p50 values**, with ratios dividing
+those medians. All eight functional cases beat Git and improve by at least 2×
+over the preserved Scion build in this aggregate. Every run is retained;
+individual operation samples are not pooled.
+
+| Operation | Scion (µs) | Git (µs) | Baseline / Scion | Git / Scion |
+|---|---:|---:|---:|---:|
+| Prepared durable commit | 1,022.379 | 3,436.183 | 2.217× | 3.361× |
+| Positive ancestry | 799.704 | 3,814.463 | 2.319× | 4.770× |
+| Negative ancestry | 823.039 | 3,830.536 | 2.663× | 4.654× |
+| Ancestor merge base | 794.948 | 3,464.006 | 2.403× | 4.358× |
+| Divergent merge base | 799.424 | 2,020.896 | 2.801× | 2.528× |
+| Fresh file read, 1 KiB | 1,306.406 | 1,462.782 | 2.016× | 1.120× |
+| Fresh one-file text diff | 1,466.929 | 1,805.208 | 2.522× | 1.231× |
+| Resident spread file read | 17.617 | 42.564 | 2.212× | 2.416× |
+
+The 2× result describes the declared aggregate. Fresh reads reach only **1.863×**
+in run 3 and resident spread reads **1.815×** in run 5 against the Scion baseline.
+Latency tails also vary; the resident-read ratio of median run p95 values is
+**1.614×**. The raw observations retain these misses.
 
 Candidate graph queries use the explicit frozen graph API, prepared alongside
-Git's native commit graph. Its 12,036-node artifact takes **0.511 seconds** to
-export and **8,923,168 bytes** of additional storage. Reads, diffs, and writes use
-ordinary LocalStore APIs. The snapshot has frozen membership and must be rebuilt
-to include later commits.
+Git's native commit graph. The 12,036-node artifact occupies **8,923,168 bytes**;
+its preparation takes a median **0.443 seconds**, ranging from 0.413 to 0.469
+seconds across the five runs. These setup costs are excluded from query timing.
+Reads, diffs, and writes use ordinary LocalStore APIs. Snapshot membership is
+frozen and must be rebuilt to include later commits.
 
-| Operation | Scion median | Git median | Scion improvement | Against Git |
-|---|---:|---:|---:|---:|
-| Prepared durable commit | 1,066.705 µs | 2,796.568 µs | 1.83× | 2.62× faster |
-| Positive ancestry | 693.353 µs | 3,207.614 µs | 2.21× | 4.63× faster |
-| Negative ancestry | 663.148 µs | 3,241.334 µs | 2.70× | 4.89× faster |
-| Ancestor merge base | 671.330 µs | 2,975.053 µs | 2.26× | 4.43× faster |
-| Divergent merge base | 674.744 µs | 1,517.202 µs | 2.56× | 2.25× faster |
-| Fresh file read, 1 KiB | 1,079.142 µs | 1,397.171 µs | 2.06× | 1.29× faster |
-| Fresh one-file text diff | 1,084.851 µs | 1,549.060 µs | 2.85× | 1.43× faster |
-| Resident spread file read | 16.996 µs | 40.090 µs | 2.21× | 2.36× faster |
+A separately generated large fixture has a 100,000-commit trunk and 10,000-commit
+arms. Its complete run beats Git and improves at least 2× over the baseline in
+all eight functional cases. A subsequent query-only replay does so in all seven
+functional query cases, with **2.089–3.313×** baseline improvements and graph
+queries **10.24–52.54×** faster than Git. The replay does not remeasure writes.
+Its 120,036-node snapshot occupies **96,467,328 bytes** and takes **6.063 seconds**
+to export; the preceding complete run takes 6.027 seconds to export the same
+logical graph.
 
-Every functional median in the complete fixture beats Git. Seven of eight
-improve by at least 2× over the preserved Scion build; the durable-commit result
-is **1.83×** and remains below that target. A separate query replay on a
-100,000-commit trunk and 10,000-commit arms beats Git in all seven functional
-query cases, with **2.19–3.17×** Scion improvements and graph queries **8.14–49.42×**
-faster than Git. That replay does not remeasure writes; its graph export costs
-7.764 seconds and 96,467,328 bytes.
+The unchanged MemoryStore workload also exceeds 2× in **all eleven cases**
+across five alternating trials: initial commits improve **4.97–6.45×**, one-file
+edits **2.23–3.81×**, one-file diffs **3.81–4.66×**, and ancestry queries
+**23.85–34.25×** in ratios of median trial p50 values. These measure engine work
+without disk durability.
 
-The unchanged MemoryStore scaling workload also exceeds 2× in **all eleven
-cases**, across five alternating trials: initial commits improve **5.50–5.95×**,
-one-file edits **2.22–2.74×**, one-file diffs **3.92–4.71×**, and ancestry queries
-**24.70–32.88×**. These isolate engine work and do not measure durable storage.
-
-The [complete Git comparison](docs/git-comparison.md#resident-cache-and-edit-diff-follow-up-25-october-2026)
+Controls remain below 2× over the Scion baseline: resident no-op **1.017×**,
+process startup **1.488×**, and repository opening **1.719×** in the default
+aggregate. The large complete run's no-op is slower than Git (**Git / Scion =
+0.957×**). The [complete Git comparison](docs/git-comparison.md#metadata-compression-fixed-batch-26-october-2026)
 and [engine scaling results](docs/performance.md) retain exact source/build
 identities, raw observations, p95s, preparation costs, controls, and earlier
-unfavorable runs. Startup and no-op controls remain below 2×. These local results
-do not establish a universal speedup or distributed-service throughput.
+unfavorable runs. These local results do not establish a universal speedup or
+distributed-service throughput.
 
 ## Documentation
 
@@ -237,7 +258,7 @@ cargo package --workspace --all-features --locked
 
 CI exercises Linux, macOS, and Windows; verifies Rust 1.88 and every crate archive; and runs PostgreSQL, three-tier container, real Linux FUSE, MinIO, and official Spanner emulator integration tests. Fuzz targets cover paths, canonical objects, and compressed envelopes. The Git comparison workflow verifies equivalent outputs and retains raw timing samples. [Testing](docs/testing.md) links completed runs and explains what each gate establishes.
 
-Performance is workload-specific. The latest complete fixture improves every functional median over Git, while the controls, latency tails, historical losses, and remaining 2× targets remain documented. Fleet throughput, availability, and Anthropic's reported infrastructure ratios are not established by these local measurements.
+Performance is workload-specific. The declared five-run aggregate beats Git and exceeds 2× over the preserved Scion baseline in all eight functional p50 cases. Controls, individual below-target runs, latency tails, and historical losses remain documented. Fleet throughput, availability, and Anthropic's reported infrastructure ratios are not established by these local measurements.
 
 ## License
 

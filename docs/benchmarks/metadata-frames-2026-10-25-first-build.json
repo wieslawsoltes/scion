@@ -1,0 +1,35 @@
+{
+  "source_commit": "991fdc9c36190104019840110c69a689edc9e5a1",
+  "source_status": "?? crates/scion-store/examples/",
+  "diagnostic_source_sha256": "2f08f08bd3a9fd5cc65b11c4ea5fc7cd137313fded09d6dc805601296221e0a6",
+  "executable_sha256": "ac5870da727d36d0810b0bb876a944d29619de35713638145f9f38d595cd567e",
+  "codec_sha256": "c3889ef20a2a3114fe549635d545781cd6e492f1b3b7a6283db910604cb3c0c3",
+  "lockfile_sha256": "beb3a00f7d411218fdcf02368d49d723c8859dfc299bf4c98e037f1fa9fbcc2d",
+  "corpus_manifest_sha256": "02be2738eaacb22d4e8c01c8a4f60e19e7792ad21f67cdfce5112e7ab182d87f",
+  "extraction_script_sha256": "2e1aafda42632a3965ffb34356f43862774656867a120c98d075e2a469b3319f",
+  "command": [
+    "cargo",
+    "build",
+    "--release",
+    "--locked",
+    "--offline",
+    "-p",
+    "scion-store",
+    "--example",
+    "chunk_probe",
+    "-j",
+    "3"
+  ],
+  "environment": {
+    "CARGO_TARGET_DIR": "/tmp/scion-chunk-diagnostic-target",
+    "CARGO_INCREMENTAL": "0",
+    "RUSTFLAGS": null
+  },
+  "run_command": [
+    "/tmp/scion-chunk-diagnostic-target/release/examples/chunk_probe",
+    "/tmp/scion-chunk-diagnostic-results/corpus",
+    "/tmp/scion-chunk-diagnostic-results/chunk-results.json"
+  ],
+  "production_source_modified": false,
+  "verification": "Every measured encoded output was decoded by current and legacy streaming readers with exact raw equality; current decoder validates complete content ID; all cache bounds checked."
+}

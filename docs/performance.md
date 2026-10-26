@@ -6,11 +6,12 @@ repository manifest for each commit. These measurements describe this independen
 implementation; they are not measurements of Anthropic's service or predictions
 of fleet throughput.
 
-The paired in-memory comparison below measures clean pre-optimization and
-optimized builds on the unchanged original workload. All eleven rows exceed
-2× in the observed ratio of median trial p50 values. For disk-durable
-measurements against Git, see the separate [Git comparison](git-comparison.md).
-Earlier standalone observations remain below as historical evidence.
+The latest paired in-memory comparison measures clean pre-optimization source
+and the published metadata-reuse candidate on the unchanged original workload.
+All eleven rows exceed 2× in the observed ratio of median trial p50 values,
+with improvements of 2.233–34.246×. For disk-durable measurements against Git,
+see the separate [Git comparison](git-comparison.md). Earlier paired and
+standalone observations remain below as historical evidence.
 
 ## Reproduce
 
@@ -53,7 +54,99 @@ from the original Rust harness and are not pooled or reconstructed. Each
 initial-commit row is one observation per trial. Both build-provenance records
 are embedded in the recorded paired reports below.
 
-### Regression exposed by the first paired run
+## Latest paired results with metadata frame reuse
+
+On October 26, 2026, clean published candidate
+[`bd393c7`](https://github.com/wieslawsoltes/scion/commit/bd393c7cd064d03d231d6b0af8a05afb181f13c0)
+was compared with original pre-optimization source
+`6a11ff76052d10951e9f7d029f0313de7c78101d` in **five complete alternating
+trials** of the unchanged full MemoryStore workload. All eleven ratios of median
+trial p50 values exceed 2×, ranging from **2.233× to 34.246×**. Every individual
+paired trial also exceeds 2× for each operation/scale; all five trials are retained.
+
+The [complete paired report](benchmarks/scaling-2026-10-26-metadata.json)
+contains the original output, execution orders, parsed p50/p95 rows, source
+identities and verified build records. The separate
+[baseline build record](benchmarks/scaling-2026-10-26-metadata-baseline-build.json)
+and [candidate build record](benchmarks/scaling-2026-10-26-metadata-candidate-build.json)
+record the exact compilation commands, environments and binary hashes.
+
+After the temporary build environment was cleared, the baseline was rebuilt
+from the same clean source and Rust 1.99.1 toolchain. Its executable is
+**byte-identical to the preserved original**: SHA-256
+`5d57e2666f61a1ec99863317055ba02b4e5dd8abf12d301ae7ab5eb0a888b831`.
+The candidate executable has SHA-256
+`be7174c006ce65940637e070152329176868282c6dc8db79810bc40cc175dd2b`.
+Both used the workspace's optimized bench profile, separate target directories,
+`CARGO_INCREMENTAL=0`, and
+`cargo bench --locked --offline -p scion-engine --bench scaling --no-run`.
+Source trees remained clean and the recorded identities remained unchanged
+through measurement. The original benchmark source still has SHA-256
+`a3aabcb63f820fe2ac566c7f9b36856ec45612cda2c3604e22986ccc3ec93a00`.
+
+Each trial runs the full harness in a fresh process for each build. Baseline
+runs first in trials 1, 3 and 5; candidate runs first in trials 2 and 4. Files
+contain 14 bytes, directories contain 100 files, edits/diffs have 50 observations
+at each scale, and ancestry queries have 100 observations against a 10,000-commit
+chain. No smaller profile, workload change, discarded trial or sample removal
+is used. Ratios below divide the median of the five baseline trial p50 values
+by the corresponding candidate median; they do not pool operation samples.
+
+| Operation | Repository or graph size | Samples per trial | Baseline median of trial p50 (µs) | Candidate median of trial p50 (µs) | Baseline / candidate |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Initial commit | 1,000 files | 1 | 13,354.488 | 2,069.666 | 6.452× |
+| One-file commit | 1,000 files | 50 | 161.563 | 58.358 | 2.768× |
+| One-file diff | 1,000 files | 50 | 25.078 | 6.119 | 4.098× |
+| Initial commit | 10,000 files | 1 | 106,830.773 | 18,960.268 | 5.634× |
+| One-file commit | 10,000 files | 50 | 208.504 | 93.391 | 2.233× |
+| One-file diff | 10,000 files | 50 | 24.757 | 6.490 | 3.815× |
+| Initial commit | 100,000 files | 1 | 1,072,879.217 | 215,972.698 | 4.968× |
+| One-file commit | 100,000 files | 50 | 817.551 | 214.843 | 3.805× |
+| One-file diff | 100,000 files | 50 | 38.328 | 8.223 | 4.661× |
+| Positive ancestry | 10,000-commit chain | 100 | 23.896 | 1.002 | 23.848× |
+| Negative ancestry | 10,000-commit chain | 100 | 54.211 | 1.583 | 34.246× |
+
+### Trial variation and tail observations
+
+Each p50 interval below is the minimum–maximum of the five original trial p50
+values. Each p95 column is the median of the five original within-trial p95
+values, not a p95 calculated from pooled operation samples. The final column
+shows the minimum–maximum of the five paired baseline/candidate trial-p50
+ratios; it is distinct from the ratio of medians in the preceding table.
+
+| Operation and scale | Baseline trial-p50 range (µs) | Candidate trial-p50 range (µs) | Baseline median of trial p95 (µs) | Candidate median of trial p95 (µs) | Paired trial-p50 ratio range |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Initial commit, 1,000 | 10,944.712–17,605.388 | 1,825.008–2,820.106 | 13,354.488 | 2,069.666 | 5.495–8.594× |
+| One-file commit, 1,000 | 160.852–166.020 | 58.018–62.995 | 240.231 | 124.568 | 2.562–2.862× |
+| One-file diff, 1,000 | 24.747–25.308 | 5.989–6.360 | 37.656 | 11.828 | 3.891–4.226× |
+| Initial commit, 10,000 | 103,583.319–113,953.984 | 17,171.519–19,950.198 | 106,830.773 | 18,960.268 | 5.355–6.032× |
+| One-file commit, 10,000 | 207.533–214.734 | 92.960–95.073 | 295.014 | 186.070 | 2.222–2.300× |
+| One-file diff, 10,000 | 24.247–25.348 | 6.420–6.580 | 36.596 | 13.992 | 3.721–3.906× |
+| Initial commit, 100,000 | 1,049,674.792–1,124,613.420 | 193,195.688–218,125.300 | 1,072,879.217 | 215,972.698 | 4.883–5.796× |
+| One-file commit, 100,000 | 796.920–865.876 | 209.405–231.138 | 995.699 | 430.899 | 3.591–4.030× |
+| One-file diff, 100,000 | 37.727–39.479 | 7.822–9.314 | 51.367 | 14.773 | 4.115–4.948× |
+| Positive ancestry, 10,000 | 22.905–24.096 | 0.962–1.052 | 41.833 | 1.122 | 22.216–24.840× |
+| Negative ancestry, 10,000 | 49.254–55.363 | 1.562–1.632 | 70.546 | 1.702 | 30.273–34.996× |
+
+Each initial commit has **one observation per trial**, so that trial's p50 and
+p95 are the same observation. Five trials provide five initial-commit
+observations per scale, not five within-trial latency distributions. The 2×
+result applies to p50: the ratios of median trial p95 values for one-file commits
+at 1,000 and 10,000 files are 1.929× and 1.586×, respectively. These two tail
+metrics remain below 2×.
+
+These measurements use compressed `MemoryStore` in a shared Linux x86_64
+container. They include validation, hashing, serialization, compression and
+in-process cache behavior, and exclude disk durability, network requests and
+concurrent deployment load. Hardware and host load were not controlled. The
+candidate includes the bounded [metadata frame reuse](metadata-compression.md)
+optimization, but this complete-workload comparison does not isolate its codec
+cost or establish a universal speedup. It is also separate from the durable
+[Git comparison](git-comparison.md). Earlier runs below retain their original
+sources, measurements and limitations; their timings are not mixed into this
+five-trial result.
+
+## Historical regression exposed by the first paired run
 
 Clean candidate `f48eb8496717d4010d12add81de306c95238f54f` was compared with clean
 pre-optimization source `6a11ff76052d10951e9f7d029f0313de7c78101d` in five

@@ -1,0 +1,449 @@
+{
+  "schema": 1,
+  "created_utc": "2026-10-26T09:22:26.934746+00:00",
+  "measured_commit": "bd393c7cd064d03d231d6b0af8a05afb181f13c0",
+  "note": "JSON, JSONL, logs, and diagnostic source are copied byte-for-byte. CSV line endings alone are normalized from CRLF to LF; original and published SHA-256 values are recorded. Original absolute paths in raw evidence remain unchanged.",
+  "files": [
+    {
+      "source": "/tmp/scion-final-measurements/git-full-1.json",
+      "published_path": "docs/benchmarks/git-comparison-2026-10-26-metadata-run-1.json",
+      "source_bytes": 253655,
+      "published_bytes": 253655,
+      "source_sha256": "e9bbd5d6c4bce347c4c3f69cea12db4e1f25ce2ac6a789a621072c4f5ab952d7",
+      "published_sha256": "e9bbd5d6c4bce347c4c3f69cea12db4e1f25ce2ac6a789a621072c4f5ab952d7",
+      "transformation": "verbatim"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/git-full-1.csv",
+      "published_path": "docs/benchmarks/git-comparison-2026-10-26-metadata-run-1.csv",
+      "source_bytes": 55805,
+      "published_bytes": 54781,
+      "source_sha256": "373bce5f5cc4c4047248a17e0ade62dc42c57d97cd7caa2fb9fe079f821320c0",
+      "published_sha256": "ff554aabbd286d40bdbe499b14af9fadcd4b308e9da5e1781d956648f77f76a7",
+      "transformation": "CSV CRLF to LF"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/git-full-1-summary.csv",
+      "published_path": "docs/benchmarks/git-comparison-2026-10-26-metadata-run-1-summary.csv",
+      "source_bytes": 2502,
+      "published_bytes": 2468,
+      "source_sha256": "db4abefbb0aec772c0abafaef96d3c91e8cfbe27b92c0ad1053d73299d4b1976",
+      "published_sha256": "72382d4ef6dcf9b2aa65ba3fe87025948e52ff50c3fa796514d0730a9db97d87",
+      "transformation": "CSV CRLF to LF"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/git-full-1.log",
+      "published_path": "docs/benchmarks/git-comparison-2026-10-26-metadata-run-1.log",
+      "source_bytes": 1613,
+      "published_bytes": 1613,
+      "source_sha256": "d7b2043fa3d17002f1ca66d117e23f1d23ba89bfbde3da907d116500cc2f6c59",
+      "published_sha256": "d7b2043fa3d17002f1ca66d117e23f1d23ba89bfbde3da907d116500cc2f6c59",
+      "transformation": "verbatim"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/git-full-2.json",
+      "published_path": "docs/benchmarks/git-comparison-2026-10-26-metadata-run-2.json",
+      "source_bytes": 253662,
+      "published_bytes": 253662,
+      "source_sha256": "e045109cac94aab1ba41ebd78f2da57cd0d54994f937220b0f98da464b37559d",
+      "published_sha256": "e045109cac94aab1ba41ebd78f2da57cd0d54994f937220b0f98da464b37559d",
+      "transformation": "verbatim"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/git-full-2.csv",
+      "published_path": "docs/benchmarks/git-comparison-2026-10-26-metadata-run-2.csv",
+      "source_bytes": 55810,
+      "published_bytes": 54786,
+      "source_sha256": "a604e84b24c315c00d968a5e992e4f74c3f96587ba240b689d490291d101cd0b",
+      "published_sha256": "b6d16143c68485f985d88a0c963272c8c3685d4df637125cc01a6c4959f2b6aa",
+      "transformation": "CSV CRLF to LF"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/git-full-2-summary.csv",
+      "published_path": "docs/benchmarks/git-comparison-2026-10-26-metadata-run-2-summary.csv",
+      "source_bytes": 2502,
+      "published_bytes": 2468,
+      "source_sha256": "f4181b8ed942f66abcfb5d0c83ab321c48c102c4908a71481d2656779aea0544",
+      "published_sha256": "339b4951c4171e3c9fcdda60d997520703e5efda6dd1b405eef6a01b970a0213",
+      "transformation": "CSV CRLF to LF"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/git-full-2.log",
+      "published_path": "docs/benchmarks/git-comparison-2026-10-26-metadata-run-2.log",
+      "source_bytes": 1613,
+      "published_bytes": 1613,
+      "source_sha256": "cd879b7b10765150459f42d3ccbf80251a1dbb6c1d4b1cd2a27ecdd607570e52",
+      "published_sha256": "cd879b7b10765150459f42d3ccbf80251a1dbb6c1d4b1cd2a27ecdd607570e52",
+      "transformation": "verbatim"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/git-full-3.json",
+      "published_path": "docs/benchmarks/git-comparison-2026-10-26-metadata-run-3.json",
+      "source_bytes": 253869,
+      "published_bytes": 253869,
+      "source_sha256": "c5c23be78753fc77a774bcd8bcd98a311c248e4d354850be9f1b3425865c9b4f",
+      "published_sha256": "c5c23be78753fc77a774bcd8bcd98a311c248e4d354850be9f1b3425865c9b4f",
+      "transformation": "verbatim"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/git-full-3.csv",
+      "published_path": "docs/benchmarks/git-comparison-2026-10-26-metadata-run-3.csv",
+      "source_bytes": 55996,
+      "published_bytes": 54972,
+      "source_sha256": "46f589097a52f244e1c237592395689192057db980bf645796a7fb410c6b1d81",
+      "published_sha256": "97c34f5b26001762a7622128478242f3bbba745cbd51a8a4c2a82c7dd18679f7",
+      "transformation": "CSV CRLF to LF"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/git-full-3-summary.csv",
+      "published_path": "docs/benchmarks/git-comparison-2026-10-26-metadata-run-3-summary.csv",
+      "source_bytes": 2523,
+      "published_bytes": 2489,
+      "source_sha256": "742248b5e84b235ca0ec48544dc5748dd9e502104f870db618810d25e89d690e",
+      "published_sha256": "85a6d98b58a236d4fb2316cbfd4f114bf8e905eadc068b33cc6ef29b483909c3",
+      "transformation": "CSV CRLF to LF"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/git-full-3.log",
+      "published_path": "docs/benchmarks/git-comparison-2026-10-26-metadata-run-3.log",
+      "source_bytes": 1616,
+      "published_bytes": 1616,
+      "source_sha256": "0e6f4ae2be6865b37e8756dc2ce70200941d20819764407d40db35bbf2d77355",
+      "published_sha256": "0e6f4ae2be6865b37e8756dc2ce70200941d20819764407d40db35bbf2d77355",
+      "transformation": "verbatim"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/git-full-4.json",
+      "published_path": "docs/benchmarks/git-comparison-2026-10-26-metadata-run-4.json",
+      "source_bytes": 253760,
+      "published_bytes": 253760,
+      "source_sha256": "de14a371d73384e696351ad5b3fed32758481952620f7415d4039882213adc7f",
+      "published_sha256": "de14a371d73384e696351ad5b3fed32758481952620f7415d4039882213adc7f",
+      "transformation": "verbatim"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/git-full-4.csv",
+      "published_path": "docs/benchmarks/git-comparison-2026-10-26-metadata-run-4.csv",
+      "source_bytes": 55909,
+      "published_bytes": 54885,
+      "source_sha256": "897a18440acb9f29efbea13586574510236189facd6a01d210dc375d5adbbd6f",
+      "published_sha256": "c726443f7d70076064723c771dab3a9e9d40b7b040b808518cbc409535700128",
+      "transformation": "CSV CRLF to LF"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/git-full-4-summary.csv",
+      "published_path": "docs/benchmarks/git-comparison-2026-10-26-metadata-run-4-summary.csv",
+      "source_bytes": 2505,
+      "published_bytes": 2471,
+      "source_sha256": "6f465c4518fd3f2c5349bd317664dfee82403946e3be2af19d8f1cd90eef9a38",
+      "published_sha256": "50133b34935a59543ff4e035a5cbf76e025bd2b10bc5a59b619e3950d12dab55",
+      "transformation": "CSV CRLF to LF"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/git-full-4.log",
+      "published_path": "docs/benchmarks/git-comparison-2026-10-26-metadata-run-4.log",
+      "source_bytes": 1616,
+      "published_bytes": 1616,
+      "source_sha256": "e63ea55497c1501970051a7cf494fbe69641f20609651a88782041e013efee48",
+      "published_sha256": "e63ea55497c1501970051a7cf494fbe69641f20609651a88782041e013efee48",
+      "transformation": "verbatim"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/git-full-5.json",
+      "published_path": "docs/benchmarks/git-comparison-2026-10-26-metadata-run-5.json",
+      "source_bytes": 253712,
+      "published_bytes": 253712,
+      "source_sha256": "96dd26d3265a94088b7134036fd0dde2eb301903bfa5c006d88fa439eac3ee6d",
+      "published_sha256": "96dd26d3265a94088b7134036fd0dde2eb301903bfa5c006d88fa439eac3ee6d",
+      "transformation": "verbatim"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/git-full-5.csv",
+      "published_path": "docs/benchmarks/git-comparison-2026-10-26-metadata-run-5.csv",
+      "source_bytes": 55859,
+      "published_bytes": 54835,
+      "source_sha256": "64ecd090ad9b3f6ccd0372614947070c76b5aaf89b2bbf888cc97fb9183095f2",
+      "published_sha256": "bed1aebe834e45a22e868e85e7a46ddd0aacbeac2c247e789f99bfbda8367458",
+      "transformation": "CSV CRLF to LF"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/git-full-5-summary.csv",
+      "published_path": "docs/benchmarks/git-comparison-2026-10-26-metadata-run-5-summary.csv",
+      "source_bytes": 2508,
+      "published_bytes": 2474,
+      "source_sha256": "8be1144e49a3ebcdb052def1cef2c32c44ce61f7a6b5bcdf8312f7fffd2d4018",
+      "published_sha256": "94d58ef3fe9fb2541d9fc04d74eca940fb7492ef914887df17ed1f2b30c45161",
+      "transformation": "CSV CRLF to LF"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/git-full-5.log",
+      "published_path": "docs/benchmarks/git-comparison-2026-10-26-metadata-run-5.log",
+      "source_bytes": 1614,
+      "published_bytes": 1614,
+      "source_sha256": "56f80f68f188f3a4f1e631e284a5bb6aacf05582424673b03af89567b86cac1b",
+      "published_sha256": "56f80f68f188f3a4f1e631e284a5bb6aacf05582424673b03af89567b86cac1b",
+      "transformation": "verbatim"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/git-large-full.json",
+      "published_path": "docs/benchmarks/git-comparison-2026-10-26-metadata-large-full.json",
+      "source_bytes": 253944,
+      "published_bytes": 253944,
+      "source_sha256": "75898232414203a0fd84815ff6a9ebcd1559496270d1af65138cb890ca0933ee",
+      "published_sha256": "75898232414203a0fd84815ff6a9ebcd1559496270d1af65138cb890ca0933ee",
+      "transformation": "verbatim"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/git-large-full.csv",
+      "published_path": "docs/benchmarks/git-comparison-2026-10-26-metadata-large-full.csv",
+      "source_bytes": 56051,
+      "published_bytes": 55027,
+      "source_sha256": "124d14a211bbfa8fc74894e2bbcf7732bb2d9d1a89e5163ef6deef9788e2bea7",
+      "published_sha256": "6cd65f1f5647fa4a1ec5040ef10bca4890f67099111dba58f27e42e837d42ef5",
+      "transformation": "CSV CRLF to LF"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/git-large-full-summary.csv",
+      "published_path": "docs/benchmarks/git-comparison-2026-10-26-metadata-large-full-summary.csv",
+      "source_bytes": 2523,
+      "published_bytes": 2489,
+      "source_sha256": "31e496d89f3b9805cecae9a0a0998475570e268090583774a39e6399a0aa0a2d",
+      "published_sha256": "61ca9c4f16edefdf9ce01f7e04ccda0d3acd526d4a421eee71f114654ab0d482",
+      "transformation": "CSV CRLF to LF"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/git-large-full.log",
+      "published_path": "docs/benchmarks/git-comparison-2026-10-26-metadata-large-full.log",
+      "source_bytes": 1631,
+      "published_bytes": 1631,
+      "source_sha256": "9bc6bc6469fb22d8635ed41fc9e9d8470de029f4c973cc4e9af63650523aa7f5",
+      "published_sha256": "9bc6bc6469fb22d8635ed41fc9e9d8470de029f4c973cc4e9af63650523aa7f5",
+      "transformation": "verbatim"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/git-large-queries.json",
+      "published_path": "docs/benchmarks/git-comparison-2026-10-26-metadata-large-queries.json",
+      "source_bytes": 219671,
+      "published_bytes": 219671,
+      "source_sha256": "4625419d8a849fe58d2e1539aadb40a5fb5a5a45b3664b5fa2e59e82829b21e1",
+      "published_sha256": "4625419d8a849fe58d2e1539aadb40a5fb5a5a45b3664b5fa2e59e82829b21e1",
+      "transformation": "verbatim"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/git-large-queries.csv",
+      "published_path": "docs/benchmarks/git-comparison-2026-10-26-metadata-large-queries.csv",
+      "source_bytes": 47970,
+      "published_bytes": 47132,
+      "source_sha256": "3cd9d394bb71f3f484c9f1d566f9a996f146f852a9cefc856766d0cf942da1f9",
+      "published_sha256": "7f8c457a36ca81a85ae08bc369690f6535da4d704b67ba3242967f8df1f7c2e1",
+      "transformation": "CSV CRLF to LF"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/git-large-queries-summary.csv",
+      "published_path": "docs/benchmarks/git-comparison-2026-10-26-metadata-large-queries-summary.csv",
+      "source_bytes": 2139,
+      "published_bytes": 2111,
+      "source_sha256": "d2090e472339140525c8899c20a7823262fc5e2d9abced1ad41cdf7493239b97",
+      "published_sha256": "487bcef08d68ff941b1d32f39b30773c4063a6625ad20216e3ba975bfb09dbdd",
+      "transformation": "CSV CRLF to LF"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/git-large-queries.log",
+      "published_path": "docs/benchmarks/git-comparison-2026-10-26-metadata-large-queries.log",
+      "source_bytes": 1254,
+      "published_bytes": 1254,
+      "source_sha256": "db6d930ca8bbdc0fedaf7cd556e5e3941b74c2f93b38b522316df3867592347f",
+      "published_sha256": "db6d930ca8bbdc0fedaf7cd556e5e3941b74c2f93b38b522316df3867592347f",
+      "transformation": "verbatim"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/git-five-full-summary.json",
+      "published_path": "docs/benchmarks/git-comparison-2026-10-26-metadata-summary.json",
+      "source_bytes": 113377,
+      "published_bytes": 113377,
+      "source_sha256": "3b9fba407bf415f1cb457d9afa274728c0549f8c84bf7b25689cc4187b85418f",
+      "published_sha256": "3b9fba407bf415f1cb457d9afa274728c0549f8c84bf7b25689cc4187b85418f",
+      "transformation": "verbatim"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/scaling-paired.json",
+      "published_path": "docs/benchmarks/scaling-2026-10-26-metadata.json",
+      "source_bytes": 54615,
+      "published_bytes": 54615,
+      "source_sha256": "3b5bab4f5b0d8dcb8e8a957583715c05533122947d084afbee6d73fe6e709c1c",
+      "published_sha256": "3b5bab4f5b0d8dcb8e8a957583715c05533122947d084afbee6d73fe6e709c1c",
+      "transformation": "verbatim"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/scaling-candidate-build.json",
+      "published_path": "docs/benchmarks/scaling-2026-10-26-metadata-candidate-build.json",
+      "source_bytes": 2653,
+      "published_bytes": 2653,
+      "source_sha256": "80737f92dfdabafff6c6d827fdf81da2338abc4d27943dc5faa36ccbae38fb65",
+      "published_sha256": "80737f92dfdabafff6c6d827fdf81da2338abc4d27943dc5faa36ccbae38fb65",
+      "transformation": "verbatim"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/scaling-baseline-build.json",
+      "published_path": "docs/benchmarks/scaling-2026-10-26-metadata-baseline-build.json",
+      "source_bytes": 3348,
+      "published_bytes": 3348,
+      "source_sha256": "ca9b8d37e63b804cc9150a02510fb2c29bb3aa17cbfd9869a406dcdd5417c8bf",
+      "published_sha256": "ca9b8d37e63b804cc9150a02510fb2c29bb3aa17cbfd9869a406dcdd5417c8bf",
+      "transformation": "verbatim"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/static-candidate-build.json",
+      "published_path": "docs/benchmarks/metadata-2026-10-26-static-build.json",
+      "source_bytes": 2764,
+      "published_bytes": 2764,
+      "source_sha256": "4b2069c9f4e01597696ae866545e9caf0ae9ac14fa0904d3c487fe297cf0183a",
+      "published_sha256": "4b2069c9f4e01597696ae866545e9caf0ae9ac14fa0904d3c487fe297cf0183a",
+      "transformation": "verbatim"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/durable-baseline-recovery.json",
+      "published_path": "docs/benchmarks/durable-baseline-2026-10-26-recovery.json",
+      "source_bytes": 7240,
+      "published_bytes": 7240,
+      "source_sha256": "4ec574582b539fbd5d92d9679b0fbdd1721238f7eeab093b6e2b6b04a871c129",
+      "published_sha256": "4ec574582b539fbd5d92d9679b0fbdd1721238f7eeab093b6e2b6b04a871c129",
+      "transformation": "verbatim"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/git-five-full-summary.log",
+      "published_path": "docs/benchmarks/git-comparison-2026-10-26-metadata-summary.log",
+      "source_bytes": 57,
+      "published_bytes": 57,
+      "source_sha256": "13428253a40812ce935b6253eaeaf4525d31ea7d7f7128dbeb005f6bca8dc180",
+      "published_sha256": "13428253a40812ce935b6253eaeaf4525d31ea7d7f7128dbeb005f6bca8dc180",
+      "transformation": "verbatim"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/scaling-paired.log",
+      "published_path": "docs/benchmarks/scaling-2026-10-26-metadata.log",
+      "source_bytes": 255,
+      "published_bytes": 255,
+      "source_sha256": "6f97276ba43b9023f8402fdb9742ad8183dedcc7745763e4b83ee1bcc6206ba9",
+      "published_sha256": "6f97276ba43b9023f8402fdb9742ad8183dedcc7745763e4b83ee1bcc6206ba9",
+      "transformation": "verbatim"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/scaling-candidate-build.log",
+      "published_path": "docs/benchmarks/scaling-2026-10-26-metadata-candidate-build.log",
+      "source_bytes": 2121,
+      "published_bytes": 2121,
+      "source_sha256": "2ad9bb3378a71dd2793ff8febd34c87ab64c8ccac7766ec9dc18308d13a3ee5f",
+      "published_sha256": "2ad9bb3378a71dd2793ff8febd34c87ab64c8ccac7766ec9dc18308d13a3ee5f",
+      "transformation": "verbatim"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/scaling-baseline-build.log",
+      "published_path": "docs/benchmarks/scaling-2026-10-26-metadata-baseline-build.log",
+      "source_bytes": 2057,
+      "published_bytes": 2057,
+      "source_sha256": "d478745941824bfd855deacd46a3e8a624a4eab6cefcc9bc03643b439a4a1e68",
+      "published_sha256": "d478745941824bfd855deacd46a3e8a624a4eab6cefcc9bc03643b439a4a1e68",
+      "transformation": "verbatim"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/static-candidate-build.log",
+      "published_path": "docs/benchmarks/metadata-2026-10-26-static-build.log",
+      "source_bytes": 2006,
+      "published_bytes": 2006,
+      "source_sha256": "d5a47868286afd12a2f34d1b4788c4ba5a19974ad9eeb2cd98913c777c9cbb9a",
+      "published_sha256": "d5a47868286afd12a2f34d1b4788c4ba5a19974ad9eeb2cd98913c777c9cbb9a",
+      "transformation": "verbatim"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/durable-baseline-recovery.log",
+      "published_path": "docs/benchmarks/durable-baseline-2026-10-26-recovery.log",
+      "source_bytes": 1940,
+      "published_bytes": 1940,
+      "source_sha256": "effb865efb8d518fb61fab9e9ff9e974ba2352f6395a9094f342520801f87a5d",
+      "published_sha256": "effb865efb8d518fb61fab9e9ff9e974ba2352f6395a9094f342520801f87a5d",
+      "transformation": "verbatim"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/evaluation-plan.json",
+      "published_path": "docs/benchmarks/metadata-2026-10-26-evaluation-plan.json",
+      "source_bytes": 50452,
+      "published_bytes": 50452,
+      "source_sha256": "af0d08cef05e8fc766b1ab936b0fa13dd1a346b4f15f6dbb45f4ece73c71f6c9",
+      "published_sha256": "af0d08cef05e8fc766b1ab936b0fa13dd1a346b4f15f6dbb45f4ece73c71f6c9",
+      "transformation": "verbatim"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/evaluation-events.jsonl",
+      "published_path": "docs/benchmarks/metadata-2026-10-26-evaluation-events.jsonl",
+      "source_bytes": 279084,
+      "published_bytes": 279084,
+      "source_sha256": "04cb89758241e6662d91474cc9999857af5d5c75d541554c354dd036230d5907",
+      "published_sha256": "04cb89758241e6662d91474cc9999857af5d5c75d541554c354dd036230d5907",
+      "transformation": "verbatim"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/evaluation-result.json",
+      "published_path": "docs/benchmarks/metadata-2026-10-26-evaluation-result.json",
+      "source_bytes": 31466,
+      "published_bytes": 31466,
+      "source_sha256": "070bc731b20c6fde26eb55fb2c7acdf81bdd823d00d75ca457feb0c3dd7117d4",
+      "published_sha256": "070bc731b20c6fde26eb55fb2c7acdf81bdd823d00d75ca457feb0c3dd7117d4",
+      "transformation": "verbatim"
+    },
+    {
+      "source": "/tmp/scion-git-build/build-report.json",
+      "published_path": "docs/benchmarks/git-2.56-2026-10-26-build.json",
+      "source_bytes": 3031,
+      "published_bytes": 3031,
+      "source_sha256": "4d42ddaee5e2bc6916fc8a15195f48912235f1b6782589be707dba419c33b11d",
+      "published_sha256": "4d42ddaee5e2bc6916fc8a15195f48912235f1b6782589be707dba419c33b11d",
+      "transformation": "verbatim"
+    },
+    {
+      "source": "/tmp/scion-git-build/build.log",
+      "published_path": "docs/benchmarks/git-2.56-2026-10-26-build.log",
+      "source_bytes": 15439,
+      "published_bytes": 15439,
+      "source_sha256": "5ea1d2dc2739e6635f5f5cd3a73c1bb90351ad7a1715d7b1619e3d44c8deae34",
+      "published_sha256": "5ea1d2dc2739e6635f5f5cd3a73c1bb90351ad7a1715d7b1619e3d44c8deae34",
+      "transformation": "verbatim"
+    },
+    {
+      "source": "/tmp/scion-git-build/install.log",
+      "published_path": "docs/benchmarks/git-2.56-2026-10-26-install.log",
+      "source_bytes": 5102,
+      "published_bytes": 5102,
+      "source_sha256": "2c5fe16fa0e6be9b905dec5f282e50b34d85f314a2c568bb76173facbeb9b012",
+      "published_sha256": "2c5fe16fa0e6be9b905dec5f282e50b34d85f314a2c568bb76173facbeb9b012",
+      "transformation": "verbatim"
+    },
+    {
+      "source": "/tmp/scion-run-fixed-batch.py",
+      "published_path": "scripts/diagnostics/metadata_evaluation_2026_10_26.py",
+      "source_bytes": 24618,
+      "published_bytes": 24618,
+      "source_sha256": "c315d29a3e4086a9d358c400c937ed892cfde36ac2a81bbd6803dcd7016757e2",
+      "published_sha256": "c315d29a3e4086a9d358c400c937ed892cfde36ac2a81bbd6803dcd7016757e2",
+      "transformation": "verbatim"
+    },
+    {
+      "source": "/tmp/scion-build-candidates.py",
+      "published_path": "scripts/diagnostics/metadata_build_candidates_2026_10_26.py",
+      "source_bytes": 4287,
+      "published_bytes": 4287,
+      "source_sha256": "b685c2c4a32e7e77d044c94735594d080d8d80ee457899dc18b0ef4744b8e3a2",
+      "published_sha256": "b685c2c4a32e7e77d044c94735594d080d8d80ee457899dc18b0ef4744b8e3a2",
+      "transformation": "verbatim"
+    },
+    {
+      "source": "/tmp/scion-final-measurements/rebuild_baselines.py",
+      "published_path": "scripts/diagnostics/metadata_rebuild_baselines_2026_10_26.py",
+      "source_bytes": 4624,
+      "published_bytes": 4624,
+      "source_sha256": "2a774ad9890f88c41024df88f75229450dc298b3a3ef6048531c7e8a476369bc",
+      "published_sha256": "2a774ad9890f88c41024df88f75229450dc298b3a3ef6048531c7e8a476369bc",
+      "transformation": "verbatim"
+    }
+  ]
+}

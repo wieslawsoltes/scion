@@ -99,6 +99,33 @@ while object identities, size limits and decoding checks remain unchanged.
 Previously written level 3 metadata and new level 1 frames interoperate through
 the same version 1 envelope and standard Zstd decoder.
 
+Related metadata from 64 KiB through 256 KiB can reuse independently compressed
+8 KiB Zstd frames. The first eligible object uses ordinary whole-frame encoding.
+Only a whole-frame encoded/raw ratio between 1/8 and 7/8 retains an admission
+candidate; very repetitive and incompressible data keep the ordinary path. A
+later eligible object must match at least 75% of its bytes at fixed chunk
+boundaries before framing is used. Each cache hit requires exact raw-byte equality
+after its BLAKE3 lookup key matches. Unrelated metadata returns to whole-frame
+encoding. Small metadata, file blobs, and streamed objects preserve their existing
+paths and do not replace the admission candidate.
+
+This cache has a shared 1 MiB accounted retention budget per encoding thread for
+the previous raw candidate, cached raw/compressed buffer capacities, the actual
+index allocation, and conservative allocation/control allowances. A lazy index
+holds at most 64 frames; decode-only threads, blob writes, and small metadata do
+not allocate it. This budget is separate from the reusable codec contexts and
+transient input/output buffers. Cache pressure only causes recompression. The
+first admitted encode constructs frames and can cost more than whole-frame
+encoding; subsequent related edits reuse them. Extra frame boundaries can also
+increase encoded size and decoding cost.
+
+Framing uses ordinary concatenated Zstd frames inside the existing version 1
+envelope. Encoded bytes may depend on recent encodes on the same thread; raw
+content and IDs remain stable. All complete reads and duplicate publications
+still verify the full content hash. The cache never supplies object reads,
+membership, or durability acknowledgments, and publication transactions are
+unchanged.
+
 ## Metadata layout and explicit upgrades
 
 New local stores use an ordinary SQLite rowid table for `records`, with a narrow
@@ -145,8 +172,9 @@ index/overflow pages while finding a record, but an oversized value is not copie
 into the decoder. Legacy loose objects remain supported.
 
 The encoded-input bound uses Zstd's worst-case single-frame compression bound for
-the requested decoded limit. A legal representation with very large skippable
-frames can therefore return `None` despite having small decoded content. Normal
+the requested decoded limit. A legal representation with concatenated frames or
+very large skippable frames can therefore return `None` despite fitting the decoded
+limit. Normal
 `get_object` behavior and all existing envelope/hash checks remain unchanged.
 
 ## Local I/O options

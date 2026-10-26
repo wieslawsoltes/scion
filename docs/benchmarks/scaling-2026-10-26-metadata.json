@@ -1,0 +1,1597 @@
+{
+  "schema": 1,
+  "status": "complete",
+  "backend": "MemoryStore",
+  "profile": "original full workload; no builds or --quick; fresh process per trial",
+  "aggregation": "baseline median of per-trial p50 / candidate median of per-trial p50; individual operation samples are unavailable and are not pooled",
+  "initial_commit_note": "Each initial_commit row is one observation per trial, not a within-trial percentile distribution.",
+  "output_encoding": "UTF-8; invalid output bytes are preserved with Python surrogateescape",
+  "started_utc": "2026-10-26T09:17:37.166453+00:00",
+  "requested_trials": 5,
+  "host": {
+    "platform": "Linux-6.18.55-x86_64-with-glibc2.39",
+    "machine": "x86_64",
+    "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+    "cpu_count": 9,
+    "cpu_affinity": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ]
+  },
+  "observed_environment": {
+    "PATH": "/tmp/scion-git-current/bin:/tmp/ferroui-macos-cargo/bin:/root/.codex/tmp/arg0/codex-arg0mZ91Xv:/opt/codex/codex-path:/opt/codex/runtimes/codex-primary-runtime/dependencies/bin/override:/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin:/opt/codex/runtimes/codex-primary-runtime/dependencies/node/bin:/opt/codex/runtimes/codex-primary-runtime/dependencies/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/codex/runtimes/codex-primary-runtime/dependencies/bin/fallback",
+    "RUSTUP_HOME": "/tmp/ferroui-macos-rustup",
+    "CARGO_HOME": "/tmp/ferroui-macos-cargo",
+    "CARGO_TARGET_DIR": "/tmp/scion-metadata-bench-target",
+    "CARGO_INCREMENTAL": "0",
+    "RUSTFLAGS": null,
+    "CARGO_ENCODED_RUSTFLAGS": null,
+    "CARGO_BUILD_TARGET": null,
+    "CARGO_BUILD_RUSTFLAGS": null,
+    "RUSTC": null,
+    "RUSTC_WRAPPER": null,
+    "RUSTC_WORKSPACE_WRAPPER": null,
+    "CC": null,
+    "CXX": null,
+    "CFLAGS": null,
+    "CXXFLAGS": null,
+    "LDFLAGS": null
+  },
+  "variants": {
+    "baseline": {
+      "source": {
+        "root": "/tmp/scion-scaling-baseline",
+        "commit": "6a11ff76052d10951e9f7d029f0313de7c78101d",
+        "tree": "d9aaaf83fab8d199ab45ef0e69e8632ec551c61f",
+        "dirty": false,
+        "benchmark_path": "crates/scion-engine/benches/scaling.rs",
+        "benchmark_source_sha256": "a3aabcb63f820fe2ac566c7f9b36856ec45612cda2c3604e22986ccc3ec93a00",
+        "lockfile_sha256": "efdd369408b1ca365db9d9850f91afe09d23e0f4a2cb77c68adb702ba279544c"
+      },
+      "driver": "/tmp/scion-scaling-baseline-target/release/deps/scaling-6a816402baef2a08",
+      "driver_sha256": "5d57e2666f61a1ec99863317055ba02b4e5dd8abf12d301ae7ab5eb0a888b831",
+      "build": {
+        "verified_report": "/tmp/scion-final-measurements/scaling-baseline-build.json",
+        "sha256": "ca9b8d37e63b804cc9150a02510fb2c29bb3aa17cbfd9869a406dcdd5417c8bf",
+        "data": {
+          "recorded_at": "2026-10-26T09:13:55.486348+00:00",
+          "source_directory": "/tmp/scion-scaling-baseline",
+          "source_commit": "6a11ff76052d10951e9f7d029f0313de7c78101d",
+          "source_tree": "d9aaaf83fab8d199ab45ef0e69e8632ec551c61f",
+          "source_archive_sha256": "dff475280ee44547842c59a5b652945ac39ba1f22d2ca622ebc9fe3425973c90",
+          "source_status_before": "",
+          "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+          "cargo": "cargo 1.99.1 (5f94df478 2026-08-27)\nrelease: 1.99.1\ncommit-hash: 5f94df4789f005f9a352888e8355ffc645b7ed0e\ncommit-date: 2026-08-27\nhost: x86_64-unknown-linux-gnu\nlibgit2: 1.9.6 (sys:0.21.0 vendored)\nlibcurl: 8.21.0-DEV (sys:0.4.90+curl-8.21.0 vendored ssl:OpenSSL/3.6.3)\nssl: OpenSSL 3.6.3 9 Jun 2026\nos: Ubuntu 24.4.0 (noble) [64-bit]",
+          "environment": {
+            "PATH": "/tmp/ferroui-macos-cargo/bin:/root/.codex/tmp/arg0/codex-arg0mZ91Xv:/opt/codex/codex-path:/opt/codex/runtimes/codex-primary-runtime/dependencies/bin/override:/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin:/opt/codex/runtimes/codex-primary-runtime/dependencies/node/bin:/opt/codex/runtimes/codex-primary-runtime/dependencies/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/codex/runtimes/codex-primary-runtime/dependencies/bin/fallback",
+            "RUSTUP_HOME": "/tmp/ferroui-macos-rustup",
+            "CARGO_HOME": "/tmp/ferroui-macos-cargo",
+            "CARGO_TARGET_DIR": "/tmp/scion-scaling-baseline-target",
+            "CARGO_INCREMENTAL": "0",
+            "RUSTFLAGS": null,
+            "CARGO_ENCODED_RUSTFLAGS": null,
+            "CARGO_BUILD_TARGET": null,
+            "CARGO_BUILD_RUSTFLAGS": null,
+            "RUSTC": null,
+            "RUSTC_WRAPPER": null,
+            "RUSTC_WORKSPACE_WRAPPER": null,
+            "CC": null,
+            "CXX": null,
+            "CFLAGS": null,
+            "CXXFLAGS": null,
+            "LDFLAGS": null,
+            "CARGO_BUILD_JOBS": null
+          },
+          "command": [
+            "cargo",
+            "bench",
+            "--locked",
+            "--offline",
+            "-p",
+            "scion-engine",
+            "--bench",
+            "scaling",
+            "--no-run"
+          ],
+          "build_log": "/tmp/scion-final-measurements/scaling-baseline-build.log",
+          "timings_performed": false,
+          "expected_executable_sha256": "5d57e2666f61a1ec99863317055ba02b4e5dd8abf12d301ae7ab5eb0a888b831",
+          "host_compiler": "cc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0\nCopyright (C) 2023 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.",
+          "host_linker": "GNU ld (GNU Binutils for Ubuntu) 2.42\nCopyright (C) 2024 Free Software Foundation, Inc.\nThis program is free software; you may redistribute it under the terms of\nthe GNU General Public License version 3 or (at your option) a later version.\nThis program has absolutely no warranty.",
+          "benchmark_source_sha256": "a3aabcb63f820fe2ac566c7f9b36856ec45612cda2c3604e22986ccc3ec93a00",
+          "build_exit_code": 0,
+          "build_elapsed_seconds": 78.7008505699996,
+          "source_status_after": "",
+          "executable": "/tmp/scion-scaling-baseline-target/release/deps/scaling-6a816402baef2a08",
+          "executable_sha256": "5d57e2666f61a1ec99863317055ba02b4e5dd8abf12d301ae7ab5eb0a888b831",
+          "executable_bytes": 1981208,
+          "matches_historical_executable": true
+        },
+        "note": "Recorded build provenance matched to source and executable hashes; not a signed attestation."
+      },
+      "observed_toolchain": {
+        "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+        "cargo": "cargo 1.99.1 (5f94df478 2026-08-27)\nrelease: 1.99.1\ncommit-hash: 5f94df4789f005f9a352888e8355ffc645b7ed0e\ncommit-date: 2026-08-27\nhost: x86_64-unknown-linux-gnu\nlibgit2: 1.9.6 (sys:0.21.0 vendored)\nlibcurl: 8.21.0-DEV (sys:0.4.90+curl-8.21.0 vendored ssl:OpenSSL/3.6.3)\nssl: OpenSSL 3.6.3 9 Jun 2026\nos: Ubuntu 24.4.0 (noble) [64-bit]",
+        "rustc_path": "/tmp/ferroui-macos-cargo/bin/rustc",
+        "cargo_path": "/tmp/ferroui-macos-cargo/bin/cargo",
+        "note": "Observed at comparison time; does not identify how the prebuilt driver was compiled."
+      }
+    },
+    "candidate": {
+      "source": {
+        "root": "/tmp/scion-metadata-compression-work",
+        "commit": "bd393c7cd064d03d231d6b0af8a05afb181f13c0",
+        "tree": "db7d7d7bcd063d6c6a46babd5595e5129caf7fcf",
+        "dirty": false,
+        "benchmark_path": "crates/scion-engine/benches/scaling.rs",
+        "benchmark_source_sha256": "a3aabcb63f820fe2ac566c7f9b36856ec45612cda2c3604e22986ccc3ec93a00",
+        "lockfile_sha256": "23eccea2e366032a4c0824af60c78d36a9d96e845387b4587b17b8d54132c593"
+      },
+      "driver": "/tmp/scion-metadata-bench-target/release/deps/scaling-99ddef3b73527be6",
+      "driver_sha256": "be7174c006ce65940637e070152329176868282c6dc8db79810bc40cc175dd2b",
+      "build": {
+        "verified_report": "/tmp/scion-final-measurements/scaling-candidate-build.json",
+        "sha256": "80737f92dfdabafff6c6d827fdf81da2338abc4d27943dc5faa36ccbae38fb65",
+        "data": {
+          "source_directory": "/tmp/scion-metadata-compression-work",
+          "source_commit": "bd393c7cd064d03d231d6b0af8a05afb181f13c0",
+          "source_tree": "db7d7d7bcd063d6c6a46babd5595e5129caf7fcf",
+          "source_archive_sha256": "80f7e0084f283015aebba3d58b7e9219c217519aad642264fe55c1e5adcf3f44",
+          "source_status_before": "",
+          "benchmark_source_sha256": "a3aabcb63f820fe2ac566c7f9b36856ec45612cda2c3604e22986ccc3ec93a00",
+          "driver_source_sha256": "a16a9d6ea7f25914bc1bc0c245d39212f47d759c5a28d5282b264d4b91776a7a",
+          "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+          "cargo": "cargo 1.99.1 (5f94df478 2026-08-27)\nrelease: 1.99.1\ncommit-hash: 5f94df4789f005f9a352888e8355ffc645b7ed0e\ncommit-date: 2026-08-27\nhost: x86_64-unknown-linux-gnu\nlibgit2: 1.9.6 (sys:0.21.0 vendored)\nlibcurl: 8.21.0-DEV (sys:0.4.90+curl-8.21.0 vendored ssl:OpenSSL/3.6.3)\nssl: OpenSSL 3.6.3 9 Jun 2026\nos: Ubuntu 24.4.0 (noble) [64-bit]",
+          "environment": {
+            "PATH": "/tmp/ferroui-macos-cargo/bin:/root/.codex/tmp/arg0/codex-arg0mZ91Xv:/opt/codex/codex-path:/opt/codex/runtimes/codex-primary-runtime/dependencies/bin/override:/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin:/opt/codex/runtimes/codex-primary-runtime/dependencies/node/bin:/opt/codex/runtimes/codex-primary-runtime/dependencies/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/codex/runtimes/codex-primary-runtime/dependencies/bin/fallback",
+            "RUSTUP_HOME": "/tmp/ferroui-macos-rustup",
+            "CARGO_HOME": "/tmp/ferroui-macos-cargo",
+            "CARGO_TARGET_DIR": "/tmp/scion-metadata-bench-target",
+            "CARGO_INCREMENTAL": "0",
+            "RUSTFLAGS": null,
+            "CARGO_ENCODED_RUSTFLAGS": null,
+            "CARGO_BUILD_TARGET": null,
+            "CARGO_BUILD_RUSTFLAGS": null,
+            "RUSTC": null,
+            "RUSTC_WRAPPER": null,
+            "RUSTC_WORKSPACE_WRAPPER": null,
+            "CC": null,
+            "CXX": null,
+            "CFLAGS": null,
+            "CXXFLAGS": null,
+            "LDFLAGS": null
+          },
+          "command": [
+            "cargo",
+            "bench",
+            "--locked",
+            "--offline",
+            "-p",
+            "scion-engine",
+            "--bench",
+            "scaling",
+            "--no-run"
+          ],
+          "build_log": "/tmp/scion-final-measurements/scaling-candidate-build.log",
+          "timings_performed": false,
+          "build_exit_code": 0,
+          "build_elapsed_seconds": 76.56319433699991,
+          "source_status_after": "",
+          "executable": "/tmp/scion-metadata-bench-target/release/deps/scaling-99ddef3b73527be6",
+          "executable_sha256": "be7174c006ce65940637e070152329176868282c6dc8db79810bc40cc175dd2b",
+          "executable_bytes": 2046992
+        },
+        "note": "Recorded build provenance matched to source and executable hashes; not a signed attestation."
+      },
+      "observed_toolchain": {
+        "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+        "cargo": "cargo 1.99.1 (5f94df478 2026-08-27)\nrelease: 1.99.1\ncommit-hash: 5f94df4789f005f9a352888e8355ffc645b7ed0e\ncommit-date: 2026-08-27\nhost: x86_64-unknown-linux-gnu\nlibgit2: 1.9.6 (sys:0.21.0 vendored)\nlibcurl: 8.21.0-DEV (sys:0.4.90+curl-8.21.0 vendored ssl:OpenSSL/3.6.3)\nssl: OpenSSL 3.6.3 9 Jun 2026\nos: Ubuntu 24.4.0 (noble) [64-bit]",
+        "rustc_path": "/tmp/ferroui-macos-cargo/bin/rustc",
+        "cargo_path": "/tmp/ferroui-macos-cargo/bin/cargo",
+        "note": "Observed at comparison time; does not identify how the prebuilt driver was compiled."
+      }
+    }
+  },
+  "trials": [
+    {
+      "trial": 1,
+      "execution_order": [
+        "baseline",
+        "candidate"
+      ],
+      "runs": {
+        "baseline": {
+          "command": [
+            "/tmp/scion-scaling-baseline-target/release/deps/scaling-6a816402baef2a08"
+          ],
+          "cwd": "/tmp/scion-scaling-baseline",
+          "returncode": 0,
+          "stdout": "# Scion engine benchmark; MemoryStore; release optimizations; microseconds\noperation,scale,samples,p50_us,p95_us\ninitial_commit,1000,1,16414.597,16414.597\nsingle_file_commit,1000,50,163.766,240.652\nsingle_file_diff,1000,50,25.078,62.784\ninitial_commit,10000,1,107409.215,107409.215\nsingle_file_commit,10000,50,208.504,295.014\nsingle_file_diff,10000,50,24.447,70.205\ninitial_commit,100000,1,1124613.420,1124613.420\nsingle_file_commit,100000,50,817.551,1161.309\nsingle_file_diff,100000,50,38.848,51.367\nancestry_positive,10000,100,23.014,45.138\nancestry_negative,10000,100,49.254,68.113\n",
+          "stderr": "",
+          "rows": [
+            {
+              "operation": "initial_commit",
+              "scale": 1000,
+              "samples": 1,
+              "p50_us": 16414.597,
+              "p95_us": 16414.597
+            },
+            {
+              "operation": "single_file_commit",
+              "scale": 1000,
+              "samples": 50,
+              "p50_us": 163.766,
+              "p95_us": 240.652
+            },
+            {
+              "operation": "single_file_diff",
+              "scale": 1000,
+              "samples": 50,
+              "p50_us": 25.078,
+              "p95_us": 62.784
+            },
+            {
+              "operation": "initial_commit",
+              "scale": 10000,
+              "samples": 1,
+              "p50_us": 107409.215,
+              "p95_us": 107409.215
+            },
+            {
+              "operation": "single_file_commit",
+              "scale": 10000,
+              "samples": 50,
+              "p50_us": 208.504,
+              "p95_us": 295.014
+            },
+            {
+              "operation": "single_file_diff",
+              "scale": 10000,
+              "samples": 50,
+              "p50_us": 24.447,
+              "p95_us": 70.205
+            },
+            {
+              "operation": "initial_commit",
+              "scale": 100000,
+              "samples": 1,
+              "p50_us": 1124613.42,
+              "p95_us": 1124613.42
+            },
+            {
+              "operation": "single_file_commit",
+              "scale": 100000,
+              "samples": 50,
+              "p50_us": 817.551,
+              "p95_us": 1161.309
+            },
+            {
+              "operation": "single_file_diff",
+              "scale": 100000,
+              "samples": 50,
+              "p50_us": 38.848,
+              "p95_us": 51.367
+            },
+            {
+              "operation": "ancestry_positive",
+              "scale": 10000,
+              "samples": 100,
+              "p50_us": 23.014,
+              "p95_us": 45.138
+            },
+            {
+              "operation": "ancestry_negative",
+              "scale": 10000,
+              "samples": 100,
+              "p50_us": 49.254,
+              "p95_us": 68.113
+            }
+          ]
+        },
+        "candidate": {
+          "command": [
+            "/tmp/scion-metadata-bench-target/release/deps/scaling-99ddef3b73527be6"
+          ],
+          "cwd": "/tmp/scion-metadata-compression-work",
+          "returncode": 0,
+          "stdout": "# Scion engine benchmark; MemoryStore; release optimizations; microseconds\noperation,scale,samples,p50_us,p95_us\ninitial_commit,1000,1,2820.106,2820.106\nsingle_file_commit,1000,50,58.157,134.843\nsingle_file_diff,1000,50,6.140,11.828\ninitial_commit,10000,1,18409.704,18409.704\nsingle_file_commit,10000,50,93.741,211.778\nsingle_file_diff,10000,50,6.570,14.141\ninitial_commit,100000,1,194019.279,194019.279\nsingle_file_commit,100000,50,209.405,266.461\nsingle_file_diff,100000,50,7.852,12.199\nancestry_positive,10000,100,0.992,1.072\nancestry_negative,10000,100,1.583,1.673\n",
+          "stderr": "",
+          "rows": [
+            {
+              "operation": "initial_commit",
+              "scale": 1000,
+              "samples": 1,
+              "p50_us": 2820.106,
+              "p95_us": 2820.106
+            },
+            {
+              "operation": "single_file_commit",
+              "scale": 1000,
+              "samples": 50,
+              "p50_us": 58.157,
+              "p95_us": 134.843
+            },
+            {
+              "operation": "single_file_diff",
+              "scale": 1000,
+              "samples": 50,
+              "p50_us": 6.14,
+              "p95_us": 11.828
+            },
+            {
+              "operation": "initial_commit",
+              "scale": 10000,
+              "samples": 1,
+              "p50_us": 18409.704,
+              "p95_us": 18409.704
+            },
+            {
+              "operation": "single_file_commit",
+              "scale": 10000,
+              "samples": 50,
+              "p50_us": 93.741,
+              "p95_us": 211.778
+            },
+            {
+              "operation": "single_file_diff",
+              "scale": 10000,
+              "samples": 50,
+              "p50_us": 6.57,
+              "p95_us": 14.141
+            },
+            {
+              "operation": "initial_commit",
+              "scale": 100000,
+              "samples": 1,
+              "p50_us": 194019.279,
+              "p95_us": 194019.279
+            },
+            {
+              "operation": "single_file_commit",
+              "scale": 100000,
+              "samples": 50,
+              "p50_us": 209.405,
+              "p95_us": 266.461
+            },
+            {
+              "operation": "single_file_diff",
+              "scale": 100000,
+              "samples": 50,
+              "p50_us": 7.852,
+              "p95_us": 12.199
+            },
+            {
+              "operation": "ancestry_positive",
+              "scale": 10000,
+              "samples": 100,
+              "p50_us": 0.992,
+              "p95_us": 1.072
+            },
+            {
+              "operation": "ancestry_negative",
+              "scale": 10000,
+              "samples": 100,
+              "p50_us": 1.583,
+              "p95_us": 1.673
+            }
+          ]
+        }
+      }
+    },
+    {
+      "trial": 2,
+      "execution_order": [
+        "candidate",
+        "baseline"
+      ],
+      "runs": {
+        "candidate": {
+          "command": [
+            "/tmp/scion-metadata-bench-target/release/deps/scaling-99ddef3b73527be6"
+          ],
+          "cwd": "/tmp/scion-metadata-compression-work",
+          "returncode": 0,
+          "stdout": "# Scion engine benchmark; MemoryStore; release optimizations; microseconds\noperation,scale,samples,p50_us,p95_us\ninitial_commit,1000,1,2048.674,2048.674\nsingle_file_commit,1000,50,58.018,124.307\nsingle_file_diff,1000,50,5.989,11.097\ninitial_commit,10000,1,19460.306,19460.306\nsingle_file_commit,10000,50,95.073,186.070\nsingle_file_diff,10000,50,6.490,14.472\ninitial_commit,100000,1,217052.744,217052.744\nsingle_file_commit,100000,50,214.843,435.726\nsingle_file_diff,100000,50,8.423,16.164\nancestry_positive,10000,100,1.031,1.122\nancestry_negative,10000,100,1.632,1.702\n",
+          "stderr": "",
+          "rows": [
+            {
+              "operation": "initial_commit",
+              "scale": 1000,
+              "samples": 1,
+              "p50_us": 2048.674,
+              "p95_us": 2048.674
+            },
+            {
+              "operation": "single_file_commit",
+              "scale": 1000,
+              "samples": 50,
+              "p50_us": 58.018,
+              "p95_us": 124.307
+            },
+            {
+              "operation": "single_file_diff",
+              "scale": 1000,
+              "samples": 50,
+              "p50_us": 5.989,
+              "p95_us": 11.097
+            },
+            {
+              "operation": "initial_commit",
+              "scale": 10000,
+              "samples": 1,
+              "p50_us": 19460.306,
+              "p95_us": 19460.306
+            },
+            {
+              "operation": "single_file_commit",
+              "scale": 10000,
+              "samples": 50,
+              "p50_us": 95.073,
+              "p95_us": 186.07
+            },
+            {
+              "operation": "single_file_diff",
+              "scale": 10000,
+              "samples": 50,
+              "p50_us": 6.49,
+              "p95_us": 14.472
+            },
+            {
+              "operation": "initial_commit",
+              "scale": 100000,
+              "samples": 1,
+              "p50_us": 217052.744,
+              "p95_us": 217052.744
+            },
+            {
+              "operation": "single_file_commit",
+              "scale": 100000,
+              "samples": 50,
+              "p50_us": 214.843,
+              "p95_us": 435.726
+            },
+            {
+              "operation": "single_file_diff",
+              "scale": 100000,
+              "samples": 50,
+              "p50_us": 8.423,
+              "p95_us": 16.164
+            },
+            {
+              "operation": "ancestry_positive",
+              "scale": 10000,
+              "samples": 100,
+              "p50_us": 1.031,
+              "p95_us": 1.122
+            },
+            {
+              "operation": "ancestry_negative",
+              "scale": 10000,
+              "samples": 100,
+              "p50_us": 1.632,
+              "p95_us": 1.702
+            }
+          ]
+        },
+        "baseline": {
+          "command": [
+            "/tmp/scion-scaling-baseline-target/release/deps/scaling-6a816402baef2a08"
+          ],
+          "cwd": "/tmp/scion-scaling-baseline",
+          "returncode": 0,
+          "stdout": "# Scion engine benchmark; MemoryStore; release optimizations; microseconds\noperation,scale,samples,p50_us,p95_us\ninitial_commit,1000,1,17605.388,17605.388\nsingle_file_commit,1000,50,166.020,240.231\nsingle_file_diff,1000,50,25.308,62.414\ninitial_commit,10000,1,113953.984,113953.984\nsingle_file_commit,10000,50,214.734,300.464\nsingle_file_diff,10000,50,25.348,31.808\ninitial_commit,100000,1,1121535.361,1121535.361\nsingle_file_commit,100000,50,865.876,1157.235\nsingle_file_diff,100000,50,39.479,80.591\nancestry_positive,10000,100,22.905,41.833\nancestry_negative,10000,100,49.405,79.861\n",
+          "stderr": "",
+          "rows": [
+            {
+              "operation": "initial_commit",
+              "scale": 1000,
+              "samples": 1,
+              "p50_us": 17605.388,
+              "p95_us": 17605.388
+            },
+            {
+              "operation": "single_file_commit",
+              "scale": 1000,
+              "samples": 50,
+              "p50_us": 166.02,
+              "p95_us": 240.231
+            },
+            {
+              "operation": "single_file_diff",
+              "scale": 1000,
+              "samples": 50,
+              "p50_us": 25.308,
+              "p95_us": 62.414
+            },
+            {
+              "operation": "initial_commit",
+              "scale": 10000,
+              "samples": 1,
+              "p50_us": 113953.984,
+              "p95_us": 113953.984
+            },
+            {
+              "operation": "single_file_commit",
+              "scale": 10000,
+              "samples": 50,
+              "p50_us": 214.734,
+              "p95_us": 300.464
+            },
+            {
+              "operation": "single_file_diff",
+              "scale": 10000,
+              "samples": 50,
+              "p50_us": 25.348,
+              "p95_us": 31.808
+            },
+            {
+              "operation": "initial_commit",
+              "scale": 100000,
+              "samples": 1,
+              "p50_us": 1121535.361,
+              "p95_us": 1121535.361
+            },
+            {
+              "operation": "single_file_commit",
+              "scale": 100000,
+              "samples": 50,
+              "p50_us": 865.876,
+              "p95_us": 1157.235
+            },
+            {
+              "operation": "single_file_diff",
+              "scale": 100000,
+              "samples": 50,
+              "p50_us": 39.479,
+              "p95_us": 80.591
+            },
+            {
+              "operation": "ancestry_positive",
+              "scale": 10000,
+              "samples": 100,
+              "p50_us": 22.905,
+              "p95_us": 41.833
+            },
+            {
+              "operation": "ancestry_negative",
+              "scale": 10000,
+              "samples": 100,
+              "p50_us": 49.405,
+              "p95_us": 79.861
+            }
+          ]
+        }
+      }
+    },
+    {
+      "trial": 3,
+      "execution_order": [
+        "baseline",
+        "candidate"
+      ],
+      "runs": {
+        "baseline": {
+          "command": [
+            "/tmp/scion-scaling-baseline-target/release/deps/scaling-6a816402baef2a08"
+          ],
+          "cwd": "/tmp/scion-scaling-baseline",
+          "returncode": 0,
+          "stdout": "# Scion engine benchmark; MemoryStore; release optimizations; microseconds\noperation,scale,samples,p50_us,p95_us\ninitial_commit,1000,1,13354.488,13354.488\nsingle_file_commit,1000,50,161.563,211.409\nsingle_file_diff,1000,50,24.798,31.237\ninitial_commit,10000,1,106830.773,106830.773\nsingle_file_commit,10000,50,207.903,280.643\nsingle_file_diff,10000,50,24.998,82.285\ninitial_commit,100000,1,1065034.766,1065034.766\nsingle_file_commit,100000,50,796.920,960.316\nsingle_file_diff,100000,50,38.017,108.113\nancestry_positive,10000,100,24.096,48.073\nancestry_negative,10000,100,55.003,70.546\n",
+          "stderr": "",
+          "rows": [
+            {
+              "operation": "initial_commit",
+              "scale": 1000,
+              "samples": 1,
+              "p50_us": 13354.488,
+              "p95_us": 13354.488
+            },
+            {
+              "operation": "single_file_commit",
+              "scale": 1000,
+              "samples": 50,
+              "p50_us": 161.563,
+              "p95_us": 211.409
+            },
+            {
+              "operation": "single_file_diff",
+              "scale": 1000,
+              "samples": 50,
+              "p50_us": 24.798,
+              "p95_us": 31.237
+            },
+            {
+              "operation": "initial_commit",
+              "scale": 10000,
+              "samples": 1,
+              "p50_us": 106830.773,
+              "p95_us": 106830.773
+            },
+            {
+              "operation": "single_file_commit",
+              "scale": 10000,
+              "samples": 50,
+              "p50_us": 207.903,
+              "p95_us": 280.643
+            },
+            {
+              "operation": "single_file_diff",
+              "scale": 10000,
+              "samples": 50,
+              "p50_us": 24.998,
+              "p95_us": 82.285
+            },
+            {
+              "operation": "initial_commit",
+              "scale": 100000,
+              "samples": 1,
+              "p50_us": 1065034.766,
+              "p95_us": 1065034.766
+            },
+            {
+              "operation": "single_file_commit",
+              "scale": 100000,
+              "samples": 50,
+              "p50_us": 796.92,
+              "p95_us": 960.316
+            },
+            {
+              "operation": "single_file_diff",
+              "scale": 100000,
+              "samples": 50,
+              "p50_us": 38.017,
+              "p95_us": 108.113
+            },
+            {
+              "operation": "ancestry_positive",
+              "scale": 10000,
+              "samples": 100,
+              "p50_us": 24.096,
+              "p95_us": 48.073
+            },
+            {
+              "operation": "ancestry_negative",
+              "scale": 10000,
+              "samples": 100,
+              "p50_us": 55.003,
+              "p95_us": 70.546
+            }
+          ]
+        },
+        "candidate": {
+          "command": [
+            "/tmp/scion-metadata-bench-target/release/deps/scaling-99ddef3b73527be6"
+          ],
+          "cwd": "/tmp/scion-metadata-compression-work",
+          "returncode": 0,
+          "stdout": "# Scion engine benchmark; MemoryStore; release optimizations; microseconds\noperation,scale,samples,p50_us,p95_us\ninitial_commit,1000,1,2201.174,2201.174\nsingle_file_commit,1000,50,58.749,157.758\nsingle_file_diff,1000,50,6.119,15.904\ninitial_commit,10000,1,19950.198,19950.198\nsingle_file_commit,10000,50,92.960,186.270\nsingle_file_diff,10000,50,6.580,13.992\ninitial_commit,100000,1,218125.300,218125.300\nsingle_file_commit,100000,50,210.296,277.688\nsingle_file_diff,100000,50,7.822,12.769\nancestry_positive,10000,100,1.052,1.172\nancestry_negative,10000,100,1.593,3.025\n",
+          "stderr": "",
+          "rows": [
+            {
+              "operation": "initial_commit",
+              "scale": 1000,
+              "samples": 1,
+              "p50_us": 2201.174,
+              "p95_us": 2201.174
+            },
+            {
+              "operation": "single_file_commit",
+              "scale": 1000,
+              "samples": 50,
+              "p50_us": 58.749,
+              "p95_us": 157.758
+            },
+            {
+              "operation": "single_file_diff",
+              "scale": 1000,
+              "samples": 50,
+              "p50_us": 6.119,
+              "p95_us": 15.904
+            },
+            {
+              "operation": "initial_commit",
+              "scale": 10000,
+              "samples": 1,
+              "p50_us": 19950.198,
+              "p95_us": 19950.198
+            },
+            {
+              "operation": "single_file_commit",
+              "scale": 10000,
+              "samples": 50,
+              "p50_us": 92.96,
+              "p95_us": 186.27
+            },
+            {
+              "operation": "single_file_diff",
+              "scale": 10000,
+              "samples": 50,
+              "p50_us": 6.58,
+              "p95_us": 13.992
+            },
+            {
+              "operation": "initial_commit",
+              "scale": 100000,
+              "samples": 1,
+              "p50_us": 218125.3,
+              "p95_us": 218125.3
+            },
+            {
+              "operation": "single_file_commit",
+              "scale": 100000,
+              "samples": 50,
+              "p50_us": 210.296,
+              "p95_us": 277.688
+            },
+            {
+              "operation": "single_file_diff",
+              "scale": 100000,
+              "samples": 50,
+              "p50_us": 7.822,
+              "p95_us": 12.769
+            },
+            {
+              "operation": "ancestry_positive",
+              "scale": 10000,
+              "samples": 100,
+              "p50_us": 1.052,
+              "p95_us": 1.172
+            },
+            {
+              "operation": "ancestry_negative",
+              "scale": 10000,
+              "samples": 100,
+              "p50_us": 1.593,
+              "p95_us": 3.025
+            }
+          ]
+        }
+      }
+    },
+    {
+      "trial": 4,
+      "execution_order": [
+        "candidate",
+        "baseline"
+      ],
+      "runs": {
+        "candidate": {
+          "command": [
+            "/tmp/scion-metadata-bench-target/release/deps/scaling-99ddef3b73527be6"
+          ],
+          "cwd": "/tmp/scion-metadata-compression-work",
+          "returncode": 0,
+          "stdout": "# Scion engine benchmark; MemoryStore; release optimizations; microseconds\noperation,scale,samples,p50_us,p95_us\ninitial_commit,1000,1,2069.666,2069.666\nsingle_file_commit,1000,50,58.358,93.991\nsingle_file_diff,1000,50,6.010,11.147\ninitial_commit,10000,1,18960.268,18960.268\nsingle_file_commit,10000,50,93.150,164.438\nsingle_file_diff,10000,50,6.420,11.036\ninitial_commit,100000,1,215972.698,215972.698\nsingle_file_commit,100000,50,231.138,682.828\nsingle_file_diff,100000,50,9.314,19.078\nancestry_positive,10000,100,0.962,1.031\nancestry_negative,10000,100,1.562,1.632\n",
+          "stderr": "",
+          "rows": [
+            {
+              "operation": "initial_commit",
+              "scale": 1000,
+              "samples": 1,
+              "p50_us": 2069.666,
+              "p95_us": 2069.666
+            },
+            {
+              "operation": "single_file_commit",
+              "scale": 1000,
+              "samples": 50,
+              "p50_us": 58.358,
+              "p95_us": 93.991
+            },
+            {
+              "operation": "single_file_diff",
+              "scale": 1000,
+              "samples": 50,
+              "p50_us": 6.01,
+              "p95_us": 11.147
+            },
+            {
+              "operation": "initial_commit",
+              "scale": 10000,
+              "samples": 1,
+              "p50_us": 18960.268,
+              "p95_us": 18960.268
+            },
+            {
+              "operation": "single_file_commit",
+              "scale": 10000,
+              "samples": 50,
+              "p50_us": 93.15,
+              "p95_us": 164.438
+            },
+            {
+              "operation": "single_file_diff",
+              "scale": 10000,
+              "samples": 50,
+              "p50_us": 6.42,
+              "p95_us": 11.036
+            },
+            {
+              "operation": "initial_commit",
+              "scale": 100000,
+              "samples": 1,
+              "p50_us": 215972.698,
+              "p95_us": 215972.698
+            },
+            {
+              "operation": "single_file_commit",
+              "scale": 100000,
+              "samples": 50,
+              "p50_us": 231.138,
+              "p95_us": 682.828
+            },
+            {
+              "operation": "single_file_diff",
+              "scale": 100000,
+              "samples": 50,
+              "p50_us": 9.314,
+              "p95_us": 19.078
+            },
+            {
+              "operation": "ancestry_positive",
+              "scale": 10000,
+              "samples": 100,
+              "p50_us": 0.962,
+              "p95_us": 1.031
+            },
+            {
+              "operation": "ancestry_negative",
+              "scale": 10000,
+              "samples": 100,
+              "p50_us": 1.562,
+              "p95_us": 1.632
+            }
+          ]
+        },
+        "baseline": {
+          "command": [
+            "/tmp/scion-scaling-baseline-target/release/deps/scaling-6a816402baef2a08"
+          ],
+          "cwd": "/tmp/scion-scaling-baseline",
+          "returncode": 0,
+          "stdout": "# Scion engine benchmark; MemoryStore; release optimizations; microseconds\noperation,scale,samples,p50_us,p95_us\ninitial_commit,1000,1,11372.493,11372.493\nsingle_file_commit,1000,50,160.852,218.539\nsingle_file_diff,1000,50,25.148,37.656\ninitial_commit,10000,1,104360.070,104360.070\nsingle_file_commit,10000,50,214.273,330.358\nsingle_file_diff,10000,50,24.757,29.475\ninitial_commit,100000,1,1072879.217,1072879.217\nsingle_file_commit,100000,50,830.039,995.699\nsingle_file_diff,100000,50,38.328,47.642\nancestry_positive,10000,100,23.896,26.740\nancestry_negative,10000,100,54.211,67.422\n",
+          "stderr": "",
+          "rows": [
+            {
+              "operation": "initial_commit",
+              "scale": 1000,
+              "samples": 1,
+              "p50_us": 11372.493,
+              "p95_us": 11372.493
+            },
+            {
+              "operation": "single_file_commit",
+              "scale": 1000,
+              "samples": 50,
+              "p50_us": 160.852,
+              "p95_us": 218.539
+            },
+            {
+              "operation": "single_file_diff",
+              "scale": 1000,
+              "samples": 50,
+              "p50_us": 25.148,
+              "p95_us": 37.656
+            },
+            {
+              "operation": "initial_commit",
+              "scale": 10000,
+              "samples": 1,
+              "p50_us": 104360.07,
+              "p95_us": 104360.07
+            },
+            {
+              "operation": "single_file_commit",
+              "scale": 10000,
+              "samples": 50,
+              "p50_us": 214.273,
+              "p95_us": 330.358
+            },
+            {
+              "operation": "single_file_diff",
+              "scale": 10000,
+              "samples": 50,
+              "p50_us": 24.757,
+              "p95_us": 29.475
+            },
+            {
+              "operation": "initial_commit",
+              "scale": 100000,
+              "samples": 1,
+              "p50_us": 1072879.217,
+              "p95_us": 1072879.217
+            },
+            {
+              "operation": "single_file_commit",
+              "scale": 100000,
+              "samples": 50,
+              "p50_us": 830.039,
+              "p95_us": 995.699
+            },
+            {
+              "operation": "single_file_diff",
+              "scale": 100000,
+              "samples": 50,
+              "p50_us": 38.328,
+              "p95_us": 47.642
+            },
+            {
+              "operation": "ancestry_positive",
+              "scale": 10000,
+              "samples": 100,
+              "p50_us": 23.896,
+              "p95_us": 26.74
+            },
+            {
+              "operation": "ancestry_negative",
+              "scale": 10000,
+              "samples": 100,
+              "p50_us": 54.211,
+              "p95_us": 67.422
+            }
+          ]
+        }
+      }
+    },
+    {
+      "trial": 5,
+      "execution_order": [
+        "baseline",
+        "candidate"
+      ],
+      "runs": {
+        "baseline": {
+          "command": [
+            "/tmp/scion-scaling-baseline-target/release/deps/scaling-6a816402baef2a08"
+          ],
+          "cwd": "/tmp/scion-scaling-baseline",
+          "returncode": 0,
+          "stdout": "# Scion engine benchmark; MemoryStore; release optimizations; microseconds\noperation,scale,samples,p50_us,p95_us\ninitial_commit,1000,1,10944.712,10944.712\nsingle_file_commit,1000,50,161.363,272.190\nsingle_file_diff,1000,50,24.747,34.782\ninitial_commit,10000,1,103583.319,103583.319\nsingle_file_commit,10000,50,207.533,255.625\nsingle_file_diff,10000,50,24.247,36.596\ninitial_commit,100000,1,1049674.792,1049674.792\nsingle_file_commit,100000,50,801.827,987.787\nsingle_file_diff,100000,50,37.727,45.659\nancestry_positive,10000,100,24.046,30.957\nancestry_negative,10000,100,55.363,91.398\n",
+          "stderr": "",
+          "rows": [
+            {
+              "operation": "initial_commit",
+              "scale": 1000,
+              "samples": 1,
+              "p50_us": 10944.712,
+              "p95_us": 10944.712
+            },
+            {
+              "operation": "single_file_commit",
+              "scale": 1000,
+              "samples": 50,
+              "p50_us": 161.363,
+              "p95_us": 272.19
+            },
+            {
+              "operation": "single_file_diff",
+              "scale": 1000,
+              "samples": 50,
+              "p50_us": 24.747,
+              "p95_us": 34.782
+            },
+            {
+              "operation": "initial_commit",
+              "scale": 10000,
+              "samples": 1,
+              "p50_us": 103583.319,
+              "p95_us": 103583.319
+            },
+            {
+              "operation": "single_file_commit",
+              "scale": 10000,
+              "samples": 50,
+              "p50_us": 207.533,
+              "p95_us": 255.625
+            },
+            {
+              "operation": "single_file_diff",
+              "scale": 10000,
+              "samples": 50,
+              "p50_us": 24.247,
+              "p95_us": 36.596
+            },
+            {
+              "operation": "initial_commit",
+              "scale": 100000,
+              "samples": 1,
+              "p50_us": 1049674.792,
+              "p95_us": 1049674.792
+            },
+            {
+              "operation": "single_file_commit",
+              "scale": 100000,
+              "samples": 50,
+              "p50_us": 801.827,
+              "p95_us": 987.787
+            },
+            {
+              "operation": "single_file_diff",
+              "scale": 100000,
+              "samples": 50,
+              "p50_us": 37.727,
+              "p95_us": 45.659
+            },
+            {
+              "operation": "ancestry_positive",
+              "scale": 10000,
+              "samples": 100,
+              "p50_us": 24.046,
+              "p95_us": 30.957
+            },
+            {
+              "operation": "ancestry_negative",
+              "scale": 10000,
+              "samples": 100,
+              "p50_us": 55.363,
+              "p95_us": 91.398
+            }
+          ]
+        },
+        "candidate": {
+          "command": [
+            "/tmp/scion-metadata-bench-target/release/deps/scaling-99ddef3b73527be6"
+          ],
+          "cwd": "/tmp/scion-metadata-compression-work",
+          "returncode": 0,
+          "stdout": "# Scion engine benchmark; MemoryStore; release optimizations; microseconds\noperation,scale,samples,p50_us,p95_us\ninitial_commit,1000,1,1825.008,1825.008\nsingle_file_commit,1000,50,62.995,124.568\nsingle_file_diff,1000,50,6.360,17.196\ninitial_commit,10000,1,17171.519,17171.519\nsingle_file_commit,10000,50,93.391,114.222\nsingle_file_diff,10000,50,6.440,8.703\ninitial_commit,100000,1,193195.688,193195.688\nsingle_file_commit,100000,50,217.868,430.899\nsingle_file_diff,100000,50,8.223,14.773\nancestry_positive,10000,100,1.002,1.142\nancestry_negative,10000,100,1.582,1.702\n",
+          "stderr": "",
+          "rows": [
+            {
+              "operation": "initial_commit",
+              "scale": 1000,
+              "samples": 1,
+              "p50_us": 1825.008,
+              "p95_us": 1825.008
+            },
+            {
+              "operation": "single_file_commit",
+              "scale": 1000,
+              "samples": 50,
+              "p50_us": 62.995,
+              "p95_us": 124.568
+            },
+            {
+              "operation": "single_file_diff",
+              "scale": 1000,
+              "samples": 50,
+              "p50_us": 6.36,
+              "p95_us": 17.196
+            },
+            {
+              "operation": "initial_commit",
+              "scale": 10000,
+              "samples": 1,
+              "p50_us": 17171.519,
+              "p95_us": 17171.519
+            },
+            {
+              "operation": "single_file_commit",
+              "scale": 10000,
+              "samples": 50,
+              "p50_us": 93.391,
+              "p95_us": 114.222
+            },
+            {
+              "operation": "single_file_diff",
+              "scale": 10000,
+              "samples": 50,
+              "p50_us": 6.44,
+              "p95_us": 8.703
+            },
+            {
+              "operation": "initial_commit",
+              "scale": 100000,
+              "samples": 1,
+              "p50_us": 193195.688,
+              "p95_us": 193195.688
+            },
+            {
+              "operation": "single_file_commit",
+              "scale": 100000,
+              "samples": 50,
+              "p50_us": 217.868,
+              "p95_us": 430.899
+            },
+            {
+              "operation": "single_file_diff",
+              "scale": 100000,
+              "samples": 50,
+              "p50_us": 8.223,
+              "p95_us": 14.773
+            },
+            {
+              "operation": "ancestry_positive",
+              "scale": 10000,
+              "samples": 100,
+              "p50_us": 1.002,
+              "p95_us": 1.142
+            },
+            {
+              "operation": "ancestry_negative",
+              "scale": 10000,
+              "samples": 100,
+              "p50_us": 1.582,
+              "p95_us": 1.702
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "summary": [
+    {
+      "operation": "initial_commit",
+      "scale": 1000,
+      "samples_per_trial": 1,
+      "baseline": {
+        "trial_p50_us": [
+          16414.597,
+          17605.388,
+          13354.488,
+          11372.493,
+          10944.712
+        ],
+        "trial_p95_us": [
+          16414.597,
+          17605.388,
+          13354.488,
+          11372.493,
+          10944.712
+        ],
+        "median_trial_p50_us": 13354.488,
+        "median_trial_p95_us": 13354.488
+      },
+      "candidate": {
+        "trial_p50_us": [
+          2820.106,
+          2048.674,
+          2201.174,
+          2069.666,
+          1825.008
+        ],
+        "trial_p95_us": [
+          2820.106,
+          2048.674,
+          2201.174,
+          2069.666,
+          1825.008
+        ],
+        "median_trial_p50_us": 2069.666,
+        "median_trial_p95_us": 2069.666
+      },
+      "speedup_ratio_of_median_trial_p50": 6.452484603795974,
+      "observation_note": "One initial-commit observation per trial; that trial's p50 and p95 are the same observation."
+    },
+    {
+      "operation": "single_file_commit",
+      "scale": 1000,
+      "samples_per_trial": 50,
+      "baseline": {
+        "trial_p50_us": [
+          163.766,
+          166.02,
+          161.563,
+          160.852,
+          161.363
+        ],
+        "trial_p95_us": [
+          240.652,
+          240.231,
+          211.409,
+          218.539,
+          272.19
+        ],
+        "median_trial_p50_us": 161.563,
+        "median_trial_p95_us": 240.231
+      },
+      "candidate": {
+        "trial_p50_us": [
+          58.157,
+          58.018,
+          58.749,
+          58.358,
+          62.995
+        ],
+        "trial_p95_us": [
+          134.843,
+          124.307,
+          157.758,
+          93.991,
+          124.568
+        ],
+        "median_trial_p50_us": 58.358,
+        "median_trial_p95_us": 124.568
+      },
+      "speedup_ratio_of_median_trial_p50": 2.7684807567085916
+    },
+    {
+      "operation": "single_file_diff",
+      "scale": 1000,
+      "samples_per_trial": 50,
+      "baseline": {
+        "trial_p50_us": [
+          25.078,
+          25.308,
+          24.798,
+          25.148,
+          24.747
+        ],
+        "trial_p95_us": [
+          62.784,
+          62.414,
+          31.237,
+          37.656,
+          34.782
+        ],
+        "median_trial_p50_us": 25.078,
+        "median_trial_p95_us": 37.656
+      },
+      "candidate": {
+        "trial_p50_us": [
+          6.14,
+          5.989,
+          6.119,
+          6.01,
+          6.36
+        ],
+        "trial_p95_us": [
+          11.828,
+          11.097,
+          15.904,
+          11.147,
+          17.196
+        ],
+        "median_trial_p50_us": 6.119,
+        "median_trial_p95_us": 11.828
+      },
+      "speedup_ratio_of_median_trial_p50": 4.098382088576565
+    },
+    {
+      "operation": "initial_commit",
+      "scale": 10000,
+      "samples_per_trial": 1,
+      "baseline": {
+        "trial_p50_us": [
+          107409.215,
+          113953.984,
+          106830.773,
+          104360.07,
+          103583.319
+        ],
+        "trial_p95_us": [
+          107409.215,
+          113953.984,
+          106830.773,
+          104360.07,
+          103583.319
+        ],
+        "median_trial_p50_us": 106830.773,
+        "median_trial_p95_us": 106830.773
+      },
+      "candidate": {
+        "trial_p50_us": [
+          18409.704,
+          19460.306,
+          19950.198,
+          18960.268,
+          17171.519
+        ],
+        "trial_p95_us": [
+          18409.704,
+          19460.306,
+          19950.198,
+          18960.268,
+          17171.519
+        ],
+        "median_trial_p50_us": 18960.268,
+        "median_trial_p95_us": 18960.268
+      },
+      "speedup_ratio_of_median_trial_p50": 5.634454797790833,
+      "observation_note": "One initial-commit observation per trial; that trial's p50 and p95 are the same observation."
+    },
+    {
+      "operation": "single_file_commit",
+      "scale": 10000,
+      "samples_per_trial": 50,
+      "baseline": {
+        "trial_p50_us": [
+          208.504,
+          214.734,
+          207.903,
+          214.273,
+          207.533
+        ],
+        "trial_p95_us": [
+          295.014,
+          300.464,
+          280.643,
+          330.358,
+          255.625
+        ],
+        "median_trial_p50_us": 208.504,
+        "median_trial_p95_us": 295.014
+      },
+      "candidate": {
+        "trial_p50_us": [
+          93.741,
+          95.073,
+          92.96,
+          93.15,
+          93.391
+        ],
+        "trial_p95_us": [
+          211.778,
+          186.07,
+          186.27,
+          164.438,
+          114.222
+        ],
+        "median_trial_p50_us": 93.391,
+        "median_trial_p95_us": 186.07
+      },
+      "speedup_ratio_of_median_trial_p50": 2.2325920056536495
+    },
+    {
+      "operation": "single_file_diff",
+      "scale": 10000,
+      "samples_per_trial": 50,
+      "baseline": {
+        "trial_p50_us": [
+          24.447,
+          25.348,
+          24.998,
+          24.757,
+          24.247
+        ],
+        "trial_p95_us": [
+          70.205,
+          31.808,
+          82.285,
+          29.475,
+          36.596
+        ],
+        "median_trial_p50_us": 24.757,
+        "median_trial_p95_us": 36.596
+      },
+      "candidate": {
+        "trial_p50_us": [
+          6.57,
+          6.49,
+          6.58,
+          6.42,
+          6.44
+        ],
+        "trial_p95_us": [
+          14.141,
+          14.472,
+          13.992,
+          11.036,
+          8.703
+        ],
+        "median_trial_p50_us": 6.49,
+        "median_trial_p95_us": 13.992
+      },
+      "speedup_ratio_of_median_trial_p50": 3.814637904468413
+    },
+    {
+      "operation": "initial_commit",
+      "scale": 100000,
+      "samples_per_trial": 1,
+      "baseline": {
+        "trial_p50_us": [
+          1124613.42,
+          1121535.361,
+          1065034.766,
+          1072879.217,
+          1049674.792
+        ],
+        "trial_p95_us": [
+          1124613.42,
+          1121535.361,
+          1065034.766,
+          1072879.217,
+          1049674.792
+        ],
+        "median_trial_p50_us": 1072879.217,
+        "median_trial_p95_us": 1072879.217
+      },
+      "candidate": {
+        "trial_p50_us": [
+          194019.279,
+          217052.744,
+          218125.3,
+          215972.698,
+          193195.688
+        ],
+        "trial_p95_us": [
+          194019.279,
+          217052.744,
+          218125.3,
+          215972.698,
+          193195.688
+        ],
+        "median_trial_p50_us": 215972.698,
+        "median_trial_p95_us": 215972.698
+      },
+      "speedup_ratio_of_median_trial_p50": 4.967661315227908,
+      "observation_note": "One initial-commit observation per trial; that trial's p50 and p95 are the same observation."
+    },
+    {
+      "operation": "single_file_commit",
+      "scale": 100000,
+      "samples_per_trial": 50,
+      "baseline": {
+        "trial_p50_us": [
+          817.551,
+          865.876,
+          796.92,
+          830.039,
+          801.827
+        ],
+        "trial_p95_us": [
+          1161.309,
+          1157.235,
+          960.316,
+          995.699,
+          987.787
+        ],
+        "median_trial_p50_us": 817.551,
+        "median_trial_p95_us": 995.699
+      },
+      "candidate": {
+        "trial_p50_us": [
+          209.405,
+          214.843,
+          210.296,
+          231.138,
+          217.868
+        ],
+        "trial_p95_us": [
+          266.461,
+          435.726,
+          277.688,
+          682.828,
+          430.899
+        ],
+        "median_trial_p50_us": 214.843,
+        "median_trial_p95_us": 430.899
+      },
+      "speedup_ratio_of_median_trial_p50": 3.8053415750105897
+    },
+    {
+      "operation": "single_file_diff",
+      "scale": 100000,
+      "samples_per_trial": 50,
+      "baseline": {
+        "trial_p50_us": [
+          38.848,
+          39.479,
+          38.017,
+          38.328,
+          37.727
+        ],
+        "trial_p95_us": [
+          51.367,
+          80.591,
+          108.113,
+          47.642,
+          45.659
+        ],
+        "median_trial_p50_us": 38.328,
+        "median_trial_p95_us": 51.367
+      },
+      "candidate": {
+        "trial_p50_us": [
+          7.852,
+          8.423,
+          7.822,
+          9.314,
+          8.223
+        ],
+        "trial_p95_us": [
+          12.199,
+          16.164,
+          12.769,
+          19.078,
+          14.773
+        ],
+        "median_trial_p50_us": 8.223,
+        "median_trial_p95_us": 14.773
+      },
+      "speedup_ratio_of_median_trial_p50": 4.6610726012404236
+    },
+    {
+      "operation": "ancestry_positive",
+      "scale": 10000,
+      "samples_per_trial": 100,
+      "baseline": {
+        "trial_p50_us": [
+          23.014,
+          22.905,
+          24.096,
+          23.896,
+          24.046
+        ],
+        "trial_p95_us": [
+          45.138,
+          41.833,
+          48.073,
+          26.74,
+          30.957
+        ],
+        "median_trial_p50_us": 23.896,
+        "median_trial_p95_us": 41.833
+      },
+      "candidate": {
+        "trial_p50_us": [
+          0.992,
+          1.031,
+          1.052,
+          0.962,
+          1.002
+        ],
+        "trial_p95_us": [
+          1.072,
+          1.122,
+          1.172,
+          1.031,
+          1.142
+        ],
+        "median_trial_p50_us": 1.002,
+        "median_trial_p95_us": 1.122
+      },
+      "speedup_ratio_of_median_trial_p50": 23.848303393213573
+    },
+    {
+      "operation": "ancestry_negative",
+      "scale": 10000,
+      "samples_per_trial": 100,
+      "baseline": {
+        "trial_p50_us": [
+          49.254,
+          49.405,
+          55.003,
+          54.211,
+          55.363
+        ],
+        "trial_p95_us": [
+          68.113,
+          79.861,
+          70.546,
+          67.422,
+          91.398
+        ],
+        "median_trial_p50_us": 54.211,
+        "median_trial_p95_us": 70.546
+      },
+      "candidate": {
+        "trial_p50_us": [
+          1.583,
+          1.632,
+          1.593,
+          1.562,
+          1.582
+        ],
+        "trial_p95_us": [
+          1.673,
+          1.702,
+          3.025,
+          1.632,
+          1.702
+        ],
+        "median_trial_p50_us": 1.583,
+        "median_trial_p95_us": 1.702
+      },
+      "speedup_ratio_of_median_trial_p50": 34.24573594440935
+    }
+  ],
+  "finished_utc": "2026-10-26T09:17:52.440514+00:00"
+}

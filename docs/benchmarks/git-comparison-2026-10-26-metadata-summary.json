@@ -1,0 +1,3664 @@
+{
+  "schema": 1,
+  "status": "complete",
+  "mode": "full_run_aggregate",
+  "expected_trials": 5,
+  "completed_trials": 5,
+  "created_utc": "2026-10-26T09:17:36.899096+00:00",
+  "aggregation": "Medians of run p50 and run p95 values are reported separately. Ratios divide median run p50 values; individual operation samples are not pooled or reconstructed. Per-run values and ranges retain all runs and controls.",
+  "summarizer": {
+    "path": "/tmp/scion-metadata-compression-work/scripts/summarize_git_runs.py",
+    "sha256": "56e8073faf4ebba27cf1b98c481bbeef938969258345ecc43392badc110a686b",
+    "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+    "summary_dependency": {
+      "function": "compare_git.summarize",
+      "path": "/tmp/scion-metadata-compression-work/scripts/compare_git.py",
+      "sha256": "a185568cd88d46d29b4512357ca2fb90ccc5fcea0b2d78b37ec9cb98257280d2"
+    }
+  },
+  "identity": {
+    "dimensions": {
+      "files": 100000,
+      "commits": 10000,
+      "branch_commits": 1000,
+      "samples": 31,
+      "fanout": 100,
+      "blob_bytes": 1024,
+      "variants": 128,
+      "warmup": 3
+    },
+    "configuration": {
+      "git": {
+        "core.fsync": "all",
+        "core.fsyncMethod": "fsync",
+        "feature.manyFiles": "true",
+        "core.commitGraph": "true",
+        "fastimport.unpackLimit": "0",
+        "gc.auto": "0",
+        "maintenance.auto": "false",
+        "user.name": "Benchmark",
+        "user.email": "benchmark@example.invalid"
+      },
+      "scion": {
+        "backend": "LocalStore",
+        "sqlite": "WAL, synchronous=FULL",
+        "records_layout": "rowid table for new stores; legacy retained stores keep their existing layout",
+        "object_durability": "small objects and publication metadata in FULL-synchronous SQLite; larger loose objects use file fsync and directory fsync on Unix",
+        "read_queries": "fresh file/diff queries use read-only SQLite snapshots including committed WAL; resident requests use live read-only connections; graph queries use the separately prepared frozen artifact",
+        "graph_queries": "explicit frozen GraphSnapshot; repository/identity checked on each fresh open; complete file lifetime inside query wall time"
+      },
+      "cache": "warm OS cache; 3 warmups; fresh query processes; no cache dropping",
+      "sample_order": "alternating Scion/Git, then Git/Scion; baseline insertion rotates through positions 0, 1, 2 (all six permutations every six iterations)",
+      "git_object_format": "sha1",
+      "scion_object_format": "blake3",
+      "fixture": "files share 128 deterministic 1024-byte text bodies; metadata-heavy fixture, not a real repository",
+      "git_effective": "core.repositoryformatversion=0\ncore.filemode=true\ncore.bare=true\ncore.fsync=all\ncore.fsyncmethod=fsync\ncore.commitgraph=true\nfeature.manyfiles=true\nfastimport.unpacklimit=0\ngc.auto=0\nmaintenance.auto=false\nuser.name=Benchmark\nuser.email=benchmark@example.invalid\n",
+      "resident_reads": {
+        "path_indices": [
+          0,
+          4729,
+          9458,
+          14187,
+          18916,
+          23645,
+          28374,
+          33103,
+          37832,
+          42561,
+          47290,
+          52019,
+          56748,
+          61477,
+          66206,
+          70935,
+          75664,
+          80393,
+          85122,
+          89851,
+          94580,
+          99309,
+          4038,
+          8767,
+          13496,
+          18225,
+          22954,
+          27683,
+          32412,
+          37141,
+          41870
+        ],
+        "warmup_passes": 3,
+        "scope": "resident Scion worker and resident git cat-file --batch;one request/response each",
+        "cache": "each selected path is read once in every warmup pass before measurement",
+        "baseline_scope": "separate resident baseline worker; identical requests and warmup passes"
+      }
+    },
+    "source": {
+      "commit": "bd393c7cd064d03d231d6b0af8a05afb181f13c0",
+      "dirty": false,
+      "status": "",
+      "tracked_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "source_sha256": {
+        "Cargo.lock": "23eccea2e366032a4c0824af60c78d36a9d96e845387b4587b17b8d54132c593",
+        "Cargo.toml": "fc205f8646a0e750121043340940bb5b87737be3816ab94a0184b9e40b44cad0",
+        "crates/scion-engine/Cargo.toml": "cbc5effa417e36b4c224c4e394bae0cca9c64bc77e507f2d0a24489c596f4818",
+        "crates/scion-engine/benches/scaling.rs": "a3aabcb63f820fe2ac566c7f9b36856ec45612cda2c3604e22986ccc3ec93a00",
+        "crates/scion-engine/examples/comparison_driver.rs": "a16a9d6ea7f25914bc1bc0c245d39212f47d759c5a28d5282b264d4b91776a7a",
+        "crates/scion-engine/src/derived.rs": "ece3627697d7ed832ef6a3015ed8623baa870b4d37a14b9374e86598c6acc568",
+        "crates/scion-engine/src/graph_snapshot.rs": "403959efbc4a69bb814e25fd0dd4e7cbfe2da5a5f6842d1084b118c04b001d78",
+        "crates/scion-engine/src/history.rs": "0604451a8e00995e8f53767f5ed66ca9dcb1dd9baf5d6fb72067e53f11234f68",
+        "crates/scion-engine/src/lib.rs": "cbe02187c410728ca46563cb54470aea87521b5673906dfd053481a422b9ec05",
+        "crates/scion-engine/src/merge.rs": "7eb5314770b4ff671b7983841170d51b87293f1728577a28fdf06f75f2af19ed",
+        "crates/scion-engine/src/tree.rs": "31527e87530a257a631bf6e66f9ddef6f8554451c00d33bb9f5a5e330c4b777d",
+        "crates/scion-engine/src/tree_cache.rs": "efa269d22f1d309043a2c6bba34cf071074eddd83cbb19edbb5f1aa8dbef8463",
+        "crates/scion-engine/src/virtual_base.rs": "a7981e391457ca93bab240209892e95bec35754f241a412194f18488844ecd74",
+        "crates/scion-engine/tests/graph_cache.rs": "a9d7d03418278b0f1b6405675261b15a0e0d0cc6c4a6ca39a437145c7533b43a",
+        "crates/scion-engine/tests/graph_snapshot.rs": "f52e648504c108e23d6c74b790cf153fe046f01efbf3f08b73e831f4cc8cfa77",
+        "crates/scion-engine/tests/publication.rs": "4a943459daa6ca38b36970deb760e82b87bec98accc506cc5142749f4f21b179",
+        "crates/scion-engine/tests/repository.rs": "78ee8503f3aa78975220101af6fc413507b6e73e7d6c0ceee09cbfed9823e658",
+        "crates/scion-engine/tests/virtual_bases.rs": "d75ebde96e42778a703ae54b21fb6a77abc0d3430f4ccd1ed3ce9dd120e3f960",
+        "crates/scion-graph/Cargo.toml": "2158efdf07335ba50d4f362fe6d7bad052cf0be9afa92347faed292c330a010d",
+        "crates/scion-graph/src/lib.rs": "4feb53e3f7b4e0f057bb83fd8fcd5066e8cabdbc02e767459ecfb12e1e8e62f7",
+        "crates/scion-graph/src/snapshot.rs": "680e1726a72c18e3962d199d460cb063c8015a52b770d09fe4551775d0d73e08",
+        "crates/scion-graph/src/snapshot_tests.rs": "fe87f19d63dfe4dffd317bb3b5dca00fab4d88af7d32d01ef13f78cc32106614",
+        "crates/scion-store/Cargo.toml": "d485b067f339920f6c1bbf0b3763a84082efa5d0f12290f2fb6d9310f685e83d",
+        "crates/scion-store/src/codec/metadata_cache.rs": "6a76c3a7ffec8ae18c02d4ba6379dd39e3654b4a64824f86137245f32a3702a7",
+        "crates/scion-store/src/codec/metadata_cache_tests.rs": "b6b72c24248bf109e41cec866f8f1974f1c36d27cf3a7ced2b8bf5abba587c93",
+        "crates/scion-store/src/codec/metadata_integration_tests.rs": "4665f09a5173dcedb05ce3469df1c35fd5094a02f1806ba7b88dd79981a007e4",
+        "crates/scion-store/src/codec.rs": "60251074c42804650ce53a859aad46e3e5b1a87b7109a1740001ba44aed29007",
+        "crates/scion-store/src/lib.rs": "9736c8e709077616434743420a139f698640d930cd7061a710722979ddb6032b",
+        "crates/scion-store/src/local.rs": "b3edb1e9a1317b96c436ffe74fd8226429a248e1c3d230f8ab826a11cd10c934",
+        "crates/scion-store/src/memory.rs": "0dfd0f40bb3a22a9a4e51dc0950805515b1bea140f90fea208d32e8d48ed90b6",
+        "crates/scion-store/src/pg.rs": "be2e71a635d76aa9e6349e7c8a4599c3e336714d664611206119417c2e892916",
+        "crates/scion-store/src/sharded.rs": "a98e27124b4c1de806910c0752f1fa7afdaeba3a6451ea890a4010a29b72ef75",
+        "crates/scion-store/tests/inline_reads.rs": "33cbb74c20df4edc3f3dae64898a61bb652744e107f03dbc5a94488a23a3a2b6",
+        "crates/scion-store/tests/local_options.rs": "501c2a03a406d842ccdfca62a72d8af9df1764e84521f8fe23c84cf318f63640",
+        "crates/scion-store/tests/postgres.rs": "15368d35b53f6b7878e5aa1049380a49e968a71c8fb8e76a3fffa08c973e4668",
+        "crates/scion-store/tests/publication.rs": "b1564b4e4c63ecb06812d7ec452517bcc0de45dd8187461d7b901489aedba8c6",
+        "crates/scion-store/tests/publication_cas.rs": "8a888e5ca0f94d02381238d18970fe9001080ec1f29e847f53cc4ce3f5eeeed0",
+        "crates/scion-store/tests/read_only.rs": "8f17656b51db19b234b9dde4b8c809fc3cb91129cdcf32788dd122af5c7c5160",
+        "crates/scion-store/tests/read_snapshots.rs": "f8b0997fcbe0652ef321e5279d8b81e02ff6c058399872d146ea3b21b7af9a12",
+        "crates/scion-store/tests/record_layout.rs": "615627832903438e7bd7314833a3a0d1ea3fdac3879035a3ce5e7c0ae60ee042",
+        "crates/scion-store/tests/review_publication.rs": "ae0536e4d2f7f368b16315cad704c808c6ea777927926dd8a9c78ba43c38c5e0",
+        "crates/scion-store/tests/small_objects.rs": "26100e26610d13af07eaec8c02e79b5bc2919209ede3448b5d49f2892247ed90",
+        "crates/scion-store/tests/sqlite_version.rs": "02b0d537a57ba087fa572f7b37143f1d43cb29ad890e616d6d8f5871c2902715",
+        "crates/scion-types/Cargo.toml": "24e6fd36d2647464356308c0bc33a91b01972a91eba016c270366c334fd185ed",
+        "crates/scion-types/src/lib.rs": "62edde3f03c8eec27486557e9732f40a33e7c9686aa26492df86e4dce82faabd",
+        "crates/scion-types/src/tree_json.rs": "0b8fe5a7de0183f39b6c32f769e9e94c8a67d95c1d59e52c7a6153f1f4a136e0",
+        "crates/scion-types/tests/object_id.rs": "2f37b511d4cc2267305ed170d9aee9f1f391633d9590e523e4def6de53634af1",
+        "crates/scion-types/tests/tree_json.rs": "03ba71f3206370a0f74af107e19b65816ea997ef464681fd028a804a074e4be0",
+        "scripts/build_support.py": "14a88346c9f7025a951b995a5743caba46cda12cf9a58f95d816c8f5be17d2e6",
+        "scripts/compare_git.py": "a185568cd88d46d29b4512357ca2fb90ccc5fcea0b2d78b37ec9cb98257280d2"
+      }
+    },
+    "build": {
+      "command": [
+        "cargo",
+        "build",
+        "--release",
+        "--locked",
+        "-p",
+        "scion-engine",
+        "--example",
+        "comparison_driver",
+        "--target",
+        "x86_64-unknown-linux-gnu",
+        "--target-dir",
+        "/tmp/scion-metadata-static-target",
+        "--offline"
+      ],
+      "performed": true,
+      "incremental": false,
+      "source_changed_during_build": false,
+      "driver_sha256": "06dda29bbf19ba7c9de7a04c5f3371acca10512978f8ae2590e48ab4b12dbd56",
+      "target": "x86_64-unknown-linux-gnu",
+      "static_crt_requested": true,
+      "rustflags": {
+        "source": "RUSTFLAGS",
+        "args": [
+          "-C",
+          "target-feature=+crt-static"
+        ]
+      },
+      "rustflags_provenance": "build environment used by this invocation",
+      "linkage": {
+        "verification": "readelf PT_INTERP and DT_NEEDED",
+        "format": "ELF",
+        "machine": "Advanced Micro Devices X86-64",
+        "elf_type": "DYN",
+        "linkage": "static",
+        "interpreter": false,
+        "needed_libraries": []
+      }
+    },
+    "git": {
+      "git": "git version 2.56.0",
+      "git_sha256": "6b0fe38de2fe4331c56251819920c58820f8dfffd9e342b9a854bfffbbd67935",
+      "git_exec_path": "/tmp/scion-git-current/libexec/git-core"
+    },
+    "host": {
+      "platform": "Linux-6.18.55-x86_64-with-glibc2.39",
+      "machine": "x86_64",
+      "cpu": "AMD EPYC 9V74 80-Core Processor",
+      "logical_cpus": 9,
+      "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+      "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1"
+    },
+    "baseline": {
+      "source_report_sha256": "9fba04c8435444111d3b033773909c88328473fc1013a15c395984b5f2dff886",
+      "driver_sha256": "ff6a44c736b135d4ec920f4d497a92fa3cac4a2936ff284a6c4abeb1ef6aa6c6",
+      "source": {
+        "commit": "78f3b0d21e2539b6fb6197e08749860ab5db1385",
+        "dirty": false,
+        "status": "",
+        "tracked_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "source_sha256": {
+          "Cargo.lock": "efdd369408b1ca365db9d9850f91afe09d23e0f4a2cb77c68adb702ba279544c",
+          "Cargo.toml": "fc205f8646a0e750121043340940bb5b87737be3816ab94a0184b9e40b44cad0",
+          "crates/scion-engine/Cargo.toml": "aaf0451e48d4e5cfb459ca3dabfb07563aab1781523cb9020f51a0d1cd11b1b3",
+          "crates/scion-engine/benches/scaling.rs": "a3aabcb63f820fe2ac566c7f9b36856ec45612cda2c3604e22986ccc3ec93a00",
+          "crates/scion-engine/examples/comparison_driver.rs": "fd858450c3fb87608639c52b4e5671e4ba5c3882c56758694a5d16ed6ce79fd1",
+          "crates/scion-engine/src/derived.rs": "ece3627697d7ed832ef6a3015ed8623baa870b4d37a14b9374e86598c6acc568",
+          "crates/scion-engine/src/history.rs": "0604451a8e00995e8f53767f5ed66ca9dcb1dd9baf5d6fb72067e53f11234f68",
+          "crates/scion-engine/src/lib.rs": "cc9d4dc051cf61337783fe4df11cf116e0e49167a655ae0499d7e8bba43b4a1e",
+          "crates/scion-engine/src/merge.rs": "7eb5314770b4ff671b7983841170d51b87293f1728577a28fdf06f75f2af19ed",
+          "crates/scion-engine/src/tree.rs": "3806f74662f9a766469c6783af27b6eca1c316862b05519e869a7dfe0e5a3c78",
+          "crates/scion-engine/src/tree_cache.rs": "fc7ed8a9d33959c2ce82f4541c640bab9c09c6623990e32050d14f06093d4268",
+          "crates/scion-engine/src/virtual_base.rs": "a7981e391457ca93bab240209892e95bec35754f241a412194f18488844ecd74",
+          "crates/scion-engine/tests/repository.rs": "9f60b166d33572eb9f891bc0bdf64269ca0908a67c2e6259f291805c0a56b6f5",
+          "crates/scion-engine/tests/virtual_bases.rs": "d75ebde96e42778a703ae54b21fb6a77abc0d3430f4ccd1ed3ce9dd120e3f960",
+          "crates/scion-graph/Cargo.toml": "c53bd1f36967ed07277f24e1e950b5fadad5bb78811162593f3f954538d3b069",
+          "crates/scion-graph/src/lib.rs": "1a2f3472b25764d9919072ce5650a5c51acd79a183a476b0827773e49272be07",
+          "crates/scion-store/Cargo.toml": "6556ff8cd423eaf439f5918b5a9e89e728cdce7ea29fdb047ffcaf339a989cba",
+          "crates/scion-store/src/codec.rs": "18c44445cd9bd8615d3c79008cd3ef92b579932b3ef4f3935081fa075a1852d8",
+          "crates/scion-store/src/lib.rs": "b3aebb80616897aa3d0f0069bdc3d22e3d3f476af6ba89ff388a11ee7ee9c257",
+          "crates/scion-store/src/local.rs": "374e094c66ff9d01699dafcb3ca446728bed42ba02cd9b4840eb5d39a682aac9",
+          "crates/scion-store/src/memory.rs": "22865812f5c77bdbd9750322aaa8ce4b78ed694b457afc1bc39d7bacd6599d75",
+          "crates/scion-store/src/pg.rs": "5eca615f98c0c87bf46c42e396673beac2ca4bd3a5060a1d5ffcf1d5aabe3997",
+          "crates/scion-store/src/sharded.rs": "82055a836f68ab761883969ec26978ccfbafe5e50f0c316825ed700e19db7209",
+          "crates/scion-store/tests/postgres.rs": "8a99772be9209493b0e06b0cdadb2bb1aff7eb70f3dcf24e8a36b3012d29e0e4",
+          "crates/scion-store/tests/publication.rs": "b1564b4e4c63ecb06812d7ec452517bcc0de45dd8187461d7b901489aedba8c6",
+          "crates/scion-store/tests/read_only.rs": "8d4e52ce5e3d759cadaa7fe6d875ae82923ae6419e579c0cca5d285e1cee1156",
+          "crates/scion-store/tests/review_publication.rs": "ae0536e4d2f7f368b16315cad704c808c6ea777927926dd8a9c78ba43c38c5e0",
+          "crates/scion-store/tests/sqlite_version.rs": "02b0d537a57ba087fa572f7b37143f1d43cb29ad890e616d6d8f5871c2902715",
+          "crates/scion-types/Cargo.toml": "24e6fd36d2647464356308c0bc33a91b01972a91eba016c270366c334fd185ed",
+          "crates/scion-types/src/lib.rs": "e913f52148af22f4710bae99b0507b90061f296561f4068ef88213802e25dc99",
+          "crates/scion-types/src/tree_json.rs": "ff711877ae8b1d72ed85e8230732817fc34cfc1e41d97f5a34e7327de4ee0d71",
+          "crates/scion-types/tests/tree_json.rs": "9695647fe9b0f0a29ba23441b685583407065320de144002edf9cc9b2d9fccba",
+          "scripts/compare_git.py": "888fb4d622c38418d2b9421120198103a19881367463188ce314a8a7f70a5dd4"
+        }
+      },
+      "build": {
+        "command": [
+          "cargo",
+          "build",
+          "--release",
+          "--locked",
+          "-p",
+          "scion-engine",
+          "--example",
+          "comparison_driver",
+          "--offline"
+        ],
+        "performed": true,
+        "incremental": false,
+        "source_changed_during_build": false,
+        "driver_sha256": "ff6a44c736b135d4ec920f4d497a92fa3cac4a2936ff284a6c4abeb1ef6aa6c6"
+      },
+      "fixture_scope": "independent store with identical logical requests and verified identical Scion IDs"
+    },
+    "fixture": {
+      "scion": {
+        "root": "5785c70fe35c662655f18b5992e24f6458d6a6ecb754093a1210deb0c258c138",
+        "tip": "dd98caaca1595ead0792f484be4d83df672b2e2af533a5e4066d6016a194bb08",
+        "previous": "84202c8201888c1b200c596293668ffb4f3670dbe3d18cefe43a46596396aece",
+        "trunk": "8e66b47a70abae446b77885a355f0152a023d438ada6867d430498d3c0f0bfb1",
+        "left": "58545e92baf8507934b5a4ed0c0c87a047cab7b9065e84e80d4f57c32f8322ac",
+        "right": "7413c73cf8c6bdf52da721e5e8f5f9d31a3e120cb4ed91547a66a31d0f3c3744",
+        "side": "f5ca70ca53cf8a274985fbe1fbead4af34453e9dac5e48bcd9e50f6503cbb6bc"
+      },
+      "git": {
+        "root": "b08d052bad407f00577c0ad67f5a40f96c61eec5",
+        "tip": "c42fd7c77d8b2bd9d48a28784f56cbc90f829cdf",
+        "previous": "6b362ec628a072c340f82a95f4a30df2015b8314",
+        "trunk": "3100060ac45a5ed732b3e2b37eda54e48c396f3e",
+        "left": "e1c2cd219135aabdd879e445c4cf11c44dcc5e54",
+        "right": "a392d3c3737b1b5c7360901dbc7e28c2f7cac5a8",
+        "side": "06cf4fcff6043742c49c5335a370b8241b1eb938"
+      },
+      "path": "dir0000/file000000.txt",
+      "content": "edit 000034\nfixture 000\none two three four five six seven eight nine ten\none two three four five six seven eight nine ten\none two three four five six seven eight nine ten\none two three four five six seven eight nine ten\none two three four five six seven eight nine ten\none two three four five six seven eight nine ten\none two three four five six seven eight nine ten\none two three four five six seven eight nine ten\none two three four five six seven eight nine ten\none two three four five six seven eight nine ten\none two three four five six seven eight nine ten\none two three four five six seven eight nine ten\none two three four five six seven eight nine ten\none two three four five six seven eight nine ten\none two three four five six seven eight nine ten\none two three four five six seven eight nine ten\none two three four five six seven eight nine ten\none two three four five six seven eight nine ten\none two three four five six seven eight nine ten\none two three four five six seven eight nine ten\none two three four \n",
+      "scion_baseline": {
+        "root": "5785c70fe35c662655f18b5992e24f6458d6a6ecb754093a1210deb0c258c138",
+        "tip": "dd98caaca1595ead0792f484be4d83df672b2e2af533a5e4066d6016a194bb08",
+        "previous": "84202c8201888c1b200c596293668ffb4f3670dbe3d18cefe43a46596396aece",
+        "trunk": "8e66b47a70abae446b77885a355f0152a023d438ada6867d430498d3c0f0bfb1",
+        "left": "58545e92baf8507934b5a4ed0c0c87a047cab7b9065e84e80d4f57c32f8322ac",
+        "right": "7413c73cf8c6bdf52da721e5e8f5f9d31a3e120cb4ed91547a66a31d0f3c3744",
+        "side": "f5ca70ca53cf8a274985fbe1fbead4af34453e9dac5e48bcd9e50f6503cbb6bc"
+      }
+    },
+    "graph_snapshot": {
+      "sha256": "20dd3c220de6f8951290f1d5effca8178758d81f2f6096f325c122949e0ae446",
+      "metadata": {
+        "repository": "benchmark",
+        "source": {
+          "identity": "bb9d64a92a4e137e270f9aef10d370dcc0f6f89bdbcbfc0f26f30f0f05fd1eba",
+          "sequence": 12036
+        },
+        "node_count": 12036,
+        "index_slots": 32768,
+        "file_bytes": 8923168,
+        "format_version": 1
+      }
+    }
+  },
+  "inputs": [
+    {
+      "path": "/tmp/scion-final-measurements/git-full-1.json",
+      "sha256": "e9bbd5d6c4bce347c4c3f69cea12db4e1f25ce2ac6a789a621072c4f5ab952d7",
+      "canonical_content_sha256": "f7ff94de3209379d48e972a5b4bc8849964e49fd70f17bcc8e853e05ccf92b50",
+      "bytes": 253655
+    },
+    {
+      "path": "/tmp/scion-final-measurements/git-full-2.json",
+      "sha256": "e045109cac94aab1ba41ebd78f2da57cd0d54994f937220b0f98da464b37559d",
+      "canonical_content_sha256": "9b0490db97e410096303d669b39d31212f9c6ea1aec72fccf312551886d5d058",
+      "bytes": 253662
+    },
+    {
+      "path": "/tmp/scion-final-measurements/git-full-3.json",
+      "sha256": "c5c23be78753fc77a774bcd8bcd98a311c248e4d354850be9f1b3425865c9b4f",
+      "canonical_content_sha256": "676157efe1ad8694e361aae7ce0b012c9a02c3cbf6bb6236169f18dee859d44f",
+      "bytes": 253869
+    },
+    {
+      "path": "/tmp/scion-final-measurements/git-full-4.json",
+      "sha256": "de14a371d73384e696351ad5b3fed32758481952620f7415d4039882213adc7f",
+      "canonical_content_sha256": "d121160c870af674cd7670a89eacf9bb720087306a0512e38ed4af4f7033d9ce",
+      "bytes": 253760
+    },
+    {
+      "path": "/tmp/scion-final-measurements/git-full-5.json",
+      "sha256": "96dd26d3265a94088b7134036fd0dde2eb301903bfa5c006d88fa439eac3ee6d",
+      "canonical_content_sha256": "164d45381b118cdbc55cfa073c8ea0f47c3bd49354545558a30818e5a8a0fc07",
+      "bytes": 253712
+    }
+  ],
+  "runs": [
+    {
+      "run": 1,
+      "input_sha256": "e9bbd5d6c4bce347c4c3f69cea12db4e1f25ce2ac6a789a621072c4f5ab952d7",
+      "host": {
+        "utc": "2026-10-26T09:15:43Z",
+        "platform": "Linux-6.18.55-x86_64-with-glibc2.39",
+        "machine": "x86_64",
+        "cpu": "AMD EPYC 9V74 80-Core Processor",
+        "logical_cpus": 9,
+        "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+        "git": "git version 2.56.0",
+        "git_binary": "/tmp/scion-git-current/bin/git",
+        "git_sha256": "6b0fe38de2fe4331c56251819920c58820f8dfffd9e342b9a854bfffbbd67935",
+        "git_exec_path": "/tmp/scion-git-current/libexec/git-core",
+        "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+        "filesystem": "Filesystem     Type    1K-blocks    Used Available Use% Mounted on\noverlay        overlay  32978704 5941684  25342916  19% /tmp\n",
+        "memory_kib": "10206484"
+      },
+      "work_directory": "/tmp/scion-official-benchmarks/scion-git-comparison-s07ts_rd",
+      "summary": [
+        {
+          "operation": "ancestry_negative",
+          "scope": "fresh_process",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 3828.755,
+          "p95_us": 9476.238,
+          "min_us": 3173.518,
+          "max_us": 17038.144
+        },
+        {
+          "operation": "ancestry_negative",
+          "scope": "fresh_process",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 780.445,
+          "p95_us": 1028.879,
+          "min_us": 657.82,
+          "max_us": 1448.24
+        },
+        {
+          "operation": "ancestry_negative",
+          "scope": "fresh_process",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 2162.506,
+          "p95_us": 2693.535,
+          "min_us": 1921.673,
+          "max_us": 2819.865
+        },
+        {
+          "operation": "ancestry_positive",
+          "scope": "fresh_process",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 3645.414,
+          "p95_us": 5510.727,
+          "min_us": 3259.007,
+          "max_us": 6481.569
+        },
+        {
+          "operation": "ancestry_positive",
+          "scope": "fresh_process",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 767.246,
+          "p95_us": 1088.108,
+          "min_us": 631.621,
+          "max_us": 1248.78
+        },
+        {
+          "operation": "ancestry_positive",
+          "scope": "fresh_process",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 1854.692,
+          "p95_us": 2396.679,
+          "min_us": 1575.562,
+          "max_us": 2697.511
+        },
+        {
+          "operation": "file_read",
+          "scope": "fresh_process",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 1422.496,
+          "p95_us": 5457.44,
+          "min_us": 1236.865,
+          "max_us": 9167.135
+        },
+        {
+          "operation": "file_read",
+          "scope": "fresh_process",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 1203.855,
+          "p95_us": 1555.085,
+          "min_us": 1008.611,
+          "max_us": 1956.245
+        },
+        {
+          "operation": "file_read",
+          "scope": "fresh_process",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 2527.652,
+          "p95_us": 5012.019,
+          "min_us": 2233.989,
+          "max_us": 8183.821
+        },
+        {
+          "operation": "file_read_spread",
+          "scope": "resident",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 41.592,
+          "p95_us": 52.649,
+          "min_us": 21.963,
+          "max_us": 57.126
+        },
+        {
+          "operation": "file_read_spread",
+          "scope": "resident",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 17.466,
+          "p95_us": 40.772,
+          "min_us": 16.535,
+          "max_us": 48.252
+        },
+        {
+          "operation": "file_read_spread",
+          "scope": "resident",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 38.007,
+          "p95_us": 72.71,
+          "min_us": 37.036,
+          "max_us": 119.861
+        },
+        {
+          "operation": "merge_base_ancestor",
+          "scope": "fresh_process",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 3464.006,
+          "p95_us": 4559.049,
+          "min_us": 2803.331,
+          "max_us": 5399.67
+        },
+        {
+          "operation": "merge_base_ancestor",
+          "scope": "fresh_process",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 708.897,
+          "p95_us": 906.225,
+          "min_us": 639.213,
+          "max_us": 1069.581
+        },
+        {
+          "operation": "merge_base_ancestor",
+          "scope": "fresh_process",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 1758.267,
+          "p95_us": 2653.48,
+          "min_us": 1512.477,
+          "max_us": 2898.685
+        },
+        {
+          "operation": "merge_base_divergent",
+          "scope": "fresh_process",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 1824.597,
+          "p95_us": 2367.996,
+          "min_us": 1566.439,
+          "max_us": 3141.03
+        },
+        {
+          "operation": "merge_base_divergent",
+          "scope": "fresh_process",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 788.818,
+          "p95_us": 1073.777,
+          "min_us": 682.137,
+          "max_us": 1827.542
+        },
+        {
+          "operation": "merge_base_divergent",
+          "scope": "fresh_process",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 2061.543,
+          "p95_us": 3177.93,
+          "min_us": 1848.043,
+          "max_us": 6149.409
+        },
+        {
+          "operation": "noop",
+          "scope": "resident",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 14.762,
+          "p95_us": 80.331,
+          "min_us": 13.62,
+          "max_us": 82.755
+        },
+        {
+          "operation": "noop",
+          "scope": "resident",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 13.931,
+          "p95_us": 64.827,
+          "min_us": 13.22,
+          "max_us": 163.877
+        },
+        {
+          "operation": "noop",
+          "scope": "resident",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 14.693,
+          "p95_us": 32.459,
+          "min_us": 13.74,
+          "max_us": 45.168
+        },
+        {
+          "operation": "prepared_commit",
+          "scope": "resident",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 3308.279,
+          "p95_us": 3634.184,
+          "min_us": 3021.146,
+          "max_us": 3743.163
+        },
+        {
+          "operation": "prepared_commit",
+          "scope": "resident",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 908.908,
+          "p95_us": 1322.54,
+          "min_us": 562.777,
+          "max_us": 1348.289
+        },
+        {
+          "operation": "prepared_commit",
+          "scope": "resident",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 2205.759,
+          "p95_us": 2626.213,
+          "min_us": 1828.712,
+          "max_us": 6029.864
+        },
+        {
+          "operation": "process_startup",
+          "scope": "fresh_process",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 906.558,
+          "p95_us": 1066.688,
+          "min_us": 824.133,
+          "max_us": 1150.815
+        },
+        {
+          "operation": "process_startup",
+          "scope": "fresh_process",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 593.835,
+          "p95_us": 836.973,
+          "min_us": 524.351,
+          "max_us": 1142.693
+        },
+        {
+          "operation": "process_startup",
+          "scope": "fresh_process",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 951.305,
+          "p95_us": 1208.943,
+          "min_us": 873.838,
+          "max_us": 1283.666
+        },
+        {
+          "operation": "repository_open",
+          "scope": "fresh_process",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 1005.084,
+          "p95_us": 1274.659,
+          "min_us": 912.614,
+          "max_us": 1305.426
+        },
+        {
+          "operation": "repository_open",
+          "scope": "fresh_process",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 780.445,
+          "p95_us": 970.772,
+          "min_us": 670.089,
+          "max_us": 1615.703
+        },
+        {
+          "operation": "repository_open",
+          "scope": "fresh_process",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 1327.358,
+          "p95_us": 1532.718,
+          "min_us": 1182.281,
+          "max_us": 1612.488
+        },
+        {
+          "operation": "small_diff",
+          "scope": "fresh_process",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 1739.092,
+          "p95_us": 2304.645,
+          "min_us": 1516.417,
+          "max_us": 2454.366
+        },
+        {
+          "operation": "small_diff",
+          "scope": "fresh_process",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 1244.036,
+          "p95_us": 1539.262,
+          "min_us": 1090.975,
+          "max_us": 1555.055
+        },
+        {
+          "operation": "small_diff",
+          "scope": "fresh_process",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 3480.229,
+          "p95_us": 3910.658,
+          "min_us": 3123.5,
+          "max_us": 4445.434
+        }
+      ],
+      "comparisons": [
+        {
+          "operation": "ancestry_negative",
+          "scope": "fresh_process",
+          "git_over_scion": 4.905861399586134,
+          "baseline_over_scion": 2.770862777005426
+        },
+        {
+          "operation": "ancestry_positive",
+          "scope": "fresh_process",
+          "git_over_scion": 4.751297497803834,
+          "baseline_over_scion": 2.417336812443467
+        },
+        {
+          "operation": "file_read",
+          "scope": "fresh_process",
+          "git_over_scion": 1.1816173874760665,
+          "baseline_over_scion": 2.099631600151181
+        },
+        {
+          "operation": "file_read_spread",
+          "scope": "resident",
+          "git_over_scion": 2.3813122638268633,
+          "baseline_over_scion": 2.1760563380281686
+        },
+        {
+          "operation": "merge_base_ancestor",
+          "scope": "fresh_process",
+          "git_over_scion": 4.886472929071501,
+          "baseline_over_scion": 2.480285570400213
+        },
+        {
+          "operation": "merge_base_divergent",
+          "scope": "fresh_process",
+          "git_over_scion": 2.313077287790086,
+          "baseline_over_scion": 2.6134583642868194
+        },
+        {
+          "operation": "noop",
+          "scope": "resident",
+          "git_over_scion": 1.059651137750341,
+          "baseline_over_scion": 1.0546981551934536
+        },
+        {
+          "operation": "prepared_commit",
+          "scope": "resident",
+          "git_over_scion": 3.6398392356542137,
+          "baseline_over_scion": 2.4268231768231767
+        },
+        {
+          "operation": "process_startup",
+          "scope": "fresh_process",
+          "git_over_scion": 1.5266159791861376,
+          "baseline_over_scion": 1.6019685602903162
+        },
+        {
+          "operation": "repository_open",
+          "scope": "fresh_process",
+          "git_over_scion": 1.2878345046736155,
+          "baseline_over_scion": 1.7007707141438537
+        },
+        {
+          "operation": "small_diff",
+          "scope": "fresh_process",
+          "git_over_scion": 1.39794346787392,
+          "baseline_over_scion": 2.7975307788520585
+        }
+      ]
+    },
+    {
+      "run": 2,
+      "input_sha256": "e045109cac94aab1ba41ebd78f2da57cd0d54994f937220b0f98da464b37559d",
+      "host": {
+        "utc": "2026-10-26T09:16:05Z",
+        "platform": "Linux-6.18.55-x86_64-with-glibc2.39",
+        "machine": "x86_64",
+        "cpu": "AMD EPYC 9V74 80-Core Processor",
+        "logical_cpus": 9,
+        "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+        "git": "git version 2.56.0",
+        "git_binary": "/tmp/scion-git-current/bin/git",
+        "git_sha256": "6b0fe38de2fe4331c56251819920c58820f8dfffd9e342b9a854bfffbbd67935",
+        "git_exec_path": "/tmp/scion-git-current/libexec/git-core",
+        "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+        "filesystem": "Filesystem     Type    1K-blocks    Used Available Use% Mounted on\noverlay        overlay  32978704 6085372  25199228  20% /tmp\n",
+        "memory_kib": "10206484"
+      },
+      "work_directory": "/tmp/scion-official-benchmarks/scion-git-comparison-2q0i9wr3",
+      "summary": [
+        {
+          "operation": "ancestry_negative",
+          "scope": "fresh_process",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 3592.629,
+          "p95_us": 4153.653,
+          "min_us": 3223.113,
+          "max_us": 4479.494
+        },
+        {
+          "operation": "ancestry_negative",
+          "scope": "fresh_process",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 754.305,
+          "p95_us": 1027.186,
+          "min_us": 644.15,
+          "max_us": 1153.386
+        },
+        {
+          "operation": "ancestry_negative",
+          "scope": "fresh_process",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 2034.303,
+          "p95_us": 2476.419,
+          "min_us": 1738.938,
+          "max_us": 2613.525
+        },
+        {
+          "operation": "ancestry_positive",
+          "scope": "fresh_process",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 3557.025,
+          "p95_us": 4088.336,
+          "min_us": 3090.432,
+          "max_us": 6108.958
+        },
+        {
+          "operation": "ancestry_positive",
+          "scope": "fresh_process",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 694.105,
+          "p95_us": 890.927,
+          "min_us": 633.323,
+          "max_us": 1030.772
+        },
+        {
+          "operation": "ancestry_positive",
+          "scope": "fresh_process",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 1691.502,
+          "p95_us": 2927.007,
+          "min_us": 1509.863,
+          "max_us": 3601.603
+        },
+        {
+          "operation": "file_read",
+          "scope": "fresh_process",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 1429.983,
+          "p95_us": 2087.543,
+          "min_us": 1219.325,
+          "max_us": 4626.576
+        },
+        {
+          "operation": "file_read",
+          "scope": "fresh_process",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 1148.238,
+          "p95_us": 1743.089,
+          "min_us": 1021.223,
+          "max_us": 4402.919
+        },
+        {
+          "operation": "file_read",
+          "scope": "fresh_process",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 2608.227,
+          "p95_us": 3007.578,
+          "min_us": 2220.503,
+          "max_us": 3648.463
+        },
+        {
+          "operation": "file_read_spread",
+          "scope": "resident",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 40.581,
+          "p95_us": 50.256,
+          "min_us": 21.813,
+          "max_us": 61.662
+        },
+        {
+          "operation": "file_read_spread",
+          "scope": "resident",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 17.376,
+          "p95_us": 42.615,
+          "min_us": 16.675,
+          "max_us": 98.068
+        },
+        {
+          "operation": "file_read_spread",
+          "scope": "resident",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 37.627,
+          "p95_us": 59.409,
+          "min_us": 36.515,
+          "max_us": 64.537
+        },
+        {
+          "operation": "merge_base_ancestor",
+          "scope": "fresh_process",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 3354.32,
+          "p95_us": 3690.466,
+          "min_us": 2869.571,
+          "max_us": 4049.588
+        },
+        {
+          "operation": "merge_base_ancestor",
+          "scope": "fresh_process",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 740.786,
+          "p95_us": 872.503,
+          "min_us": 648.937,
+          "max_us": 966.465
+        },
+        {
+          "operation": "merge_base_ancestor",
+          "scope": "fresh_process",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 1673.239,
+          "p95_us": 2066.462,
+          "min_us": 1470.123,
+          "max_us": 2332.352
+        },
+        {
+          "operation": "merge_base_divergent",
+          "scope": "fresh_process",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 1708.372,
+          "p95_us": 2208.725,
+          "min_us": 1507.59,
+          "max_us": 2468.596
+        },
+        {
+          "operation": "merge_base_divergent",
+          "scope": "fresh_process",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 762.007,
+          "p95_us": 951.442,
+          "min_us": 678.311,
+          "max_us": 952.704
+        },
+        {
+          "operation": "merge_base_divergent",
+          "scope": "fresh_process",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 2021.683,
+          "p95_us": 2929.57,
+          "min_us": 1837.557,
+          "max_us": 2957.312
+        },
+        {
+          "operation": "noop",
+          "scope": "resident",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 19.72,
+          "p95_us": 37.597,
+          "min_us": 18.898,
+          "max_us": 99.97
+        },
+        {
+          "operation": "noop",
+          "scope": "resident",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 16.304,
+          "p95_us": 36.915,
+          "min_us": 15.283,
+          "max_us": 82.985
+        },
+        {
+          "operation": "noop",
+          "scope": "resident",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 16.254,
+          "p95_us": 57.116,
+          "min_us": 15.183,
+          "max_us": 60.702
+        },
+        {
+          "operation": "prepared_commit",
+          "scope": "resident",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 3436.183,
+          "p95_us": 6333.72,
+          "min_us": 2995.079,
+          "max_us": 29702.832
+        },
+        {
+          "operation": "prepared_commit",
+          "scope": "resident",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 1006.786,
+          "p95_us": 1815.934,
+          "min_us": 698.682,
+          "max_us": 3244.635
+        },
+        {
+          "operation": "prepared_commit",
+          "scope": "resident",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 2266.107,
+          "p95_us": 7837.51,
+          "min_us": 1926.762,
+          "max_us": 11711.188
+        },
+        {
+          "operation": "process_startup",
+          "scope": "fresh_process",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 889.489,
+          "p95_us": 1281.539,
+          "min_us": 787.646,
+          "max_us": 1295.7
+        },
+        {
+          "operation": "process_startup",
+          "scope": "fresh_process",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 604.551,
+          "p95_us": 877.992,
+          "min_us": 528.346,
+          "max_us": 898.303
+        },
+        {
+          "operation": "process_startup",
+          "scope": "fresh_process",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 997.521,
+          "p95_us": 1273.012,
+          "min_us": 855.158,
+          "max_us": 1276.462
+        },
+        {
+          "operation": "repository_open",
+          "scope": "fresh_process",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 987.116,
+          "p95_us": 1627.536,
+          "min_us": 906.535,
+          "max_us": 1691.357
+        },
+        {
+          "operation": "repository_open",
+          "scope": "fresh_process",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 779.373,
+          "p95_us": 1056.291,
+          "min_us": 679.883,
+          "max_us": 1113.577
+        },
+        {
+          "operation": "repository_open",
+          "scope": "fresh_process",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 1340.448,
+          "p95_us": 1752.698,
+          "min_us": 1209.721,
+          "max_us": 1933.671
+        },
+        {
+          "operation": "small_diff",
+          "scope": "fresh_process",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 1720.691,
+          "p95_us": 2299.482,
+          "min_us": 1516.323,
+          "max_us": 2470.605
+        },
+        {
+          "operation": "small_diff",
+          "scope": "fresh_process",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 1322.631,
+          "p95_us": 2885.684,
+          "min_us": 1104.513,
+          "max_us": 4376.289
+        },
+        {
+          "operation": "small_diff",
+          "scope": "fresh_process",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 3561.858,
+          "p95_us": 4389.348,
+          "min_us": 3212.496,
+          "max_us": 4652.745
+        }
+      ],
+      "comparisons": [
+        {
+          "operation": "ancestry_negative",
+          "scope": "fresh_process",
+          "git_over_scion": 4.762833336647643,
+          "baseline_over_scion": 2.6969236582019214
+        },
+        {
+          "operation": "ancestry_positive",
+          "scope": "fresh_process",
+          "git_over_scion": 5.124620914703107,
+          "baseline_over_scion": 2.4369540631460658
+        },
+        {
+          "operation": "file_read",
+          "scope": "fresh_process",
+          "git_over_scion": 1.2453716041447853,
+          "baseline_over_scion": 2.27150381715289
+        },
+        {
+          "operation": "file_read_spread",
+          "scope": "resident",
+          "git_over_scion": 2.3354627071823204,
+          "baseline_over_scion": 2.165458103130755
+        },
+        {
+          "operation": "merge_base_ancestor",
+          "scope": "fresh_process",
+          "git_over_scion": 4.528055335818982,
+          "baseline_over_scion": 2.258734641313416
+        },
+        {
+          "operation": "merge_base_divergent",
+          "scope": "fresh_process",
+          "git_over_scion": 2.2419374100237928,
+          "baseline_over_scion": 2.6531029242513524
+        },
+        {
+          "operation": "noop",
+          "scope": "resident",
+          "git_over_scion": 1.2095191364082434,
+          "baseline_over_scion": 0.9969332679097156
+        },
+        {
+          "operation": "prepared_commit",
+          "scope": "resident",
+          "git_over_scion": 3.4130222311394878,
+          "baseline_over_scion": 2.250832848291494
+        },
+        {
+          "operation": "process_startup",
+          "scope": "fresh_process",
+          "git_over_scion": 1.4713216916356104,
+          "baseline_over_scion": 1.6500196013239576
+        },
+        {
+          "operation": "repository_open",
+          "scope": "fresh_process",
+          "git_over_scion": 1.2665514458417213,
+          "baseline_over_scion": 1.7199056164378288
+        },
+        {
+          "operation": "small_diff",
+          "scope": "fresh_process",
+          "git_over_scion": 1.3009607365924434,
+          "baseline_over_scion": 2.6930096149266123
+        }
+      ]
+    },
+    {
+      "run": 3,
+      "input_sha256": "c5c23be78753fc77a774bcd8bcd98a311c248e4d354850be9f1b3425865c9b4f",
+      "host": {
+        "utc": "2026-10-26T09:16:28Z",
+        "platform": "Linux-6.18.55-x86_64-with-glibc2.39",
+        "machine": "x86_64",
+        "cpu": "AMD EPYC 9V74 80-Core Processor",
+        "logical_cpus": 9,
+        "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+        "git": "git version 2.56.0",
+        "git_binary": "/tmp/scion-git-current/bin/git",
+        "git_sha256": "6b0fe38de2fe4331c56251819920c58820f8dfffd9e342b9a854bfffbbd67935",
+        "git_exec_path": "/tmp/scion-git-current/libexec/git-core",
+        "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+        "filesystem": "Filesystem     Type    1K-blocks    Used Available Use% Mounted on\noverlay        overlay  32978704 6229224  25055376  20% /tmp\n",
+        "memory_kib": "10206484"
+      },
+      "work_directory": "/tmp/scion-official-benchmarks/scion-git-comparison-9s78362e",
+      "summary": [
+        {
+          "operation": "ancestry_negative",
+          "scope": "fresh_process",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 5033.345,
+          "p95_us": 7121.449,
+          "min_us": 3354.229,
+          "max_us": 8197.483
+        },
+        {
+          "operation": "ancestry_negative",
+          "scope": "fresh_process",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 946.415,
+          "p95_us": 1437.083,
+          "min_us": 711.491,
+          "max_us": 2103.812
+        },
+        {
+          "operation": "ancestry_negative",
+          "scope": "fresh_process",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 2641.416,
+          "p95_us": 4894.888,
+          "min_us": 2115.815,
+          "max_us": 8469.683
+        },
+        {
+          "operation": "ancestry_positive",
+          "scope": "fresh_process",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 4655.857,
+          "p95_us": 6300.242,
+          "min_us": 3831.617,
+          "max_us": 27193.569
+        },
+        {
+          "operation": "ancestry_positive",
+          "scope": "fresh_process",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 889.458,
+          "p95_us": 1776.785,
+          "min_us": 678.812,
+          "max_us": 2076.395
+        },
+        {
+          "operation": "ancestry_positive",
+          "scope": "fresh_process",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 2083.296,
+          "p95_us": 2750.6,
+          "min_us": 1745.487,
+          "max_us": 2877.556
+        },
+        {
+          "operation": "file_read",
+          "scope": "fresh_process",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 2148.644,
+          "p95_us": 4892.93,
+          "min_us": 1555.637,
+          "max_us": 5181.784
+        },
+        {
+          "operation": "file_read",
+          "scope": "fresh_process",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 1792.297,
+          "p95_us": 3203.782,
+          "min_us": 1266.666,
+          "max_us": 4451.996
+        },
+        {
+          "operation": "file_read",
+          "scope": "fresh_process",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 3338.305,
+          "p95_us": 6976.245,
+          "min_us": 2474.885,
+          "max_us": 11130.538
+        },
+        {
+          "operation": "file_read_spread",
+          "scope": "resident",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 58.198,
+          "p95_us": 162.905,
+          "min_us": 41.162,
+          "max_us": 293.788
+        },
+        {
+          "operation": "file_read_spread",
+          "scope": "resident",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 28.673,
+          "p95_us": 52.539,
+          "min_us": 18.348,
+          "max_us": 60.722
+        },
+        {
+          "operation": "file_read_spread",
+          "scope": "resident",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 64.307,
+          "p95_us": 109.105,
+          "min_us": 38.858,
+          "max_us": 115.254
+        },
+        {
+          "operation": "merge_base_ancestor",
+          "scope": "fresh_process",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 4197.532,
+          "p95_us": 7592.116,
+          "min_us": 3262.11,
+          "max_us": 7694.942
+        },
+        {
+          "operation": "merge_base_ancestor",
+          "scope": "fresh_process",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 906.624,
+          "p95_us": 1199.455,
+          "min_us": 690.329,
+          "max_us": 1590.694
+        },
+        {
+          "operation": "merge_base_ancestor",
+          "scope": "fresh_process",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 2095.925,
+          "p95_us": 2939.304,
+          "min_us": 1614.039,
+          "max_us": 3745.838
+        },
+        {
+          "operation": "merge_base_divergent",
+          "scope": "fresh_process",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 2262.625,
+          "p95_us": 3479.858,
+          "min_us": 1959.82,
+          "max_us": 4334.754
+        },
+        {
+          "operation": "merge_base_divergent",
+          "scope": "fresh_process",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 930.962,
+          "p95_us": 1384.434,
+          "min_us": 754.956,
+          "max_us": 3931.052
+        },
+        {
+          "operation": "merge_base_divergent",
+          "scope": "fresh_process",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 2659.333,
+          "p95_us": 4327.073,
+          "min_us": 2176.976,
+          "max_us": 4839.955
+        },
+        {
+          "operation": "noop",
+          "scope": "resident",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 14.752,
+          "p95_us": 136.716,
+          "min_us": 13.551,
+          "max_us": 219.01
+        },
+        {
+          "operation": "noop",
+          "scope": "resident",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 14.182,
+          "p95_us": 32.248,
+          "min_us": 13.43,
+          "max_us": 70.215
+        },
+        {
+          "operation": "noop",
+          "scope": "resident",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 14.852,
+          "p95_us": 57.697,
+          "min_us": 14.302,
+          "max_us": 165.799
+        },
+        {
+          "operation": "prepared_commit",
+          "scope": "resident",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 3415.604,
+          "p95_us": 4311.649,
+          "min_us": 3004.166,
+          "max_us": 5881.786
+        },
+        {
+          "operation": "prepared_commit",
+          "scope": "resident",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 1024.442,
+          "p95_us": 1260.267,
+          "min_us": 634.885,
+          "max_us": 1273.787
+        },
+        {
+          "operation": "prepared_commit",
+          "scope": "resident",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 2244.037,
+          "p95_us": 4109.383,
+          "min_us": 1783.934,
+          "max_us": 5639.276
+        },
+        {
+          "operation": "process_startup",
+          "scope": "fresh_process",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 1118.544,
+          "p95_us": 2379.366,
+          "min_us": 876.079,
+          "max_us": 2800.345
+        },
+        {
+          "operation": "process_startup",
+          "scope": "fresh_process",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 844.18,
+          "p95_us": 2096.936,
+          "min_us": 588.947,
+          "max_us": 2389.446
+        },
+        {
+          "operation": "process_startup",
+          "scope": "fresh_process",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 1208.314,
+          "p95_us": 2911.793,
+          "min_us": 974.546,
+          "max_us": 4743.77
+        },
+        {
+          "operation": "repository_open",
+          "scope": "fresh_process",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 1195.159,
+          "p95_us": 5140.893,
+          "min_us": 1012.614,
+          "max_us": 12432.082
+        },
+        {
+          "operation": "repository_open",
+          "scope": "fresh_process",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 910.66,
+          "p95_us": 1709.198,
+          "min_us": 716.939,
+          "max_us": 1905.878
+        },
+        {
+          "operation": "repository_open",
+          "scope": "fresh_process",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 1542.362,
+          "p95_us": 2900.691,
+          "min_us": 1290.653,
+          "max_us": 3463.332
+        },
+        {
+          "operation": "small_diff",
+          "scope": "fresh_process",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 2179.17,
+          "p95_us": 4659.273,
+          "min_us": 1622.462,
+          "max_us": 10925.895
+        },
+        {
+          "operation": "small_diff",
+          "scope": "fresh_process",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 1779.138,
+          "p95_us": 3854.552,
+          "min_us": 1251.844,
+          "max_us": 4408.075
+        },
+        {
+          "operation": "small_diff",
+          "scope": "fresh_process",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 4367.944,
+          "p95_us": 13080.918,
+          "min_us": 3589.788,
+          "max_us": 27249.508
+        }
+      ],
+      "comparisons": [
+        {
+          "operation": "ancestry_negative",
+          "scope": "fresh_process",
+          "git_over_scion": 5.31832758356535,
+          "baseline_over_scion": 2.7909701346660825
+        },
+        {
+          "operation": "ancestry_positive",
+          "scope": "fresh_process",
+          "git_over_scion": 5.234487744221762,
+          "baseline_over_scion": 2.342208401071214
+        },
+        {
+          "operation": "file_read",
+          "scope": "fresh_process",
+          "git_over_scion": 1.1988214006941929,
+          "baseline_over_scion": 1.8625847167071081
+        },
+        {
+          "operation": "file_read_spread",
+          "scope": "resident",
+          "git_over_scion": 2.0297143654308933,
+          "baseline_over_scion": 2.24277194573292
+        },
+        {
+          "operation": "merge_base_ancestor",
+          "scope": "fresh_process",
+          "git_over_scion": 4.629848757588593,
+          "baseline_over_scion": 2.3117907754482565
+        },
+        {
+          "operation": "merge_base_divergent",
+          "scope": "fresh_process",
+          "git_over_scion": 2.4304160642432238,
+          "baseline_over_scion": 2.8565430167933816
+        },
+        {
+          "operation": "noop",
+          "scope": "resident",
+          "git_over_scion": 1.0401917924129178,
+          "baseline_over_scion": 1.047242984064307
+        },
+        {
+          "operation": "prepared_commit",
+          "scope": "resident",
+          "git_over_scion": 3.334111643216502,
+          "baseline_over_scion": 2.1904968753721534
+        },
+        {
+          "operation": "process_startup",
+          "scope": "fresh_process",
+          "git_over_scion": 1.3250065151981807,
+          "baseline_over_scion": 1.4313463953185341
+        },
+        {
+          "operation": "repository_open",
+          "scope": "fresh_process",
+          "git_over_scion": 1.3124096808907826,
+          "baseline_over_scion": 1.6936749170930974
+        },
+        {
+          "operation": "small_diff",
+          "scope": "fresh_process",
+          "git_over_scion": 1.224845964731235,
+          "baseline_over_scion": 2.455090049226086
+        }
+      ]
+    },
+    {
+      "run": 4,
+      "input_sha256": "de14a371d73384e696351ad5b3fed32758481952620f7415d4039882213adc7f",
+      "host": {
+        "utc": "2026-10-26T09:16:51Z",
+        "platform": "Linux-6.18.55-x86_64-with-glibc2.39",
+        "machine": "x86_64",
+        "cpu": "AMD EPYC 9V74 80-Core Processor",
+        "logical_cpus": 9,
+        "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+        "git": "git version 2.56.0",
+        "git_binary": "/tmp/scion-git-current/bin/git",
+        "git_sha256": "6b0fe38de2fe4331c56251819920c58820f8dfffd9e342b9a854bfffbbd67935",
+        "git_exec_path": "/tmp/scion-git-current/libexec/git-core",
+        "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+        "filesystem": "Filesystem     Type    1K-blocks    Used Available Use% Mounted on\noverlay        overlay  32978704 6372936  24911664  21% /tmp\n",
+        "memory_kib": "10206484"
+      },
+      "work_directory": "/tmp/scion-official-benchmarks/scion-git-comparison-l3sj5r8m",
+      "summary": [
+        {
+          "operation": "ancestry_negative",
+          "scope": "fresh_process",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 3830.536,
+          "p95_us": 5045.916,
+          "min_us": 3412.607,
+          "max_us": 6991.895
+        },
+        {
+          "operation": "ancestry_negative",
+          "scope": "fresh_process",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 823.039,
+          "p95_us": 1128.949,
+          "min_us": 674.746,
+          "max_us": 1165.314
+        },
+        {
+          "operation": "ancestry_negative",
+          "scope": "fresh_process",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 2191.349,
+          "p95_us": 3899.65,
+          "min_us": 1773.801,
+          "max_us": 6980.498
+        },
+        {
+          "operation": "ancestry_positive",
+          "scope": "fresh_process",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 3814.463,
+          "p95_us": 4516.72,
+          "min_us": 3127.107,
+          "max_us": 4553.34
+        },
+        {
+          "operation": "ancestry_positive",
+          "scope": "fresh_process",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 799.704,
+          "p95_us": 990.741,
+          "min_us": 684.641,
+          "max_us": 1130.382
+        },
+        {
+          "operation": "ancestry_positive",
+          "scope": "fresh_process",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 1789.033,
+          "p95_us": 2221.459,
+          "min_us": 1536.994,
+          "max_us": 2519.774
+        },
+        {
+          "operation": "file_read",
+          "scope": "fresh_process",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 1517.845,
+          "p95_us": 1930.076,
+          "min_us": 1339.386,
+          "max_us": 2175.675
+        },
+        {
+          "operation": "file_read",
+          "scope": "fresh_process",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 1421.841,
+          "p95_us": 2246.562,
+          "min_us": 1121.018,
+          "max_us": 2503.218
+        },
+        {
+          "operation": "file_read",
+          "scope": "fresh_process",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 2903.951,
+          "p95_us": 3637.397,
+          "min_us": 2290.058,
+          "max_us": 6206.258
+        },
+        {
+          "operation": "file_read_spread",
+          "scope": "resident",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 42.564,
+          "p95_us": 55.293,
+          "min_us": 33.911,
+          "max_us": 58.458
+        },
+        {
+          "operation": "file_read_spread",
+          "scope": "resident",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 17.617,
+          "p95_us": 53.851,
+          "min_us": 16.485,
+          "max_us": 142.815
+        },
+        {
+          "operation": "file_read_spread",
+          "scope": "resident",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 38.969,
+          "p95_us": 98.679,
+          "min_us": 36.224,
+          "max_us": 101.963
+        },
+        {
+          "operation": "merge_base_ancestor",
+          "scope": "fresh_process",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 3939.531,
+          "p95_us": 4818.825,
+          "min_us": 3063.482,
+          "max_us": 7484.347
+        },
+        {
+          "operation": "merge_base_ancestor",
+          "scope": "fresh_process",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 822.698,
+          "p95_us": 1265.595,
+          "min_us": 664.31,
+          "max_us": 1395.03
+        },
+        {
+          "operation": "merge_base_ancestor",
+          "scope": "fresh_process",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 1910.456,
+          "p95_us": 2444.821,
+          "min_us": 1591.786,
+          "max_us": 3698.688
+        },
+        {
+          "operation": "merge_base_divergent",
+          "scope": "fresh_process",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 2101.524,
+          "p95_us": 2909.56,
+          "min_us": 1521.4,
+          "max_us": 5874.583
+        },
+        {
+          "operation": "merge_base_divergent",
+          "scope": "fresh_process",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 799.424,
+          "p95_us": 1257.723,
+          "min_us": 701.886,
+          "max_us": 2826.075
+        },
+        {
+          "operation": "merge_base_divergent",
+          "scope": "fresh_process",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 2239.431,
+          "p95_us": 2735.448,
+          "min_us": 1974.383,
+          "max_us": 2752.324
+        },
+        {
+          "operation": "noop",
+          "scope": "resident",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 19.81,
+          "p95_us": 94.432,
+          "min_us": 18.458,
+          "max_us": 100.531
+        },
+        {
+          "operation": "noop",
+          "scope": "resident",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 16.034,
+          "p95_us": 43.736,
+          "min_us": 15.273,
+          "max_us": 117.838
+        },
+        {
+          "operation": "noop",
+          "scope": "resident",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 16.455,
+          "p95_us": 96.004,
+          "min_us": 15.594,
+          "max_us": 117.918
+        },
+        {
+          "operation": "prepared_commit",
+          "scope": "resident",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 3589.614,
+          "p95_us": 4933.161,
+          "min_us": 2956.896,
+          "max_us": 5098.235
+        },
+        {
+          "operation": "prepared_commit",
+          "scope": "resident",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 1134.878,
+          "p95_us": 2526.023,
+          "min_us": 804.526,
+          "max_us": 3366.838
+        },
+        {
+          "operation": "prepared_commit",
+          "scope": "resident",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 2592.634,
+          "p95_us": 6835.837,
+          "min_us": 1920.682,
+          "max_us": 7163.194
+        },
+        {
+          "operation": "process_startup",
+          "scope": "fresh_process",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 1073.636,
+          "p95_us": 1502.261,
+          "min_us": 860.125,
+          "max_us": 1929.615
+        },
+        {
+          "operation": "process_startup",
+          "scope": "fresh_process",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 703.029,
+          "p95_us": 989.43,
+          "min_us": 564.47,
+          "max_us": 1035.949
+        },
+        {
+          "operation": "process_startup",
+          "scope": "fresh_process",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 1103.801,
+          "p95_us": 1673.494,
+          "min_us": 910.38,
+          "max_us": 1703.204
+        },
+        {
+          "operation": "repository_open",
+          "scope": "fresh_process",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 1103.892,
+          "p95_us": 1467.71,
+          "min_us": 964.282,
+          "max_us": 2823.611
+        },
+        {
+          "operation": "repository_open",
+          "scope": "fresh_process",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 893.625,
+          "p95_us": 1467.65,
+          "min_us": 710.87,
+          "max_us": 3768.618
+        },
+        {
+          "operation": "repository_open",
+          "scope": "fresh_process",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 1656.084,
+          "p95_us": 2377.258,
+          "min_us": 1241.85,
+          "max_us": 4028.505
+        },
+        {
+          "operation": "small_diff",
+          "scope": "fresh_process",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 1940.731,
+          "p95_us": 2269.773,
+          "min_us": 1524.825,
+          "max_us": 2311.46
+        },
+        {
+          "operation": "small_diff",
+          "scope": "fresh_process",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 1466.929,
+          "p95_us": 2097.438,
+          "min_us": 1176.061,
+          "max_us": 3055.55
+        },
+        {
+          "operation": "small_diff",
+          "scope": "fresh_process",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 3936.306,
+          "p95_us": 7525.299,
+          "min_us": 3365.757,
+          "max_us": 8212.213
+        }
+      ],
+      "comparisons": [
+        {
+          "operation": "ancestry_negative",
+          "scope": "fresh_process",
+          "git_over_scion": 4.654136681250828,
+          "baseline_over_scion": 2.662509310008396
+        },
+        {
+          "operation": "ancestry_positive",
+          "scope": "fresh_process",
+          "git_over_scion": 4.769843592129089,
+          "baseline_over_scion": 2.237118984024089
+        },
+        {
+          "operation": "file_read",
+          "scope": "fresh_process",
+          "git_over_scion": 1.067520911269263,
+          "baseline_over_scion": 2.042388002596634
+        },
+        {
+          "operation": "file_read_spread",
+          "scope": "resident",
+          "git_over_scion": 2.4160753817335525,
+          "baseline_over_scion": 2.2120111256173014
+        },
+        {
+          "operation": "merge_base_ancestor",
+          "scope": "fresh_process",
+          "git_over_scion": 4.788550598153879,
+          "baseline_over_scion": 2.3221838390272005
+        },
+        {
+          "operation": "merge_base_divergent",
+          "scope": "fresh_process",
+          "git_over_scion": 2.6287977343687454,
+          "baseline_over_scion": 2.80130569009687
+        },
+        {
+          "operation": "noop",
+          "scope": "resident",
+          "git_over_scion": 1.2354995634277162,
+          "baseline_over_scion": 1.0262567045029312
+        },
+        {
+          "operation": "prepared_commit",
+          "scope": "resident",
+          "git_over_scion": 3.16299549378876,
+          "baseline_over_scion": 2.284504589920679
+        },
+        {
+          "operation": "process_startup",
+          "scope": "fresh_process",
+          "git_over_scion": 1.5271574856798225,
+          "baseline_over_scion": 1.5700646772750484
+        },
+        {
+          "operation": "repository_open",
+          "scope": "fresh_process",
+          "git_over_scion": 1.2352966848510283,
+          "baseline_over_scion": 1.8532203105329417
+        },
+        {
+          "operation": "small_diff",
+          "scope": "fresh_process",
+          "git_over_scion": 1.3229890471863328,
+          "baseline_over_scion": 2.683365043570616
+        }
+      ]
+    },
+    {
+      "run": 5,
+      "input_sha256": "96dd26d3265a94088b7134036fd0dde2eb301903bfa5c006d88fa439eac3ee6d",
+      "host": {
+        "utc": "2026-10-26T09:17:15Z",
+        "platform": "Linux-6.18.55-x86_64-with-glibc2.39",
+        "machine": "x86_64",
+        "cpu": "AMD EPYC 9V74 80-Core Processor",
+        "logical_cpus": 9,
+        "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+        "git": "git version 2.56.0",
+        "git_binary": "/tmp/scion-git-current/bin/git",
+        "git_sha256": "6b0fe38de2fe4331c56251819920c58820f8dfffd9e342b9a854bfffbbd67935",
+        "git_exec_path": "/tmp/scion-git-current/libexec/git-core",
+        "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+        "filesystem": "Filesystem     Type    1K-blocks    Used Available Use% Mounted on\noverlay        overlay  32978704 6516644  24767956  21% /tmp\n",
+        "memory_kib": "10206484"
+      },
+      "work_directory": "/tmp/scion-official-benchmarks/scion-git-comparison-h727hyp1",
+      "summary": [
+        {
+          "operation": "ancestry_negative",
+          "scope": "fresh_process",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 3998.426,
+          "p95_us": 5745.899,
+          "min_us": 3233.123,
+          "max_us": 5970.097
+        },
+        {
+          "operation": "ancestry_negative",
+          "scope": "fresh_process",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 858.464,
+          "p95_us": 1330.816,
+          "min_us": 689.93,
+          "max_us": 2140.435
+        },
+        {
+          "operation": "ancestry_negative",
+          "scope": "fresh_process",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 2322.39,
+          "p95_us": 2942.455,
+          "min_us": 1931.642,
+          "max_us": 3557.271
+        },
+        {
+          "operation": "ancestry_positive",
+          "scope": "fresh_process",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 3922.722,
+          "p95_us": 6008.22,
+          "min_us": 3176.016,
+          "max_us": 6658.796
+        },
+        {
+          "operation": "ancestry_positive",
+          "scope": "fresh_process",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 841.659,
+          "p95_us": 1036.302,
+          "min_us": 667.526,
+          "max_us": 1084.474
+        },
+        {
+          "operation": "ancestry_positive",
+          "scope": "fresh_process",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 1889.949,
+          "p95_us": 2421.86,
+          "min_us": 1551.288,
+          "max_us": 3008.214
+        },
+        {
+          "operation": "file_read",
+          "scope": "fresh_process",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 1462.782,
+          "p95_us": 1823.215,
+          "min_us": 1289.492,
+          "max_us": 1825.924
+        },
+        {
+          "operation": "file_read",
+          "scope": "fresh_process",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 1306.406,
+          "p95_us": 1630.915,
+          "min_us": 1110.442,
+          "max_us": 1783.14
+        },
+        {
+          "operation": "file_read",
+          "scope": "fresh_process",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 2633.094,
+          "p95_us": 3904.613,
+          "min_us": 2332.421,
+          "max_us": 5419.068
+        },
+        {
+          "operation": "file_read_spread",
+          "scope": "resident",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 48.333,
+          "p95_us": 103.155,
+          "min_us": 34.732,
+          "max_us": 112.93
+        },
+        {
+          "operation": "file_read_spread",
+          "scope": "resident",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 33.13,
+          "p95_us": 77.647,
+          "min_us": 21.522,
+          "max_us": 107.021
+        },
+        {
+          "operation": "file_read_spread",
+          "scope": "resident",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 60.13,
+          "p95_us": 84.778,
+          "min_us": 42.584,
+          "max_us": 104.807
+        },
+        {
+          "operation": "merge_base_ancestor",
+          "scope": "fresh_process",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 3457.742,
+          "p95_us": 4746.023,
+          "min_us": 3048.565,
+          "max_us": 6771.286
+        },
+        {
+          "operation": "merge_base_ancestor",
+          "scope": "fresh_process",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 794.948,
+          "p95_us": 1062.741,
+          "min_us": 646.114,
+          "max_us": 1311.697
+        },
+        {
+          "operation": "merge_base_ancestor",
+          "scope": "fresh_process",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 1916.959,
+          "p95_us": 2316.426,
+          "min_us": 1563.296,
+          "max_us": 2332.034
+        },
+        {
+          "operation": "merge_base_divergent",
+          "scope": "fresh_process",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 2020.896,
+          "p95_us": 3421.857,
+          "min_us": 1590.387,
+          "max_us": 3944.63
+        },
+        {
+          "operation": "merge_base_divergent",
+          "scope": "fresh_process",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 853.035,
+          "p95_us": 1082.751,
+          "min_us": 705.222,
+          "max_us": 1146.548
+        },
+        {
+          "operation": "merge_base_divergent",
+          "scope": "fresh_process",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 2381.444,
+          "p95_us": 2774.081,
+          "min_us": 1874.776,
+          "max_us": 3025.245
+        },
+        {
+          "operation": "noop",
+          "scope": "resident",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 19.72,
+          "p95_us": 37.336,
+          "min_us": 18.298,
+          "max_us": 96.475
+        },
+        {
+          "operation": "noop",
+          "scope": "resident",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 15.824,
+          "p95_us": 45.398,
+          "min_us": 15.092,
+          "max_us": 77.006
+        },
+        {
+          "operation": "noop",
+          "scope": "resident",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 16.094,
+          "p95_us": 46.891,
+          "min_us": 14.923,
+          "max_us": 52.419
+        },
+        {
+          "operation": "prepared_commit",
+          "scope": "resident",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 3733.811,
+          "p95_us": 4306.703,
+          "min_us": 3172.315,
+          "max_us": 4714.867
+        },
+        {
+          "operation": "prepared_commit",
+          "scope": "resident",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 1022.379,
+          "p95_us": 1227.798,
+          "min_us": 717.099,
+          "max_us": 1492.457
+        },
+        {
+          "operation": "prepared_commit",
+          "scope": "resident",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 2302.476,
+          "p95_us": 3432.497,
+          "min_us": 1758.087,
+          "max_us": 4960.597
+        },
+        {
+          "operation": "process_startup",
+          "scope": "fresh_process",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 972.805,
+          "p95_us": 1234.709,
+          "min_us": 818.372,
+          "max_us": 1362.987
+        },
+        {
+          "operation": "process_startup",
+          "scope": "fresh_process",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 679.163,
+          "p95_us": 896.329,
+          "min_us": 513.523,
+          "max_us": 1760.24
+        },
+        {
+          "operation": "process_startup",
+          "scope": "fresh_process",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 1010.812,
+          "p95_us": 1363.633,
+          "min_us": 869.529,
+          "max_us": 2179.37
+        },
+        {
+          "operation": "repository_open",
+          "scope": "fresh_process",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 997.424,
+          "p95_us": 1370.255,
+          "min_us": 912.576,
+          "max_us": 1378.888
+        },
+        {
+          "operation": "repository_open",
+          "scope": "fresh_process",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 813.656,
+          "p95_us": 1055.651,
+          "min_us": 648.537,
+          "max_us": 1288.101
+        },
+        {
+          "operation": "repository_open",
+          "scope": "fresh_process",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 1399.023,
+          "p95_us": 1801.295,
+          "min_us": 1225.647,
+          "max_us": 1983.97
+        },
+        {
+          "operation": "small_diff",
+          "scope": "fresh_process",
+          "implementation": "git",
+          "samples": 31,
+          "p50_us": 1805.208,
+          "p95_us": 2208.014,
+          "min_us": 1450.556,
+          "max_us": 3980.879
+        },
+        {
+          "operation": "small_diff",
+          "scope": "fresh_process",
+          "implementation": "scion",
+          "samples": 31,
+          "p50_us": 1473.672,
+          "p95_us": 1886.413,
+          "min_us": 1144.725,
+          "max_us": 2095.428
+        },
+        {
+          "operation": "small_diff",
+          "scope": "fresh_process",
+          "implementation": "scion_baseline",
+          "samples": 31,
+          "p50_us": 3699.205,
+          "p95_us": 4559.463,
+          "min_us": 3194.484,
+          "max_us": 4573.913
+        }
+      ],
+      "comparisons": [
+        {
+          "operation": "ancestry_negative",
+          "scope": "fresh_process",
+          "git_over_scion": 4.657651340067842,
+          "baseline_over_scion": 2.7052852536623546
+        },
+        {
+          "operation": "ancestry_positive",
+          "scope": "fresh_process",
+          "git_over_scion": 4.660702255901737,
+          "baseline_over_scion": 2.245504414495657
+        },
+        {
+          "operation": "file_read",
+          "scope": "fresh_process",
+          "git_over_scion": 1.119699389010767,
+          "baseline_over_scion": 2.015525035861746
+        },
+        {
+          "operation": "file_read_spread",
+          "scope": "resident",
+          "git_over_scion": 1.458889224268035,
+          "baseline_over_scion": 1.8149713250830062
+        },
+        {
+          "operation": "merge_base_ancestor",
+          "scope": "fresh_process",
+          "git_over_scion": 4.34964551140452,
+          "baseline_over_scion": 2.4114269109426028
+        },
+        {
+          "operation": "merge_base_divergent",
+          "scope": "fresh_process",
+          "git_over_scion": 2.369065747595351,
+          "baseline_over_scion": 2.7917307027261486
+        },
+        {
+          "operation": "noop",
+          "scope": "resident",
+          "git_over_scion": 1.2462082912032355,
+          "baseline_over_scion": 1.01706268958544
+        },
+        {
+          "operation": "prepared_commit",
+          "scope": "resident",
+          "git_over_scion": 3.6520810775651693,
+          "baseline_over_scion": 2.252076773877398
+        },
+        {
+          "operation": "process_startup",
+          "scope": "fresh_process",
+          "git_over_scion": 1.4323586532246309,
+          "baseline_over_scion": 1.4883201823420886
+        },
+        {
+          "operation": "repository_open",
+          "scope": "fresh_process",
+          "git_over_scion": 1.225854660937792,
+          "baseline_over_scion": 1.719428112126009
+        },
+        {
+          "operation": "small_diff",
+          "scope": "fresh_process",
+          "git_over_scion": 1.2249727212025472,
+          "baseline_over_scion": 2.5101956201922815
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "run_count": 5,
+      "samples_per_run": 31,
+      "run_p50_us": [
+        3828.755,
+        3592.629,
+        5033.345,
+        3830.536,
+        3998.426
+      ],
+      "median_run_p50_us": 3830.536,
+      "min_run_p50_us": 3592.629,
+      "max_run_p50_us": 5033.345,
+      "run_p95_us": [
+        9476.238,
+        4153.653,
+        7121.449,
+        5045.916,
+        5745.899
+      ],
+      "median_run_p95_us": 5745.899,
+      "min_run_p95_us": 4153.653,
+      "max_run_p95_us": 9476.238
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "run_count": 5,
+      "samples_per_run": 31,
+      "run_p50_us": [
+        780.445,
+        754.305,
+        946.415,
+        823.039,
+        858.464
+      ],
+      "median_run_p50_us": 823.039,
+      "min_run_p50_us": 754.305,
+      "max_run_p50_us": 946.415,
+      "run_p95_us": [
+        1028.879,
+        1027.186,
+        1437.083,
+        1128.949,
+        1330.816
+      ],
+      "median_run_p95_us": 1128.949,
+      "min_run_p95_us": 1027.186,
+      "max_run_p95_us": 1437.083
+    },
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "implementation": "scion_baseline",
+      "run_count": 5,
+      "samples_per_run": 31,
+      "run_p50_us": [
+        2162.506,
+        2034.303,
+        2641.416,
+        2191.349,
+        2322.39
+      ],
+      "median_run_p50_us": 2191.349,
+      "min_run_p50_us": 2034.303,
+      "max_run_p50_us": 2641.416,
+      "run_p95_us": [
+        2693.535,
+        2476.419,
+        4894.888,
+        3899.65,
+        2942.455
+      ],
+      "median_run_p95_us": 2942.455,
+      "min_run_p95_us": 2476.419,
+      "max_run_p95_us": 4894.888
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "run_count": 5,
+      "samples_per_run": 31,
+      "run_p50_us": [
+        3645.414,
+        3557.025,
+        4655.857,
+        3814.463,
+        3922.722
+      ],
+      "median_run_p50_us": 3814.463,
+      "min_run_p50_us": 3557.025,
+      "max_run_p50_us": 4655.857,
+      "run_p95_us": [
+        5510.727,
+        4088.336,
+        6300.242,
+        4516.72,
+        6008.22
+      ],
+      "median_run_p95_us": 5510.727,
+      "min_run_p95_us": 4088.336,
+      "max_run_p95_us": 6300.242
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "run_count": 5,
+      "samples_per_run": 31,
+      "run_p50_us": [
+        767.246,
+        694.105,
+        889.458,
+        799.704,
+        841.659
+      ],
+      "median_run_p50_us": 799.704,
+      "min_run_p50_us": 694.105,
+      "max_run_p50_us": 889.458,
+      "run_p95_us": [
+        1088.108,
+        890.927,
+        1776.785,
+        990.741,
+        1036.302
+      ],
+      "median_run_p95_us": 1036.302,
+      "min_run_p95_us": 890.927,
+      "max_run_p95_us": 1776.785
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "implementation": "scion_baseline",
+      "run_count": 5,
+      "samples_per_run": 31,
+      "run_p50_us": [
+        1854.692,
+        1691.502,
+        2083.296,
+        1789.033,
+        1889.949
+      ],
+      "median_run_p50_us": 1854.692,
+      "min_run_p50_us": 1691.502,
+      "max_run_p50_us": 2083.296,
+      "run_p95_us": [
+        2396.679,
+        2927.007,
+        2750.6,
+        2221.459,
+        2421.86
+      ],
+      "median_run_p95_us": 2421.86,
+      "min_run_p95_us": 2221.459,
+      "max_run_p95_us": 2927.007
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "run_count": 5,
+      "samples_per_run": 31,
+      "run_p50_us": [
+        1422.496,
+        1429.983,
+        2148.644,
+        1517.845,
+        1462.782
+      ],
+      "median_run_p50_us": 1462.782,
+      "min_run_p50_us": 1422.496,
+      "max_run_p50_us": 2148.644,
+      "run_p95_us": [
+        5457.44,
+        2087.543,
+        4892.93,
+        1930.076,
+        1823.215
+      ],
+      "median_run_p95_us": 2087.543,
+      "min_run_p95_us": 1823.215,
+      "max_run_p95_us": 5457.44
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "run_count": 5,
+      "samples_per_run": 31,
+      "run_p50_us": [
+        1203.855,
+        1148.238,
+        1792.297,
+        1421.841,
+        1306.406
+      ],
+      "median_run_p50_us": 1306.406,
+      "min_run_p50_us": 1148.238,
+      "max_run_p50_us": 1792.297,
+      "run_p95_us": [
+        1555.085,
+        1743.089,
+        3203.782,
+        2246.562,
+        1630.915
+      ],
+      "median_run_p95_us": 1743.089,
+      "min_run_p95_us": 1555.085,
+      "max_run_p95_us": 3203.782
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "implementation": "scion_baseline",
+      "run_count": 5,
+      "samples_per_run": 31,
+      "run_p50_us": [
+        2527.652,
+        2608.227,
+        3338.305,
+        2903.951,
+        2633.094
+      ],
+      "median_run_p50_us": 2633.094,
+      "min_run_p50_us": 2527.652,
+      "max_run_p50_us": 3338.305,
+      "run_p95_us": [
+        5012.019,
+        3007.578,
+        6976.245,
+        3637.397,
+        3904.613
+      ],
+      "median_run_p95_us": 3904.613,
+      "min_run_p95_us": 3007.578,
+      "max_run_p95_us": 6976.245
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "git",
+      "run_count": 5,
+      "samples_per_run": 31,
+      "run_p50_us": [
+        41.592,
+        40.581,
+        58.198,
+        42.564,
+        48.333
+      ],
+      "median_run_p50_us": 42.564,
+      "min_run_p50_us": 40.581,
+      "max_run_p50_us": 58.198,
+      "run_p95_us": [
+        52.649,
+        50.256,
+        162.905,
+        55.293,
+        103.155
+      ],
+      "median_run_p95_us": 55.293,
+      "min_run_p95_us": 50.256,
+      "max_run_p95_us": 162.905
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "scion",
+      "run_count": 5,
+      "samples_per_run": 31,
+      "run_p50_us": [
+        17.466,
+        17.376,
+        28.673,
+        17.617,
+        33.13
+      ],
+      "median_run_p50_us": 17.617,
+      "min_run_p50_us": 17.376,
+      "max_run_p50_us": 33.13,
+      "run_p95_us": [
+        40.772,
+        42.615,
+        52.539,
+        53.851,
+        77.647
+      ],
+      "median_run_p95_us": 52.539,
+      "min_run_p95_us": 40.772,
+      "max_run_p95_us": 77.647
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "implementation": "scion_baseline",
+      "run_count": 5,
+      "samples_per_run": 31,
+      "run_p50_us": [
+        38.007,
+        37.627,
+        64.307,
+        38.969,
+        60.13
+      ],
+      "median_run_p50_us": 38.969,
+      "min_run_p50_us": 37.627,
+      "max_run_p50_us": 64.307,
+      "run_p95_us": [
+        72.71,
+        59.409,
+        109.105,
+        98.679,
+        84.778
+      ],
+      "median_run_p95_us": 84.778,
+      "min_run_p95_us": 59.409,
+      "max_run_p95_us": 109.105
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "run_count": 5,
+      "samples_per_run": 31,
+      "run_p50_us": [
+        3464.006,
+        3354.32,
+        4197.532,
+        3939.531,
+        3457.742
+      ],
+      "median_run_p50_us": 3464.006,
+      "min_run_p50_us": 3354.32,
+      "max_run_p50_us": 4197.532,
+      "run_p95_us": [
+        4559.049,
+        3690.466,
+        7592.116,
+        4818.825,
+        4746.023
+      ],
+      "median_run_p95_us": 4746.023,
+      "min_run_p95_us": 3690.466,
+      "max_run_p95_us": 7592.116
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "run_count": 5,
+      "samples_per_run": 31,
+      "run_p50_us": [
+        708.897,
+        740.786,
+        906.624,
+        822.698,
+        794.948
+      ],
+      "median_run_p50_us": 794.948,
+      "min_run_p50_us": 708.897,
+      "max_run_p50_us": 906.624,
+      "run_p95_us": [
+        906.225,
+        872.503,
+        1199.455,
+        1265.595,
+        1062.741
+      ],
+      "median_run_p95_us": 1062.741,
+      "min_run_p95_us": 872.503,
+      "max_run_p95_us": 1265.595
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "implementation": "scion_baseline",
+      "run_count": 5,
+      "samples_per_run": 31,
+      "run_p50_us": [
+        1758.267,
+        1673.239,
+        2095.925,
+        1910.456,
+        1916.959
+      ],
+      "median_run_p50_us": 1910.456,
+      "min_run_p50_us": 1673.239,
+      "max_run_p50_us": 2095.925,
+      "run_p95_us": [
+        2653.48,
+        2066.462,
+        2939.304,
+        2444.821,
+        2316.426
+      ],
+      "median_run_p95_us": 2444.821,
+      "min_run_p95_us": 2066.462,
+      "max_run_p95_us": 2939.304
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "run_count": 5,
+      "samples_per_run": 31,
+      "run_p50_us": [
+        1824.597,
+        1708.372,
+        2262.625,
+        2101.524,
+        2020.896
+      ],
+      "median_run_p50_us": 2020.896,
+      "min_run_p50_us": 1708.372,
+      "max_run_p50_us": 2262.625,
+      "run_p95_us": [
+        2367.996,
+        2208.725,
+        3479.858,
+        2909.56,
+        3421.857
+      ],
+      "median_run_p95_us": 2909.56,
+      "min_run_p95_us": 2208.725,
+      "max_run_p95_us": 3479.858
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "run_count": 5,
+      "samples_per_run": 31,
+      "run_p50_us": [
+        788.818,
+        762.007,
+        930.962,
+        799.424,
+        853.035
+      ],
+      "median_run_p50_us": 799.424,
+      "min_run_p50_us": 762.007,
+      "max_run_p50_us": 930.962,
+      "run_p95_us": [
+        1073.777,
+        951.442,
+        1384.434,
+        1257.723,
+        1082.751
+      ],
+      "median_run_p95_us": 1082.751,
+      "min_run_p95_us": 951.442,
+      "max_run_p95_us": 1384.434
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "implementation": "scion_baseline",
+      "run_count": 5,
+      "samples_per_run": 31,
+      "run_p50_us": [
+        2061.543,
+        2021.683,
+        2659.333,
+        2239.431,
+        2381.444
+      ],
+      "median_run_p50_us": 2239.431,
+      "min_run_p50_us": 2021.683,
+      "max_run_p50_us": 2659.333,
+      "run_p95_us": [
+        3177.93,
+        2929.57,
+        4327.073,
+        2735.448,
+        2774.081
+      ],
+      "median_run_p95_us": 2929.57,
+      "min_run_p95_us": 2735.448,
+      "max_run_p95_us": 4327.073
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "git",
+      "run_count": 5,
+      "samples_per_run": 31,
+      "run_p50_us": [
+        14.762,
+        19.72,
+        14.752,
+        19.81,
+        19.72
+      ],
+      "median_run_p50_us": 19.72,
+      "min_run_p50_us": 14.752,
+      "max_run_p50_us": 19.81,
+      "run_p95_us": [
+        80.331,
+        37.597,
+        136.716,
+        94.432,
+        37.336
+      ],
+      "median_run_p95_us": 80.331,
+      "min_run_p95_us": 37.336,
+      "max_run_p95_us": 136.716
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "scion",
+      "run_count": 5,
+      "samples_per_run": 31,
+      "run_p50_us": [
+        13.931,
+        16.304,
+        14.182,
+        16.034,
+        15.824
+      ],
+      "median_run_p50_us": 15.824,
+      "min_run_p50_us": 13.931,
+      "max_run_p50_us": 16.304,
+      "run_p95_us": [
+        64.827,
+        36.915,
+        32.248,
+        43.736,
+        45.398
+      ],
+      "median_run_p95_us": 43.736,
+      "min_run_p95_us": 32.248,
+      "max_run_p95_us": 64.827
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "implementation": "scion_baseline",
+      "run_count": 5,
+      "samples_per_run": 31,
+      "run_p50_us": [
+        14.693,
+        16.254,
+        14.852,
+        16.455,
+        16.094
+      ],
+      "median_run_p50_us": 16.094,
+      "min_run_p50_us": 14.693,
+      "max_run_p50_us": 16.455,
+      "run_p95_us": [
+        32.459,
+        57.116,
+        57.697,
+        96.004,
+        46.891
+      ],
+      "median_run_p95_us": 57.116,
+      "min_run_p95_us": 32.459,
+      "max_run_p95_us": 96.004
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "git",
+      "run_count": 5,
+      "samples_per_run": 31,
+      "run_p50_us": [
+        3308.279,
+        3436.183,
+        3415.604,
+        3589.614,
+        3733.811
+      ],
+      "median_run_p50_us": 3436.183,
+      "min_run_p50_us": 3308.279,
+      "max_run_p50_us": 3733.811,
+      "run_p95_us": [
+        3634.184,
+        6333.72,
+        4311.649,
+        4933.161,
+        4306.703
+      ],
+      "median_run_p95_us": 4311.649,
+      "min_run_p95_us": 3634.184,
+      "max_run_p95_us": 6333.72
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "scion",
+      "run_count": 5,
+      "samples_per_run": 31,
+      "run_p50_us": [
+        908.908,
+        1006.786,
+        1024.442,
+        1134.878,
+        1022.379
+      ],
+      "median_run_p50_us": 1022.379,
+      "min_run_p50_us": 908.908,
+      "max_run_p50_us": 1134.878,
+      "run_p95_us": [
+        1322.54,
+        1815.934,
+        1260.267,
+        2526.023,
+        1227.798
+      ],
+      "median_run_p95_us": 1322.54,
+      "min_run_p95_us": 1227.798,
+      "max_run_p95_us": 2526.023
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "implementation": "scion_baseline",
+      "run_count": 5,
+      "samples_per_run": 31,
+      "run_p50_us": [
+        2205.759,
+        2266.107,
+        2244.037,
+        2592.634,
+        2302.476
+      ],
+      "median_run_p50_us": 2266.107,
+      "min_run_p50_us": 2205.759,
+      "max_run_p50_us": 2592.634,
+      "run_p95_us": [
+        2626.213,
+        7837.51,
+        4109.383,
+        6835.837,
+        3432.497
+      ],
+      "median_run_p95_us": 4109.383,
+      "min_run_p95_us": 2626.213,
+      "max_run_p95_us": 7837.51
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "run_count": 5,
+      "samples_per_run": 31,
+      "run_p50_us": [
+        906.558,
+        889.489,
+        1118.544,
+        1073.636,
+        972.805
+      ],
+      "median_run_p50_us": 972.805,
+      "min_run_p50_us": 889.489,
+      "max_run_p50_us": 1118.544,
+      "run_p95_us": [
+        1066.688,
+        1281.539,
+        2379.366,
+        1502.261,
+        1234.709
+      ],
+      "median_run_p95_us": 1281.539,
+      "min_run_p95_us": 1066.688,
+      "max_run_p95_us": 2379.366
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "run_count": 5,
+      "samples_per_run": 31,
+      "run_p50_us": [
+        593.835,
+        604.551,
+        844.18,
+        703.029,
+        679.163
+      ],
+      "median_run_p50_us": 679.163,
+      "min_run_p50_us": 593.835,
+      "max_run_p50_us": 844.18,
+      "run_p95_us": [
+        836.973,
+        877.992,
+        2096.936,
+        989.43,
+        896.329
+      ],
+      "median_run_p95_us": 896.329,
+      "min_run_p95_us": 836.973,
+      "max_run_p95_us": 2096.936
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "implementation": "scion_baseline",
+      "run_count": 5,
+      "samples_per_run": 31,
+      "run_p50_us": [
+        951.305,
+        997.521,
+        1208.314,
+        1103.801,
+        1010.812
+      ],
+      "median_run_p50_us": 1010.812,
+      "min_run_p50_us": 951.305,
+      "max_run_p50_us": 1208.314,
+      "run_p95_us": [
+        1208.943,
+        1273.012,
+        2911.793,
+        1673.494,
+        1363.633
+      ],
+      "median_run_p95_us": 1363.633,
+      "min_run_p95_us": 1208.943,
+      "max_run_p95_us": 2911.793
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "run_count": 5,
+      "samples_per_run": 31,
+      "run_p50_us": [
+        1005.084,
+        987.116,
+        1195.159,
+        1103.892,
+        997.424
+      ],
+      "median_run_p50_us": 1005.084,
+      "min_run_p50_us": 987.116,
+      "max_run_p50_us": 1195.159,
+      "run_p95_us": [
+        1274.659,
+        1627.536,
+        5140.893,
+        1467.71,
+        1370.255
+      ],
+      "median_run_p95_us": 1467.71,
+      "min_run_p95_us": 1274.659,
+      "max_run_p95_us": 5140.893
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "run_count": 5,
+      "samples_per_run": 31,
+      "run_p50_us": [
+        780.445,
+        779.373,
+        910.66,
+        893.625,
+        813.656
+      ],
+      "median_run_p50_us": 813.656,
+      "min_run_p50_us": 779.373,
+      "max_run_p50_us": 910.66,
+      "run_p95_us": [
+        970.772,
+        1056.291,
+        1709.198,
+        1467.65,
+        1055.651
+      ],
+      "median_run_p95_us": 1056.291,
+      "min_run_p95_us": 970.772,
+      "max_run_p95_us": 1709.198
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "implementation": "scion_baseline",
+      "run_count": 5,
+      "samples_per_run": 31,
+      "run_p50_us": [
+        1327.358,
+        1340.448,
+        1542.362,
+        1656.084,
+        1399.023
+      ],
+      "median_run_p50_us": 1399.023,
+      "min_run_p50_us": 1327.358,
+      "max_run_p50_us": 1656.084,
+      "run_p95_us": [
+        1532.718,
+        1752.698,
+        2900.691,
+        2377.258,
+        1801.295
+      ],
+      "median_run_p95_us": 1801.295,
+      "min_run_p95_us": 1532.718,
+      "max_run_p95_us": 2900.691
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "git",
+      "run_count": 5,
+      "samples_per_run": 31,
+      "run_p50_us": [
+        1739.092,
+        1720.691,
+        2179.17,
+        1940.731,
+        1805.208
+      ],
+      "median_run_p50_us": 1805.208,
+      "min_run_p50_us": 1720.691,
+      "max_run_p50_us": 2179.17,
+      "run_p95_us": [
+        2304.645,
+        2299.482,
+        4659.273,
+        2269.773,
+        2208.014
+      ],
+      "median_run_p95_us": 2299.482,
+      "min_run_p95_us": 2208.014,
+      "max_run_p95_us": 4659.273
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "scion",
+      "run_count": 5,
+      "samples_per_run": 31,
+      "run_p50_us": [
+        1244.036,
+        1322.631,
+        1779.138,
+        1466.929,
+        1473.672
+      ],
+      "median_run_p50_us": 1466.929,
+      "min_run_p50_us": 1244.036,
+      "max_run_p50_us": 1779.138,
+      "run_p95_us": [
+        1539.262,
+        2885.684,
+        3854.552,
+        2097.438,
+        1886.413
+      ],
+      "median_run_p95_us": 2097.438,
+      "min_run_p95_us": 1539.262,
+      "max_run_p95_us": 3854.552
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "implementation": "scion_baseline",
+      "run_count": 5,
+      "samples_per_run": 31,
+      "run_p50_us": [
+        3480.229,
+        3561.858,
+        4367.944,
+        3936.306,
+        3699.205
+      ],
+      "median_run_p50_us": 3699.205,
+      "min_run_p50_us": 3480.229,
+      "max_run_p50_us": 4367.944,
+      "run_p95_us": [
+        3910.658,
+        4389.348,
+        13080.918,
+        7525.299,
+        4559.463
+      ],
+      "median_run_p95_us": 4559.463,
+      "min_run_p95_us": 3910.658,
+      "max_run_p95_us": 13080.918
+    }
+  ],
+  "comparisons": [
+    {
+      "operation": "ancestry_negative",
+      "scope": "fresh_process",
+      "classification": "functional",
+      "git_over_scion_ratio_of_median_run_p50": 4.654136681250828,
+      "git_over_scion_per_run": {
+        "values": [
+          4.905861399586134,
+          4.762833336647643,
+          5.31832758356535,
+          4.654136681250828,
+          4.657651340067842
+        ],
+        "min": 4.654136681250828,
+        "max": 5.31832758356535
+      },
+      "baseline_over_scion_ratio_of_median_run_p50": 2.662509310008396,
+      "baseline_over_scion_per_run": {
+        "values": [
+          2.770862777005426,
+          2.6969236582019214,
+          2.7909701346660825,
+          2.662509310008396,
+          2.7052852536623546
+        ],
+        "min": 2.662509310008396,
+        "max": 2.7909701346660825
+      }
+    },
+    {
+      "operation": "ancestry_positive",
+      "scope": "fresh_process",
+      "classification": "functional",
+      "git_over_scion_ratio_of_median_run_p50": 4.769843592129089,
+      "git_over_scion_per_run": {
+        "values": [
+          4.751297497803834,
+          5.124620914703107,
+          5.234487744221762,
+          4.769843592129089,
+          4.660702255901737
+        ],
+        "min": 4.660702255901737,
+        "max": 5.234487744221762
+      },
+      "baseline_over_scion_ratio_of_median_run_p50": 2.319223112551644,
+      "baseline_over_scion_per_run": {
+        "values": [
+          2.417336812443467,
+          2.4369540631460658,
+          2.342208401071214,
+          2.237118984024089,
+          2.245504414495657
+        ],
+        "min": 2.237118984024089,
+        "max": 2.4369540631460658
+      }
+    },
+    {
+      "operation": "file_read",
+      "scope": "fresh_process",
+      "classification": "functional",
+      "git_over_scion_ratio_of_median_run_p50": 1.119699389010767,
+      "git_over_scion_per_run": {
+        "values": [
+          1.1816173874760665,
+          1.2453716041447853,
+          1.1988214006941929,
+          1.067520911269263,
+          1.119699389010767
+        ],
+        "min": 1.067520911269263,
+        "max": 1.2453716041447853
+      },
+      "baseline_over_scion_ratio_of_median_run_p50": 2.015525035861746,
+      "baseline_over_scion_per_run": {
+        "values": [
+          2.099631600151181,
+          2.27150381715289,
+          1.8625847167071081,
+          2.042388002596634,
+          2.015525035861746
+        ],
+        "min": 1.8625847167071081,
+        "max": 2.27150381715289
+      }
+    },
+    {
+      "operation": "file_read_spread",
+      "scope": "resident",
+      "classification": "functional",
+      "git_over_scion_ratio_of_median_run_p50": 2.4160753817335525,
+      "git_over_scion_per_run": {
+        "values": [
+          2.3813122638268633,
+          2.3354627071823204,
+          2.0297143654308933,
+          2.4160753817335525,
+          1.458889224268035
+        ],
+        "min": 1.458889224268035,
+        "max": 2.4160753817335525
+      },
+      "baseline_over_scion_ratio_of_median_run_p50": 2.2120111256173014,
+      "baseline_over_scion_per_run": {
+        "values": [
+          2.1760563380281686,
+          2.165458103130755,
+          2.24277194573292,
+          2.2120111256173014,
+          1.8149713250830062
+        ],
+        "min": 1.8149713250830062,
+        "max": 2.24277194573292
+      }
+    },
+    {
+      "operation": "merge_base_ancestor",
+      "scope": "fresh_process",
+      "classification": "functional",
+      "git_over_scion_ratio_of_median_run_p50": 4.357525272093269,
+      "git_over_scion_per_run": {
+        "values": [
+          4.886472929071501,
+          4.528055335818982,
+          4.629848757588593,
+          4.788550598153879,
+          4.34964551140452
+        ],
+        "min": 4.34964551140452,
+        "max": 4.886472929071501
+      },
+      "baseline_over_scion_ratio_of_median_run_p50": 2.40324650165797,
+      "baseline_over_scion_per_run": {
+        "values": [
+          2.480285570400213,
+          2.258734641313416,
+          2.3117907754482565,
+          2.3221838390272005,
+          2.4114269109426028
+        ],
+        "min": 2.258734641313416,
+        "max": 2.480285570400213
+      }
+    },
+    {
+      "operation": "merge_base_divergent",
+      "scope": "fresh_process",
+      "classification": "functional",
+      "git_over_scion_ratio_of_median_run_p50": 2.5279401168841567,
+      "git_over_scion_per_run": {
+        "values": [
+          2.313077287790086,
+          2.2419374100237928,
+          2.4304160642432238,
+          2.6287977343687454,
+          2.369065747595351
+        ],
+        "min": 2.2419374100237928,
+        "max": 2.6287977343687454
+      },
+      "baseline_over_scion_ratio_of_median_run_p50": 2.80130569009687,
+      "baseline_over_scion_per_run": {
+        "values": [
+          2.6134583642868194,
+          2.6531029242513524,
+          2.8565430167933816,
+          2.80130569009687,
+          2.7917307027261486
+        ],
+        "min": 2.6134583642868194,
+        "max": 2.8565430167933816
+      }
+    },
+    {
+      "operation": "noop",
+      "scope": "resident",
+      "classification": "control",
+      "git_over_scion_ratio_of_median_run_p50": 1.2462082912032355,
+      "git_over_scion_per_run": {
+        "values": [
+          1.059651137750341,
+          1.2095191364082434,
+          1.0401917924129178,
+          1.2354995634277162,
+          1.2462082912032355
+        ],
+        "min": 1.0401917924129178,
+        "max": 1.2462082912032355
+      },
+      "baseline_over_scion_ratio_of_median_run_p50": 1.01706268958544,
+      "baseline_over_scion_per_run": {
+        "values": [
+          1.0546981551934536,
+          0.9969332679097156,
+          1.047242984064307,
+          1.0262567045029312,
+          1.01706268958544
+        ],
+        "min": 0.9969332679097156,
+        "max": 1.0546981551934536
+      }
+    },
+    {
+      "operation": "prepared_commit",
+      "scope": "resident",
+      "classification": "functional",
+      "git_over_scion_ratio_of_median_run_p50": 3.36096789937978,
+      "git_over_scion_per_run": {
+        "values": [
+          3.6398392356542137,
+          3.4130222311394878,
+          3.334111643216502,
+          3.16299549378876,
+          3.6520810775651693
+        ],
+        "min": 3.16299549378876,
+        "max": 3.6520810775651693
+      },
+      "baseline_over_scion_ratio_of_median_run_p50": 2.2165038601144977,
+      "baseline_over_scion_per_run": {
+        "values": [
+          2.4268231768231767,
+          2.250832848291494,
+          2.1904968753721534,
+          2.284504589920679,
+          2.252076773877398
+        ],
+        "min": 2.1904968753721534,
+        "max": 2.4268231768231767
+      }
+    },
+    {
+      "operation": "process_startup",
+      "scope": "fresh_process",
+      "classification": "control",
+      "git_over_scion_ratio_of_median_run_p50": 1.4323586532246309,
+      "git_over_scion_per_run": {
+        "values": [
+          1.5266159791861376,
+          1.4713216916356104,
+          1.3250065151981807,
+          1.5271574856798225,
+          1.4323586532246309
+        ],
+        "min": 1.3250065151981807,
+        "max": 1.5271574856798225
+      },
+      "baseline_over_scion_ratio_of_median_run_p50": 1.4883201823420886,
+      "baseline_over_scion_per_run": {
+        "values": [
+          1.6019685602903162,
+          1.6500196013239576,
+          1.4313463953185341,
+          1.5700646772750484,
+          1.4883201823420886
+        ],
+        "min": 1.4313463953185341,
+        "max": 1.6500196013239576
+      }
+    },
+    {
+      "operation": "repository_open",
+      "scope": "fresh_process",
+      "classification": "control",
+      "git_over_scion_ratio_of_median_run_p50": 1.235268958872054,
+      "git_over_scion_per_run": {
+        "values": [
+          1.2878345046736155,
+          1.2665514458417213,
+          1.3124096808907826,
+          1.2352966848510283,
+          1.225854660937792
+        ],
+        "min": 1.225854660937792,
+        "max": 1.3124096808907826
+      },
+      "baseline_over_scion_ratio_of_median_run_p50": 1.719428112126009,
+      "baseline_over_scion_per_run": {
+        "values": [
+          1.7007707141438537,
+          1.7199056164378288,
+          1.6936749170930974,
+          1.8532203105329417,
+          1.719428112126009
+        ],
+        "min": 1.6936749170930974,
+        "max": 1.8532203105329417
+      }
+    },
+    {
+      "operation": "small_diff",
+      "scope": "fresh_process",
+      "classification": "functional",
+      "git_over_scion_ratio_of_median_run_p50": 1.2306035261420287,
+      "git_over_scion_per_run": {
+        "values": [
+          1.39794346787392,
+          1.3009607365924434,
+          1.224845964731235,
+          1.3229890471863328,
+          1.2249727212025472
+        ],
+        "min": 1.224845964731235,
+        "max": 1.39794346787392
+      },
+      "baseline_over_scion_ratio_of_median_run_p50": 2.5217341807272198,
+      "baseline_over_scion_per_run": {
+        "values": [
+          2.7975307788520585,
+          2.6930096149266123,
+          2.455090049226086,
+          2.683365043570616,
+          2.5101956201922815
+        ],
+        "min": 2.455090049226086,
+        "max": 2.7975307788520585
+      }
+    }
+  ]
+}

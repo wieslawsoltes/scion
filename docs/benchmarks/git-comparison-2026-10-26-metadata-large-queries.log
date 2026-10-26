@@ -1,0 +1,18 @@
+Building optimized comparison driver
+    Finished `release` profile [optimized] target(s) in 0.06s
+Reusing retained fixture in /tmp/scion-official-benchmarks/scion-git-comparison-p46e8bxc; measuring queries only
+Preparing verified frozen Scion graph snapshot (setup excluded from query timings)
+Measuring fresh-process queries with warm OS cache
+Measuring resident reads across deterministic warmed paths
+Raw results: /tmp/scion-final-measurements/git-large-queries.json
+Fixture retained: /tmp/scion-official-benchmarks/scion-git-comparison-p46e8bxc
+operation,scope,scion_p50_us,git_p50_us,git_over_scion,baseline_p50_us,baseline_over_scion
+ancestry_negative,fresh_process,932.845,42000.304,45.024,3090.457,3.313
+ancestry_positive,fresh_process,926.056,48656.724,52.542,2542.232,2.745
+file_read,fresh_process,1386.860,1649.976,1.190,2896.806,2.089
+file_read_spread,resident,18.658,39.670,2.126,39.079,2.094
+merge_base_ancestor,fresh_process,912.050,39084.121,42.853,2425.826,2.660
+merge_base_divergent,fresh_process,922.260,9439.665,10.235,2685.096,2.911
+process_startup,fresh_process,622.087,946.857,1.522,1010.729,1.625
+repository_open,fresh_process,805.604,1005.245,1.248,1390.125,1.726
+small_diff,fresh_process,1305.678,1751.810,1.342,3461.026,2.651

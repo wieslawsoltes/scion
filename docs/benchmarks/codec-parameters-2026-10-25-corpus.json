@@ -1,0 +1,56 @@
+{
+  "source_report": "/workspace/scratch/481213027244/scion/target/performance-baseline/fixed-default.json",
+  "source_report_sha256": "91755d39f67ccd866c2974faa60bb2c584d4cf7fde760c24dc8b989219fcaf13",
+  "input_store": "/tmp/scion-official-benchmarks/scion-git-comparison-9_t3p5up/scion",
+  "input_tip": "dd98caaca1595ead0792f484be4d83df672b2e2af533a5e4066d6016a194bb08",
+  "database_sha256": "482bbb84468348691064d876acd76b7c289210fe28e80b60751e45e0d977021b",
+  "source_file_stats": {
+    "/tmp/scion-official-benchmarks/scion-git-comparison-9_t3p5up/scion/metadata.sqlite3-wal": [
+      0,
+      1792957770141994854
+    ],
+    "/tmp/scion-official-benchmarks/scion-git-comparison-9_t3p5up/scion/metadata.sqlite3": [
+      58826752,
+      1792957769427231938
+    ],
+    "/tmp/scion-official-benchmarks/scion-git-comparison-9_t3p5up/scion/metadata.sqlite3-shm": [
+      32768,
+      1792957771972410282
+    ]
+  },
+  "extraction": "read-only immutable SQLite, WAL size zero, file size/mtime unchanged",
+  "cases": [
+    {
+      "name": "directory_100",
+      "kind": "tree",
+      "id": "1900ec7bdd54cba1d2052fac2bafe8a082233c4852689c2f1b76567bb8be16ad",
+      "file": "directory_100.bin",
+      "decoded_bytes": 14413,
+      "raw_sha256": "20f6e517c9fe54bb45a3540440547295781c3e1be9d3ba3e83af16cb812f5e49"
+    },
+    {
+      "name": "root_1000",
+      "kind": "tree",
+      "id": "c2c82cfbb62946b8a00b9d895b7e9591a700ff49b1bc1256c042c7359df3aac6",
+      "file": "root_1000.bin",
+      "decoded_bytes": 103013,
+      "raw_sha256": "5ead681082862051aba28d7a9f035da7fff0af313491ab4993646cf259497b9f"
+    },
+    {
+      "name": "changeset",
+      "kind": "changeset",
+      "id": "dd98caaca1595ead0792f484be4d83df672b2e2af533a5e4066d6016a194bb08",
+      "file": "changeset.bin",
+      "decoded_bytes": 339,
+      "raw_sha256": "ade91d022f51e729eb3624a86c33be66d046785144e82c8ee32d44ab080d8290"
+    },
+    {
+      "name": "blob_level3_control",
+      "kind": "blob",
+      "id": "73cfbf1f1db945c5a9e71757da13ce16fa216e338687f1647633951d39788887",
+      "file": "blob_level3_control.bin",
+      "decoded_bytes": 1024,
+      "raw_sha256": "121d0d921c51beaeada8ad657df1c1905a7b5dae6eddc99d8fb96697071da76d"
+    }
+  ]
+}

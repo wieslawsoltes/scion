@@ -18,18 +18,34 @@ Passing unit tests establishes the behavior those tests cover. It does not estab
 ## Recorded integration evidence
 
 All six workflows below completed successfully for published commit
-[`991fdc9`](https://github.com/wieslawsoltes/scion/commit/991fdc9c36190104019840110c69a689edc9e5a1)
-on October 25, 2026. This records eighteen completed jobs at that source revision;
+[`bd393c7`](https://github.com/wieslawsoltes/scion/commit/bd393c7cd064d03d231d6b0af8a05afb181f13c0),
+verified on October 26, 2026. This records eighteen completed jobs at the exact
+production revision used by the fixed performance batch;
 new commits must pass their own applicable checks before merge.
 
 | Gate | Completed run | What it establishes |
 |---|---|---|
-| Main CI, eleven jobs | [40227650085](https://github.com/wieslawsoltes/scion/actions/runs/40227650085) | Linux/macOS/Windows all-target/all-feature builds and tests; native Linux x64/ARM64 static-CRT builds, tests and linkage verification; Rust 1.88; formatting, Clippy and rustdoc; all thirteen crate archives; dependency checks; PostgreSQL and running three-tier containers |
-| Linux FUSE | [40227650121](https://github.com/wieslawsoltes/scion/actions/runs/40227650121) | Real kernel mount, lazy reads, create/write/append/holes/truncate, rename, symlinks/modes, fsync, mmap publication, two authority commits, open/unlink and `O_PATH` lifetimes, cleanup, and reopen |
-| Cloud storage | [40227650078](https://github.com/wieslawsoltes/scion/actions/runs/40227650078) | Actual S3/GCS/Azure SDK HTTP contracts and pinned official MinIO integration with conditional writes, integrity checks, concurrency, and metadata restart |
-| Spanner transactions | [40227650075](https://github.com/wieslawsoltes/scion/actions/runs/40227650075) | Official emulator 1.5.59 through the official Rust SDK: two clients, concurrent CAS/publication, committed cursor reads, immutable conflicts, rollback, and restart |
-| Fuzz, three jobs | [40227650097](https://github.com/wieslawsoltes/scion/actions/runs/40227650097) | Sanitizer execution of generated and seeded path, canonical-object, and envelope inputs |
-| Git comparison | [40227650099](https://github.com/wieslawsoltes/scion/actions/runs/40227650099) | Release comparison workers, equivalent query results, and retained raw timing data; no noisy shared-runner speed threshold |
+| Main CI, eleven jobs | [40240035168](https://github.com/wieslawsoltes/scion/actions/runs/40240035168) | Linux/macOS/Windows all-target/all-feature builds and tests; native Linux x64/ARM64 static-CRT builds, tests and linkage verification; Rust 1.88; formatting, Clippy and rustdoc; all thirteen crate archives; dependency checks; PostgreSQL and running three-tier containers |
+| Linux FUSE | [40240035176](https://github.com/wieslawsoltes/scion/actions/runs/40240035176) | Real kernel mount, lazy reads, create/write/append/holes/truncate, rename, symlinks/modes, fsync, mmap publication, two authority commits, open/unlink and `O_PATH` lifetimes, cleanup, and reopen |
+| Cloud storage | [40240035164](https://github.com/wieslawsoltes/scion/actions/runs/40240035164) | Actual S3/GCS/Azure SDK HTTP contracts and pinned official MinIO integration with conditional writes, integrity checks, concurrency, and metadata restart |
+| Spanner transactions | [40240035167](https://github.com/wieslawsoltes/scion/actions/runs/40240035167) | Official emulator 1.5.59 through the official Rust SDK: two clients, concurrent CAS/publication, committed cursor reads, immutable conflicts, rollback, and restart |
+| Fuzz, three jobs | [40240035178](https://github.com/wieslawsoltes/scion/actions/runs/40240035178) | Sanitizer execution of generated and seeded path, canonical-object, and envelope inputs |
+| Git comparison | [40240035189](https://github.com/wieslawsoltes/scion/actions/runs/40240035189) | Release comparison workers, equivalent query results, and retained raw timing data; no noisy shared-runner speed threshold |
+
+Metadata codec regressions exercise adaptive admission, exact-byte collision
+checks, partial final chunks, entry and retained-capacity bounds, lazy index
+allocation, eviction, clock rollover, compressor failure recovery, current and
+legacy decoding, alternate valid encodings, and corrupt-duplicate rollback.
+The original blob and large-object paths remain covered. Python checks include
+the strict multi-run summarizer's rejection of partial, mixed, duplicate, or
+inconsistent reports.
+
+The [fixed-batch evidence audit](benchmarks/metadata-2026-10-26-audit.json)
+independently verifies the nine evaluation stages, 6,975 raw Git-comparison
+observations, original MemoryStore rows, source/build identities, and published
+file mappings. Its [read-only source](../scripts/diagnostics/audit_metadata_evidence_2026_10_26.py)
+is retained. Performance validation reports median and tail exceptions; it does
+not replace correctness checks or create a noisy shared-runner speed gate.
 
 The Windows run includes regressions for multiple writable handles protected
 by separate lifetime-pin files and atomic graph-snapshot replacement while an
