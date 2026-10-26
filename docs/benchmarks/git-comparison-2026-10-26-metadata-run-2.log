@@ -1,0 +1,25 @@
+Building optimized comparison driver
+    Finished `release` profile [optimized] target(s) in 0.07s
+Initializing 100000 paths in /tmp/scion-official-benchmarks/scion-git-comparison-2q0i9wr3
+Measuring durable prepared commits
+Preparing trunk: 10000 commits (setup excluded from comparisons)
+Preparing left: 1000 commits (setup excluded from comparisons)
+Preparing right: 1000 commits (setup excluded from comparisons)
+Preparing side: 1 commits (setup excluded from comparisons)
+Preparing verified frozen Scion graph snapshot (setup excluded from query timings)
+Measuring fresh-process queries with warm OS cache
+Measuring resident reads across deterministic warmed paths
+Raw results: /tmp/scion-final-measurements/git-full-2.json
+Fixture retained: /tmp/scion-official-benchmarks/scion-git-comparison-2q0i9wr3
+operation,scope,scion_p50_us,git_p50_us,git_over_scion,baseline_p50_us,baseline_over_scion
+ancestry_negative,fresh_process,754.305,3592.629,4.763,2034.303,2.697
+ancestry_positive,fresh_process,694.105,3557.025,5.125,1691.502,2.437
+file_read,fresh_process,1148.238,1429.983,1.245,2608.227,2.272
+file_read_spread,resident,17.376,40.581,2.335,37.627,2.165
+merge_base_ancestor,fresh_process,740.786,3354.320,4.528,1673.239,2.259
+merge_base_divergent,fresh_process,762.007,1708.372,2.242,2021.683,2.653
+noop,resident,16.304,19.720,1.210,16.254,0.997
+prepared_commit,resident,1006.786,3436.183,3.413,2266.107,2.251
+process_startup,fresh_process,604.551,889.489,1.471,997.521,1.650
+repository_open,fresh_process,779.373,987.116,1.267,1340.448,1.720
+small_diff,fresh_process,1322.631,1720.691,1.301,3561.858,2.693

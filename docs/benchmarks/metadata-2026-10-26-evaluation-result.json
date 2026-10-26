@@ -1,0 +1,748 @@
+{
+  "schema": 1,
+  "started_utc": "2026-10-26T09:15:43.718464+00:00",
+  "status": "complete",
+  "plan": {
+    "path": "/tmp/scion-final-measurements/evaluation-plan.json",
+    "bytes": 50452,
+    "sha256": "af0d08cef05e8fc766b1ab936b0fa13dd1a346b4f15f6dbb45f4ece73c71f6c9"
+  },
+  "stages": [
+    {
+      "stage": 1,
+      "name": "git-full-1",
+      "started_utc": "2026-10-26T09:15:43.795966+00:00",
+      "command": [
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+        "/tmp/scion-metadata-compression-work/scripts/compare_git.py",
+        "--static-crt",
+        "--offline",
+        "--graph-snapshot",
+        "--baseline-driver",
+        "/tmp/scion-durable-baseline-target/release/examples/comparison_driver",
+        "--baseline-report",
+        "/tmp/scion-metadata-compression-work/docs/benchmarks/git-comparison-2026-10-25-git-2.56-full.json",
+        "--work-root",
+        "/tmp/scion-official-benchmarks",
+        "--keep-workdir",
+        "--output",
+        "/tmp/scion-final-measurements/git-full-1"
+      ],
+      "cwd": "/tmp/scion-metadata-compression-work",
+      "log": "/tmp/scion-final-measurements/git-full-1.log",
+      "environment": {
+        "PATH": "/tmp/scion-git-current/bin:/tmp/ferroui-macos-cargo/bin:/root/.codex/tmp/arg0/codex-arg0mZ91Xv:/opt/codex/codex-path:/opt/codex/runtimes/codex-primary-runtime/dependencies/bin/override:/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin:/opt/codex/runtimes/codex-primary-runtime/dependencies/node/bin:/opt/codex/runtimes/codex-primary-runtime/dependencies/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/codex/runtimes/codex-primary-runtime/dependencies/bin/fallback",
+        "RUSTUP_HOME": "/tmp/ferroui-macos-rustup",
+        "CARGO_HOME": "/tmp/ferroui-macos-cargo",
+        "CARGO_TARGET_DIR": "/tmp/scion-metadata-static-target",
+        "CARGO_INCREMENTAL": "0",
+        "RUSTFLAGS": null,
+        "CARGO_ENCODED_RUSTFLAGS": null,
+        "CARGO_BUILD_TARGET": null,
+        "CARGO_BUILD_RUSTFLAGS": null,
+        "CARGO_BUILD_TARGET_DIR": null,
+        "RUSTC": null,
+        "RUSTC_WRAPPER": null,
+        "RUSTC_WORKSPACE_WRAPPER": null,
+        "CC": null,
+        "CXX": null,
+        "CFLAGS": null,
+        "CXXFLAGS": null,
+        "LDFLAGS": null,
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "LC_ALL": "C",
+        "TZ": "UTC",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": "/dev/null"
+      },
+      "returncode": 0,
+      "validation": {
+        "report": {
+          "path": "/tmp/scion-final-measurements/git-full-1.json",
+          "bytes": 253655,
+          "sha256": "e9bbd5d6c4bce347c4c3f69cea12db4e1f25ce2ac6a789a621072c4f5ab952d7"
+        },
+        "validation": "passed"
+      },
+      "status": "complete",
+      "finished_utc": "2026-10-26T09:16:05.403437+00:00",
+      "elapsed_seconds": 21.607470824000302,
+      "outputs": [
+        {
+          "path": "/tmp/scion-final-measurements/git-full-1.log",
+          "bytes": 1613,
+          "sha256": "d7b2043fa3d17002f1ca66d117e23f1d23ba89bfbde3da907d116500cc2f6c59"
+        },
+        {
+          "path": "/tmp/scion-final-measurements/git-full-1.json",
+          "bytes": 253655,
+          "sha256": "e9bbd5d6c4bce347c4c3f69cea12db4e1f25ce2ac6a789a621072c4f5ab952d7"
+        },
+        {
+          "path": "/tmp/scion-final-measurements/git-full-1.csv",
+          "bytes": 55805,
+          "sha256": "373bce5f5cc4c4047248a17e0ade62dc42c57d97cd7caa2fb9fe079f821320c0"
+        },
+        {
+          "path": "/tmp/scion-final-measurements/git-full-1-summary.csv",
+          "bytes": 2502,
+          "sha256": "db4abefbb0aec772c0abafaef96d3c91e8cfbe27b92c0ad1053d73299d4b1976"
+        }
+      ]
+    },
+    {
+      "stage": 2,
+      "name": "git-full-2",
+      "started_utc": "2026-10-26T09:16:05.473415+00:00",
+      "command": [
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+        "/tmp/scion-metadata-compression-work/scripts/compare_git.py",
+        "--static-crt",
+        "--offline",
+        "--graph-snapshot",
+        "--baseline-driver",
+        "/tmp/scion-durable-baseline-target/release/examples/comparison_driver",
+        "--baseline-report",
+        "/tmp/scion-metadata-compression-work/docs/benchmarks/git-comparison-2026-10-25-git-2.56-full.json",
+        "--work-root",
+        "/tmp/scion-official-benchmarks",
+        "--keep-workdir",
+        "--output",
+        "/tmp/scion-final-measurements/git-full-2"
+      ],
+      "cwd": "/tmp/scion-metadata-compression-work",
+      "log": "/tmp/scion-final-measurements/git-full-2.log",
+      "environment": {
+        "PATH": "/tmp/scion-git-current/bin:/tmp/ferroui-macos-cargo/bin:/root/.codex/tmp/arg0/codex-arg0mZ91Xv:/opt/codex/codex-path:/opt/codex/runtimes/codex-primary-runtime/dependencies/bin/override:/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin:/opt/codex/runtimes/codex-primary-runtime/dependencies/node/bin:/opt/codex/runtimes/codex-primary-runtime/dependencies/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/codex/runtimes/codex-primary-runtime/dependencies/bin/fallback",
+        "RUSTUP_HOME": "/tmp/ferroui-macos-rustup",
+        "CARGO_HOME": "/tmp/ferroui-macos-cargo",
+        "CARGO_TARGET_DIR": "/tmp/scion-metadata-static-target",
+        "CARGO_INCREMENTAL": "0",
+        "RUSTFLAGS": null,
+        "CARGO_ENCODED_RUSTFLAGS": null,
+        "CARGO_BUILD_TARGET": null,
+        "CARGO_BUILD_RUSTFLAGS": null,
+        "CARGO_BUILD_TARGET_DIR": null,
+        "RUSTC": null,
+        "RUSTC_WRAPPER": null,
+        "RUSTC_WORKSPACE_WRAPPER": null,
+        "CC": null,
+        "CXX": null,
+        "CFLAGS": null,
+        "CXXFLAGS": null,
+        "LDFLAGS": null,
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "LC_ALL": "C",
+        "TZ": "UTC",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": "/dev/null"
+      },
+      "returncode": 0,
+      "validation": {
+        "report": {
+          "path": "/tmp/scion-final-measurements/git-full-2.json",
+          "bytes": 253662,
+          "sha256": "e045109cac94aab1ba41ebd78f2da57cd0d54994f937220b0f98da464b37559d"
+        },
+        "validation": "passed"
+      },
+      "status": "complete",
+      "finished_utc": "2026-10-26T09:16:28.203040+00:00",
+      "elapsed_seconds": 22.7296245120001,
+      "outputs": [
+        {
+          "path": "/tmp/scion-final-measurements/git-full-2.log",
+          "bytes": 1613,
+          "sha256": "cd879b7b10765150459f42d3ccbf80251a1dbb6c1d4b1cd2a27ecdd607570e52"
+        },
+        {
+          "path": "/tmp/scion-final-measurements/git-full-2.json",
+          "bytes": 253662,
+          "sha256": "e045109cac94aab1ba41ebd78f2da57cd0d54994f937220b0f98da464b37559d"
+        },
+        {
+          "path": "/tmp/scion-final-measurements/git-full-2.csv",
+          "bytes": 55810,
+          "sha256": "a604e84b24c315c00d968a5e992e4f74c3f96587ba240b689d490291d101cd0b"
+        },
+        {
+          "path": "/tmp/scion-final-measurements/git-full-2-summary.csv",
+          "bytes": 2502,
+          "sha256": "f4181b8ed942f66abcfb5d0c83ab321c48c102c4908a71481d2656779aea0544"
+        }
+      ]
+    },
+    {
+      "stage": 3,
+      "name": "git-full-3",
+      "started_utc": "2026-10-26T09:16:28.271964+00:00",
+      "command": [
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+        "/tmp/scion-metadata-compression-work/scripts/compare_git.py",
+        "--static-crt",
+        "--offline",
+        "--graph-snapshot",
+        "--baseline-driver",
+        "/tmp/scion-durable-baseline-target/release/examples/comparison_driver",
+        "--baseline-report",
+        "/tmp/scion-metadata-compression-work/docs/benchmarks/git-comparison-2026-10-25-git-2.56-full.json",
+        "--work-root",
+        "/tmp/scion-official-benchmarks",
+        "--keep-workdir",
+        "--output",
+        "/tmp/scion-final-measurements/git-full-3"
+      ],
+      "cwd": "/tmp/scion-metadata-compression-work",
+      "log": "/tmp/scion-final-measurements/git-full-3.log",
+      "environment": {
+        "PATH": "/tmp/scion-git-current/bin:/tmp/ferroui-macos-cargo/bin:/root/.codex/tmp/arg0/codex-arg0mZ91Xv:/opt/codex/codex-path:/opt/codex/runtimes/codex-primary-runtime/dependencies/bin/override:/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin:/opt/codex/runtimes/codex-primary-runtime/dependencies/node/bin:/opt/codex/runtimes/codex-primary-runtime/dependencies/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/codex/runtimes/codex-primary-runtime/dependencies/bin/fallback",
+        "RUSTUP_HOME": "/tmp/ferroui-macos-rustup",
+        "CARGO_HOME": "/tmp/ferroui-macos-cargo",
+        "CARGO_TARGET_DIR": "/tmp/scion-metadata-static-target",
+        "CARGO_INCREMENTAL": "0",
+        "RUSTFLAGS": null,
+        "CARGO_ENCODED_RUSTFLAGS": null,
+        "CARGO_BUILD_TARGET": null,
+        "CARGO_BUILD_RUSTFLAGS": null,
+        "CARGO_BUILD_TARGET_DIR": null,
+        "RUSTC": null,
+        "RUSTC_WRAPPER": null,
+        "RUSTC_WORKSPACE_WRAPPER": null,
+        "CC": null,
+        "CXX": null,
+        "CFLAGS": null,
+        "CXXFLAGS": null,
+        "LDFLAGS": null,
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "LC_ALL": "C",
+        "TZ": "UTC",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": "/dev/null"
+      },
+      "returncode": 0,
+      "validation": {
+        "report": {
+          "path": "/tmp/scion-final-measurements/git-full-3.json",
+          "bytes": 253869,
+          "sha256": "c5c23be78753fc77a774bcd8bcd98a311c248e4d354850be9f1b3425865c9b4f"
+        },
+        "validation": "passed"
+      },
+      "status": "complete",
+      "finished_utc": "2026-10-26T09:16:50.874761+00:00",
+      "elapsed_seconds": 22.60280207599999,
+      "outputs": [
+        {
+          "path": "/tmp/scion-final-measurements/git-full-3.log",
+          "bytes": 1616,
+          "sha256": "0e6f4ae2be6865b37e8756dc2ce70200941d20819764407d40db35bbf2d77355"
+        },
+        {
+          "path": "/tmp/scion-final-measurements/git-full-3.json",
+          "bytes": 253869,
+          "sha256": "c5c23be78753fc77a774bcd8bcd98a311c248e4d354850be9f1b3425865c9b4f"
+        },
+        {
+          "path": "/tmp/scion-final-measurements/git-full-3.csv",
+          "bytes": 55996,
+          "sha256": "46f589097a52f244e1c237592395689192057db980bf645796a7fb410c6b1d81"
+        },
+        {
+          "path": "/tmp/scion-final-measurements/git-full-3-summary.csv",
+          "bytes": 2523,
+          "sha256": "742248b5e84b235ca0ec48544dc5748dd9e502104f870db618810d25e89d690e"
+        }
+      ]
+    },
+    {
+      "stage": 4,
+      "name": "git-full-4",
+      "started_utc": "2026-10-26T09:16:50.985650+00:00",
+      "command": [
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+        "/tmp/scion-metadata-compression-work/scripts/compare_git.py",
+        "--static-crt",
+        "--offline",
+        "--graph-snapshot",
+        "--baseline-driver",
+        "/tmp/scion-durable-baseline-target/release/examples/comparison_driver",
+        "--baseline-report",
+        "/tmp/scion-metadata-compression-work/docs/benchmarks/git-comparison-2026-10-25-git-2.56-full.json",
+        "--work-root",
+        "/tmp/scion-official-benchmarks",
+        "--keep-workdir",
+        "--output",
+        "/tmp/scion-final-measurements/git-full-4"
+      ],
+      "cwd": "/tmp/scion-metadata-compression-work",
+      "log": "/tmp/scion-final-measurements/git-full-4.log",
+      "environment": {
+        "PATH": "/tmp/scion-git-current/bin:/tmp/ferroui-macos-cargo/bin:/root/.codex/tmp/arg0/codex-arg0mZ91Xv:/opt/codex/codex-path:/opt/codex/runtimes/codex-primary-runtime/dependencies/bin/override:/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin:/opt/codex/runtimes/codex-primary-runtime/dependencies/node/bin:/opt/codex/runtimes/codex-primary-runtime/dependencies/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/codex/runtimes/codex-primary-runtime/dependencies/bin/fallback",
+        "RUSTUP_HOME": "/tmp/ferroui-macos-rustup",
+        "CARGO_HOME": "/tmp/ferroui-macos-cargo",
+        "CARGO_TARGET_DIR": "/tmp/scion-metadata-static-target",
+        "CARGO_INCREMENTAL": "0",
+        "RUSTFLAGS": null,
+        "CARGO_ENCODED_RUSTFLAGS": null,
+        "CARGO_BUILD_TARGET": null,
+        "CARGO_BUILD_RUSTFLAGS": null,
+        "CARGO_BUILD_TARGET_DIR": null,
+        "RUSTC": null,
+        "RUSTC_WRAPPER": null,
+        "RUSTC_WORKSPACE_WRAPPER": null,
+        "CC": null,
+        "CXX": null,
+        "CFLAGS": null,
+        "CXXFLAGS": null,
+        "LDFLAGS": null,
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "LC_ALL": "C",
+        "TZ": "UTC",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": "/dev/null"
+      },
+      "returncode": 0,
+      "validation": {
+        "report": {
+          "path": "/tmp/scion-final-measurements/git-full-4.json",
+          "bytes": 253760,
+          "sha256": "de14a371d73384e696351ad5b3fed32758481952620f7415d4039882213adc7f"
+        },
+        "validation": "passed"
+      },
+      "status": "complete",
+      "finished_utc": "2026-10-26T09:17:15.445716+00:00",
+      "elapsed_seconds": 24.460064998000234,
+      "outputs": [
+        {
+          "path": "/tmp/scion-final-measurements/git-full-4.log",
+          "bytes": 1616,
+          "sha256": "e63ea55497c1501970051a7cf494fbe69641f20609651a88782041e013efee48"
+        },
+        {
+          "path": "/tmp/scion-final-measurements/git-full-4.json",
+          "bytes": 253760,
+          "sha256": "de14a371d73384e696351ad5b3fed32758481952620f7415d4039882213adc7f"
+        },
+        {
+          "path": "/tmp/scion-final-measurements/git-full-4.csv",
+          "bytes": 55909,
+          "sha256": "897a18440acb9f29efbea13586574510236189facd6a01d210dc375d5adbbd6f"
+        },
+        {
+          "path": "/tmp/scion-final-measurements/git-full-4-summary.csv",
+          "bytes": 2505,
+          "sha256": "6f465c4518fd3f2c5349bd317664dfee82403946e3be2af19d8f1cd90eef9a38"
+        }
+      ]
+    },
+    {
+      "stage": 5,
+      "name": "git-full-5",
+      "started_utc": "2026-10-26T09:17:15.516942+00:00",
+      "command": [
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+        "/tmp/scion-metadata-compression-work/scripts/compare_git.py",
+        "--static-crt",
+        "--offline",
+        "--graph-snapshot",
+        "--baseline-driver",
+        "/tmp/scion-durable-baseline-target/release/examples/comparison_driver",
+        "--baseline-report",
+        "/tmp/scion-metadata-compression-work/docs/benchmarks/git-comparison-2026-10-25-git-2.56-full.json",
+        "--work-root",
+        "/tmp/scion-official-benchmarks",
+        "--keep-workdir",
+        "--output",
+        "/tmp/scion-final-measurements/git-full-5"
+      ],
+      "cwd": "/tmp/scion-metadata-compression-work",
+      "log": "/tmp/scion-final-measurements/git-full-5.log",
+      "environment": {
+        "PATH": "/tmp/scion-git-current/bin:/tmp/ferroui-macos-cargo/bin:/root/.codex/tmp/arg0/codex-arg0mZ91Xv:/opt/codex/codex-path:/opt/codex/runtimes/codex-primary-runtime/dependencies/bin/override:/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin:/opt/codex/runtimes/codex-primary-runtime/dependencies/node/bin:/opt/codex/runtimes/codex-primary-runtime/dependencies/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/codex/runtimes/codex-primary-runtime/dependencies/bin/fallback",
+        "RUSTUP_HOME": "/tmp/ferroui-macos-rustup",
+        "CARGO_HOME": "/tmp/ferroui-macos-cargo",
+        "CARGO_TARGET_DIR": "/tmp/scion-metadata-static-target",
+        "CARGO_INCREMENTAL": "0",
+        "RUSTFLAGS": null,
+        "CARGO_ENCODED_RUSTFLAGS": null,
+        "CARGO_BUILD_TARGET": null,
+        "CARGO_BUILD_RUSTFLAGS": null,
+        "CARGO_BUILD_TARGET_DIR": null,
+        "RUSTC": null,
+        "RUSTC_WRAPPER": null,
+        "RUSTC_WORKSPACE_WRAPPER": null,
+        "CC": null,
+        "CXX": null,
+        "CFLAGS": null,
+        "CXXFLAGS": null,
+        "LDFLAGS": null,
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "LC_ALL": "C",
+        "TZ": "UTC",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": "/dev/null"
+      },
+      "returncode": 0,
+      "validation": {
+        "report": {
+          "path": "/tmp/scion-final-measurements/git-full-5.json",
+          "bytes": 253712,
+          "sha256": "96dd26d3265a94088b7134036fd0dde2eb301903bfa5c006d88fa439eac3ee6d"
+        },
+        "validation": "passed"
+      },
+      "status": "complete",
+      "finished_utc": "2026-10-26T09:17:36.751669+00:00",
+      "elapsed_seconds": 21.23472612100022,
+      "outputs": [
+        {
+          "path": "/tmp/scion-final-measurements/git-full-5.log",
+          "bytes": 1614,
+          "sha256": "56f80f68f188f3a4f1e631e284a5bb6aacf05582424673b03af89567b86cac1b"
+        },
+        {
+          "path": "/tmp/scion-final-measurements/git-full-5.json",
+          "bytes": 253712,
+          "sha256": "96dd26d3265a94088b7134036fd0dde2eb301903bfa5c006d88fa439eac3ee6d"
+        },
+        {
+          "path": "/tmp/scion-final-measurements/git-full-5.csv",
+          "bytes": 55859,
+          "sha256": "64ecd090ad9b3f6ccd0372614947070c76b5aaf89b2bbf888cc97fb9183095f2"
+        },
+        {
+          "path": "/tmp/scion-final-measurements/git-full-5-summary.csv",
+          "bytes": 2508,
+          "sha256": "8be1144e49a3ebcdb052def1cef2c32c44ce61f7a6b5bcdf8312f7fffd2d4018"
+        }
+      ]
+    },
+    {
+      "stage": 6,
+      "name": "git-five-full-summary",
+      "started_utc": "2026-10-26T09:17:36.819089+00:00",
+      "command": [
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+        "/tmp/scion-metadata-compression-work/scripts/summarize_git_runs.py",
+        "/tmp/scion-final-measurements/git-full-1.json",
+        "/tmp/scion-final-measurements/git-full-2.json",
+        "/tmp/scion-final-measurements/git-full-3.json",
+        "/tmp/scion-final-measurements/git-full-4.json",
+        "/tmp/scion-final-measurements/git-full-5.json",
+        "--expected-trials",
+        "5",
+        "--output",
+        "/tmp/scion-final-measurements/git-five-full-summary.json"
+      ],
+      "cwd": "/tmp/scion-metadata-compression-work",
+      "log": "/tmp/scion-final-measurements/git-five-full-summary.log",
+      "environment": {
+        "PATH": "/tmp/scion-git-current/bin:/tmp/ferroui-macos-cargo/bin:/root/.codex/tmp/arg0/codex-arg0mZ91Xv:/opt/codex/codex-path:/opt/codex/runtimes/codex-primary-runtime/dependencies/bin/override:/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin:/opt/codex/runtimes/codex-primary-runtime/dependencies/node/bin:/opt/codex/runtimes/codex-primary-runtime/dependencies/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/codex/runtimes/codex-primary-runtime/dependencies/bin/fallback",
+        "RUSTUP_HOME": "/tmp/ferroui-macos-rustup",
+        "CARGO_HOME": "/tmp/ferroui-macos-cargo",
+        "CARGO_TARGET_DIR": "/tmp/scion-metadata-static-target",
+        "CARGO_INCREMENTAL": "0",
+        "RUSTFLAGS": null,
+        "CARGO_ENCODED_RUSTFLAGS": null,
+        "CARGO_BUILD_TARGET": null,
+        "CARGO_BUILD_RUSTFLAGS": null,
+        "CARGO_BUILD_TARGET_DIR": null,
+        "RUSTC": null,
+        "RUSTC_WRAPPER": null,
+        "RUSTC_WORKSPACE_WRAPPER": null,
+        "CC": null,
+        "CXX": null,
+        "CFLAGS": null,
+        "CXXFLAGS": null,
+        "LDFLAGS": null,
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "LC_ALL": "C",
+        "TZ": "UTC",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": "/dev/null"
+      },
+      "returncode": 0,
+      "validation": {
+        "report": {
+          "path": "/tmp/scion-final-measurements/git-five-full-summary.json",
+          "bytes": 113377,
+          "sha256": "3b9fba407bf415f1cb457d9afa274728c0549f8c84bf7b25689cc4187b85418f"
+        },
+        "validation": "passed"
+      },
+      "status": "complete",
+      "finished_utc": "2026-10-26T09:17:36.980524+00:00",
+      "elapsed_seconds": 0.16146107000031407,
+      "outputs": [
+        {
+          "path": "/tmp/scion-final-measurements/git-five-full-summary.log",
+          "bytes": 57,
+          "sha256": "13428253a40812ce935b6253eaeaf4525d31ea7d7f7128dbeb005f6bca8dc180"
+        },
+        {
+          "path": "/tmp/scion-final-measurements/git-five-full-summary.json",
+          "bytes": 113377,
+          "sha256": "3b9fba407bf415f1cb457d9afa274728c0549f8c84bf7b25689cc4187b85418f"
+        }
+      ]
+    },
+    {
+      "stage": 7,
+      "name": "scaling-paired",
+      "started_utc": "2026-10-26T09:17:37.053067+00:00",
+      "command": [
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+        "/tmp/scion-metadata-compression-work/scripts/compare_scaling.py",
+        "--baseline-root",
+        "/tmp/scion-scaling-baseline",
+        "--baseline-driver",
+        "/tmp/scion-scaling-baseline-target/release/deps/scaling-6a816402baef2a08",
+        "--baseline-build-report",
+        "/tmp/scion-final-measurements/scaling-baseline-build.json",
+        "--candidate-root",
+        "/tmp/scion-metadata-compression-work",
+        "--candidate-driver",
+        "/tmp/scion-metadata-bench-target/release/deps/scaling-99ddef3b73527be6",
+        "--candidate-build-report",
+        "/tmp/scion-final-measurements/scaling-candidate-build.json",
+        "--trials",
+        "5",
+        "--output",
+        "/tmp/scion-final-measurements/scaling-paired.json"
+      ],
+      "cwd": "/tmp/scion-metadata-compression-work",
+      "log": "/tmp/scion-final-measurements/scaling-paired.log",
+      "environment": {
+        "PATH": "/tmp/scion-git-current/bin:/tmp/ferroui-macos-cargo/bin:/root/.codex/tmp/arg0/codex-arg0mZ91Xv:/opt/codex/codex-path:/opt/codex/runtimes/codex-primary-runtime/dependencies/bin/override:/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin:/opt/codex/runtimes/codex-primary-runtime/dependencies/node/bin:/opt/codex/runtimes/codex-primary-runtime/dependencies/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/codex/runtimes/codex-primary-runtime/dependencies/bin/fallback",
+        "RUSTUP_HOME": "/tmp/ferroui-macos-rustup",
+        "CARGO_HOME": "/tmp/ferroui-macos-cargo",
+        "CARGO_TARGET_DIR": "/tmp/scion-metadata-bench-target",
+        "CARGO_INCREMENTAL": "0",
+        "RUSTFLAGS": null,
+        "CARGO_ENCODED_RUSTFLAGS": null,
+        "CARGO_BUILD_TARGET": null,
+        "CARGO_BUILD_RUSTFLAGS": null,
+        "CARGO_BUILD_TARGET_DIR": null,
+        "RUSTC": null,
+        "RUSTC_WRAPPER": null,
+        "RUSTC_WORKSPACE_WRAPPER": null,
+        "CC": null,
+        "CXX": null,
+        "CFLAGS": null,
+        "CXXFLAGS": null,
+        "LDFLAGS": null,
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "LC_ALL": "C",
+        "TZ": "UTC",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": "/dev/null"
+      },
+      "returncode": 0,
+      "validation": {
+        "report": {
+          "path": "/tmp/scion-final-measurements/scaling-paired.json",
+          "bytes": 54615,
+          "sha256": "3b5bab4f5b0d8dcb8e8a957583715c05533122947d084afbee6d73fe6e709c1c"
+        },
+        "validation": "passed"
+      },
+      "status": "complete",
+      "finished_utc": "2026-10-26T09:17:52.526221+00:00",
+      "elapsed_seconds": 15.473155363000387,
+      "outputs": [
+        {
+          "path": "/tmp/scion-final-measurements/scaling-paired.log",
+          "bytes": 255,
+          "sha256": "6f97276ba43b9023f8402fdb9742ad8183dedcc7745763e4b83ee1bcc6206ba9"
+        },
+        {
+          "path": "/tmp/scion-final-measurements/scaling-paired.json",
+          "bytes": 54615,
+          "sha256": "3b5bab4f5b0d8dcb8e8a957583715c05533122947d084afbee6d73fe6e709c1c"
+        }
+      ]
+    },
+    {
+      "stage": 8,
+      "name": "git-large-full",
+      "started_utc": "2026-10-26T09:17:52.601359+00:00",
+      "command": [
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+        "/tmp/scion-metadata-compression-work/scripts/compare_git.py",
+        "--static-crt",
+        "--offline",
+        "--graph-snapshot",
+        "--baseline-driver",
+        "/tmp/scion-durable-baseline-target/release/examples/comparison_driver",
+        "--baseline-report",
+        "/tmp/scion-metadata-compression-work/docs/benchmarks/git-comparison-2026-10-25-git-2.56-full.json",
+        "--commits",
+        "100000",
+        "--branch-commits",
+        "10000",
+        "--samples",
+        "31",
+        "--warmup",
+        "3",
+        "--work-root",
+        "/tmp/scion-official-benchmarks",
+        "--keep-workdir",
+        "--output",
+        "/tmp/scion-final-measurements/git-large-full"
+      ],
+      "cwd": "/tmp/scion-metadata-compression-work",
+      "log": "/tmp/scion-final-measurements/git-large-full.log",
+      "environment": {
+        "PATH": "/tmp/scion-git-current/bin:/tmp/ferroui-macos-cargo/bin:/root/.codex/tmp/arg0/codex-arg0mZ91Xv:/opt/codex/codex-path:/opt/codex/runtimes/codex-primary-runtime/dependencies/bin/override:/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin:/opt/codex/runtimes/codex-primary-runtime/dependencies/node/bin:/opt/codex/runtimes/codex-primary-runtime/dependencies/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/codex/runtimes/codex-primary-runtime/dependencies/bin/fallback",
+        "RUSTUP_HOME": "/tmp/ferroui-macos-rustup",
+        "CARGO_HOME": "/tmp/ferroui-macos-cargo",
+        "CARGO_TARGET_DIR": "/tmp/scion-metadata-static-target",
+        "CARGO_INCREMENTAL": "0",
+        "RUSTFLAGS": null,
+        "CARGO_ENCODED_RUSTFLAGS": null,
+        "CARGO_BUILD_TARGET": null,
+        "CARGO_BUILD_RUSTFLAGS": null,
+        "CARGO_BUILD_TARGET_DIR": null,
+        "RUSTC": null,
+        "RUSTC_WRAPPER": null,
+        "RUSTC_WORKSPACE_WRAPPER": null,
+        "CC": null,
+        "CXX": null,
+        "CFLAGS": null,
+        "CXXFLAGS": null,
+        "LDFLAGS": null,
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "LC_ALL": "C",
+        "TZ": "UTC",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": "/dev/null"
+      },
+      "returncode": 0,
+      "validation": {
+        "report": {
+          "path": "/tmp/scion-final-measurements/git-large-full.json",
+          "bytes": 253944,
+          "sha256": "75898232414203a0fd84815ff6a9ebcd1559496270d1af65138cb890ca0933ee"
+        },
+        "validation": "passed"
+      },
+      "status": "complete",
+      "finished_utc": "2026-10-26T09:21:38.065561+00:00",
+      "elapsed_seconds": 225.4642015010004,
+      "outputs": [
+        {
+          "path": "/tmp/scion-final-measurements/git-large-full.log",
+          "bytes": 1631,
+          "sha256": "9bc6bc6469fb22d8635ed41fc9e9d8470de029f4c973cc4e9af63650523aa7f5"
+        },
+        {
+          "path": "/tmp/scion-final-measurements/git-large-full.json",
+          "bytes": 253944,
+          "sha256": "75898232414203a0fd84815ff6a9ebcd1559496270d1af65138cb890ca0933ee"
+        },
+        {
+          "path": "/tmp/scion-final-measurements/git-large-full.csv",
+          "bytes": 56051,
+          "sha256": "124d14a211bbfa8fc74894e2bbcf7732bb2d9d1a89e5163ef6deef9788e2bea7"
+        },
+        {
+          "path": "/tmp/scion-final-measurements/git-large-full-summary.csv",
+          "bytes": 2523,
+          "sha256": "31e496d89f3b9805cecae9a0a0998475570e268090583774a39e6399a0aa0a2d"
+        }
+      ]
+    },
+    {
+      "stage": 9,
+      "name": "git-large-queries",
+      "started_utc": "2026-10-26T09:21:38.136195+00:00",
+      "command": [
+        "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3",
+        "/tmp/scion-metadata-compression-work/scripts/compare_git.py",
+        "--static-crt",
+        "--offline",
+        "--graph-snapshot",
+        "--baseline-driver",
+        "/tmp/scion-durable-baseline-target/release/examples/comparison_driver",
+        "--baseline-report",
+        "/tmp/scion-metadata-compression-work/docs/benchmarks/git-comparison-2026-10-25-git-2.56-full.json",
+        "--reuse-report",
+        "/tmp/scion-final-measurements/git-large-full.json",
+        "--samples",
+        "31",
+        "--warmup",
+        "3",
+        "--output",
+        "/tmp/scion-final-measurements/git-large-queries"
+      ],
+      "cwd": "/tmp/scion-metadata-compression-work",
+      "log": "/tmp/scion-final-measurements/git-large-queries.log",
+      "environment": {
+        "PATH": "/tmp/scion-git-current/bin:/tmp/ferroui-macos-cargo/bin:/root/.codex/tmp/arg0/codex-arg0mZ91Xv:/opt/codex/codex-path:/opt/codex/runtimes/codex-primary-runtime/dependencies/bin/override:/opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin:/opt/codex/runtimes/codex-primary-runtime/dependencies/node/bin:/opt/codex/runtimes/codex-primary-runtime/dependencies/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/codex/runtimes/codex-primary-runtime/dependencies/bin/fallback",
+        "RUSTUP_HOME": "/tmp/ferroui-macos-rustup",
+        "CARGO_HOME": "/tmp/ferroui-macos-cargo",
+        "CARGO_TARGET_DIR": "/tmp/scion-metadata-static-target",
+        "CARGO_INCREMENTAL": "0",
+        "RUSTFLAGS": null,
+        "CARGO_ENCODED_RUSTFLAGS": null,
+        "CARGO_BUILD_TARGET": null,
+        "CARGO_BUILD_RUSTFLAGS": null,
+        "CARGO_BUILD_TARGET_DIR": null,
+        "RUSTC": null,
+        "RUSTC_WRAPPER": null,
+        "RUSTC_WORKSPACE_WRAPPER": null,
+        "CC": null,
+        "CXX": null,
+        "CFLAGS": null,
+        "CXXFLAGS": null,
+        "LDFLAGS": null,
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "LC_ALL": "C",
+        "TZ": "UTC",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": "/dev/null"
+      },
+      "returncode": 0,
+      "validation": {
+        "report": {
+          "path": "/tmp/scion-final-measurements/git-large-queries.json",
+          "bytes": 219671,
+          "sha256": "4625419d8a849fe58d2e1539aadb40a5fb5a5a45b3664b5fa2e59e82829b21e1"
+        },
+        "validation": "passed"
+      },
+      "status": "complete",
+      "finished_utc": "2026-10-26T09:21:51.953602+00:00",
+      "elapsed_seconds": 13.817409116000363,
+      "outputs": [
+        {
+          "path": "/tmp/scion-final-measurements/git-large-queries.log",
+          "bytes": 1254,
+          "sha256": "db6d930ca8bbdc0fedaf7cd556e5e3941b74c2f93b38b522316df3867592347f"
+        },
+        {
+          "path": "/tmp/scion-final-measurements/git-large-queries.json",
+          "bytes": 219671,
+          "sha256": "4625419d8a849fe58d2e1539aadb40a5fb5a5a45b3664b5fa2e59e82829b21e1"
+        },
+        {
+          "path": "/tmp/scion-final-measurements/git-large-queries.csv",
+          "bytes": 47970,
+          "sha256": "3cd9d394bb71f3f484c9f1d566f9a996f146f852a9cefc856766d0cf942da1f9"
+        },
+        {
+          "path": "/tmp/scion-final-measurements/git-large-queries-summary.csv",
+          "bytes": 2139,
+          "sha256": "d2090e472339140525c8899c20a7823262fc5e2d9abced1ad41cdf7493239b97"
+        }
+      ]
+    }
+  ],
+  "finished_utc": "2026-10-26T09:21:52.030761+00:00",
+  "events": {
+    "path": "/tmp/scion-final-measurements/evaluation-events.jsonl",
+    "bytes": 279084,
+    "sha256": "04cb89758241e6662d91474cc9999857af5d5c75d541554c354dd036230d5907"
+  }
+}
