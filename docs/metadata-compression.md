@@ -1,5 +1,170 @@
 # Metadata compression performance investigation
 
+## Production result, 26 October 2026
+
+The production implementation at clean published source
+[`bd393c7`](https://github.com/wieslawsoltes/scion/commit/bd393c7cd064d03d231d6b0af8a05afb181f13c0)
+completed the fixed evaluation. Across the five full default-profile runs, all
+eight functional operations beat Git 2.56.0 and improve at least 2× over the
+preserved Scion baseline when comparing **medians of run p50 values**. Prepared
+durable commits improve **2.2165× over the baseline and 3.3610× over Git**:
+1,022.379 µs for current Scion, 2,266.107 µs for baseline Scion, and 3,436.183 µs
+for Git. The candidate's median of run p95 values is 1,322.540 µs; this is a
+separate statistic, not a percentile of pooled samples.
+
+These comparisons measure the complete current production revision, including
+the previously merged publication, query, and caching improvements. They do not
+isolate the frame cache's incremental contribution. The earlier prototypes and
+unfavorable observations below remain part of the investigation record.
+
+### Implemented policy and correctness
+
+The reusable [`scion-store` codec](../crates/scion-store/README.md#codec-reuse)
+contains the private [metadata frame cache](../crates/scion-store/src/codec/metadata_cache.rs).
+Trees, changesets, and derived metadata from 64 KiB through 256 KiB are eligible
+for reuse of standard independent 8 KiB Zstandard level-one frames. The first
+eligible input uses whole-frame encoding. Its encoded/raw ratio must lie in
+[1/8, 7/8] to retain an admission candidate. A later input must match at least 75%
+of its bytes at fixed chunk boundaries, including the final partial chunk,
+before framing is attempted. Unrelated input returns to whole-frame encoding;
+a framed result outside the ratio range falls back to whole-frame encoding too.
+
+One-shot BLAKE3 keys identify possible frame matches. Every hit also requires
+complete raw-byte equality, so a key collision cannot authorize reuse of the
+wrong content. Only completed successful compression can replace the admission
+base. Successfully completed valid frames may remain after an encoding error,
+while the failed candidate never becomes the comparison base.
+
+A lazy vector index holds at most 64 frames. Its **1 MiB accounted retention
+budget per encoding thread** includes the previous raw candidate's capacity,
+raw and encoded frame capacities, the actual index allocation, 512 bytes per
+frame, and a 128-byte control allowance. Eviction and clock rollover are bounded.
+This is a retention budget, not a cap on process RSS, temporary input/output
+buffers, or Zstandard's separate reusable context. Decode-only threads, blobs,
+and small metadata do not allocate the frame index.
+
+Canonical bytes and domain-separated object IDs stay unchanged. Ordinary
+concatenated Zstandard frames fit the existing version-one envelope, and both
+current and legacy streaming decoders verify them. Small metadata, level-three
+file blobs, and the large streaming path preserve their existing policies.
+Stored-object reads and duplicate publications still verify complete content
+hashes; the cache supplies no object reads, membership, or durability
+acknowledgments. FULL-synchronous publication is unchanged. Compressed bytes may
+vary with prior encodes on a thread while the decoded content and ID remain
+identical.
+
+The [cache regressions](../crates/scion-store/src/codec/metadata_cache_tests.rs)
+and [envelope/backend regressions](../crates/scion-store/src/codec/metadata_integration_tests.rs)
+cover admission and tails, exact matches and collisions, allocation and entry
+bounds, eviction and rollover, encoding failures, unchanged ineligible paths,
+legacy decoding, alternate valid representations, and corrupt-duplicate
+transaction rollback. The production vector index differs from the diagnostic
+prototype's tree index.
+
+### Complete fixed evaluation and its limits
+
+The [declared evaluation plan](benchmarks/metadata-2026-10-26-evaluation-plan.json)
+was written before the first replacement measurement. A temporary environment
+reset had removed the unfinished earlier batch's raw evidence after three
+reported completions and the start of trial four. Those partial timings are
+unavailable and are **excluded**, not reconstructed or combined with the new
+batch. The new plan fixes five full default runs, five alternating MemoryStore
+trials, and a new full large-history fixture followed by its query-only replay.
+All commands ran sequentially with prebuilt binaries, source/artifact identity
+guards, and no concurrent builds, tests, or source edits. The
+[stage events](benchmarks/metadata-2026-10-26-evaluation-events.jsonl),
+[completed result](benchmarks/metadata-2026-10-26-evaluation-result.json), and
+[evidence index](benchmarks/metadata-2026-10-26-evidence-index.json) retain the
+commands, outputs, hashes, and publication paths. JSON, JSONL, logs, and diagnostic
+source are copied verbatim; the index separately records CSV line-ending
+normalization and both original and published hashes.
+
+The five default runs use 100,000 paths, 10,000 trunk commits, 1,000 commits on
+each branch, 31 measured samples, and three warmups. Candidate Scion, preserved
+Scion, and Git rotate through all six execution orders with independent stores.
+The following ratios divide each implementation's median of the five run p50
+values. The final column retains the range of the five independently calculated
+baseline/current ratios.
+
+| Functional operation | Baseline / current Scion | Git / current Scion | Per-run baseline / current range |
+|---|---:|---:|---:|
+| Prepared durable commit | 2.2165× | 3.3610× | 2.1905–2.4268× |
+| Positive ancestry | 2.3192× | 4.7698× | 2.2371–2.4370× |
+| Negative ancestry | 2.6625× | 4.6541× | 2.6625–2.7910× |
+| Ancestor merge base | 2.4032× | 4.3575× | 2.2587–2.4803× |
+| Divergent merge base | 2.8013× | 2.5279× | 2.6135–2.8565× |
+| Fresh-process file read | 2.0155× | 1.1197× | 1.8626–2.2715× |
+| Resident spread file reads | 2.2120× | 2.4161× | 1.8150–2.2428× |
+| Small diff | 2.5217× | 1.2306× | 2.4551–2.7975× |
+
+Source: [strict five-run summary](benchmarks/git-comparison-2026-10-26-metadata-summary.json)
+and full raw runs
+[1](benchmarks/git-comparison-2026-10-26-metadata-run-1.json),
+[2](benchmarks/git-comparison-2026-10-26-metadata-run-2.json),
+[3](benchmarks/git-comparison-2026-10-26-metadata-run-3.json),
+[4](benchmarks/git-comparison-2026-10-26-metadata-run-4.json), and
+[5](benchmarks/git-comparison-2026-10-26-metadata-run-5.json).
+
+The aggregate meets the functional target, but individual runs can miss it.
+Fresh-process file reads improve only 1.8626× in run three, and resident spread
+reads improve 1.8150× in run five. All functional run medians still beat Git.
+No-op, process startup, and repository open are retained controls; their
+aggregate baseline/current ratios are **1.0171×, 1.4883×, and 1.7194×**. No-op
+is slightly slower than the baseline in run two (0.9969×). A blanket claim that
+every benchmark or every run improved 2× would therefore be incorrect.
+
+The old large-history fixture was also lost. The declared plan builds a new
+fixture with 100,000 paths, 100,000 trunk commits, 10,000 commits per branch,
+and 120,036 total commits, then replays queries against that new report:
+
+| Additional workload | Observed baseline / current improvement | Observed Git / current improvement |
+|---|---:|---:|
+| [Large full comparison: eight functional operations](benchmarks/git-comparison-2026-10-26-metadata-large-full.json) | 2.1105–3.0698× | 1.1807–49.5177× |
+| [Large query-only replay: seven functional operations](benchmarks/git-comparison-2026-10-26-metadata-large-queries.json) | 2.0888–3.3129× | 1.1897–52.5419× |
+| [Original MemoryStore workload: all eleven cases](benchmarks/scaling-2026-10-26-metadata.json) | 2.2326–34.2457× | Not measured against Git |
+
+Large-history rows are individual 31-sample reports, not five-run aggregates.
+The full report's prepared-commit p50 is 1,048.819 µs, a 2.1401× baseline and
+3.3498× Git improvement. Its no-op control is slower than both Git and baseline
+(0.9573× and 0.9685× respectively). The query replay does not remeasure commits
+or no-op. Process-startup and repository-open controls remain below 2× in both
+large reports. MemoryStore ratios divide medians of five trial p50 values from
+the unchanged original harness; initial commits have one observation per trial,
+and individual operation samples are unavailable for pooling.
+
+Only graph queries use the explicit frozen graph snapshot; other operations use
+the ordinary repository APIs. Preparing the large snapshot takes 6.027 seconds
+in the full run and 6.063 seconds in the replay, with 96,467,328 bytes in each
+artifact. Git's repack and commit-graph preparation are recorded too. These setup
+costs are outside query timing and matter when deciding whether a frozen
+snapshot fits a workload. See [the complete comparison](git-comparison.md) for
+all p50/p95 observations, controls, setup costs, and benchmark scope.
+
+The [restored Scion baseline](benchmarks/durable-baseline-2026-10-26-recovery.json)
+is again byte-identical to the original executable with SHA-256
+`ff6a44c736b135d4ec920f4d497a92fa3cac4a2936ff284a6c4abeb1ef6aa6c6`.
+The [new Git build record](benchmarks/git-2.56-2026-10-26-build.json) uses the
+official Git 2.56.0 release archive, Rust 1.99.1, and the same build options.
+Its binary SHA-256 is
+`6b0fe38de2fe4331c56251819920c58820f8dfffd9e342b9a854bfffbbd67935`,
+which differs from the earlier clone-based Git binary. Each new measurement
+records this new identity; old reports remain unchanged.
+
+### Codec tradeoffs remain explicit
+
+The adaptive **prototype**, measured separately below, adds 3.43% to encoded
+bundle bytes and about 20 µs to full decode/verification work on its extracted
+corpus. Its first admitted encode also pays frame-construction cost:
+304.888 µs versus the whole-frame control's 220.471 µs in that admission
+observation. These are codec-only observations from the prototype, not new
+production end-to-end storage-size or decoding guarantees. The production
+comparison measures complete operations with their actual SQLite and durability
+costs, and the all-operation improvements above include prior optimizations.
+Extra frame boundaries and admission costs remain relevant for one-off or
+unrelated metadata; bounded exact reuse is intended for successive similar
+edits. The following historical sections retain the alternatives and failures
+that informed the policy.
+
 ## Target and evaluation contract
 
 The complete durable comparison at clean source

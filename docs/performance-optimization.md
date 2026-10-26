@@ -24,7 +24,7 @@ so that improvements cannot be attributed to hidden setup costs.
   The comparison worker may adopt a new reusable API without changing the
   logical work or durability promised by its acknowledgement.
 
-## Implemented changes under measurement
+## Implemented changes
 
 Prepared publication now accepts validated staged blobs and an explicit optional
 reference CAS. LocalStore places small objects, derived records, membership, log,
@@ -83,7 +83,7 @@ runs use independent stores and verify identical Scion changeset IDs; query
 replays use the same retained logical fixture. The previous two-way mode remains
 available.
 
-## Recorded result
+## Historical three-way result
 
 The [clean three-way default-profile run](git-comparison.md#optimized-three-way-comparison-25-october-2026)
 uses public commit `3b3110cf4f9cbc286a64289917707342da8d11e2`, independent baseline
@@ -130,21 +130,78 @@ the old immutable tree ID before mutation. Partial entries never stand in for a
 complete editable directory. Tests prove zero old-tree reads for affected parent
 lookups and forward/reverse adjacent diffs, including failure and branching cases.
 
-The [five-trial original MemoryStore workload](performance.md) now exceeds 2× in
-all eleven cases (2.217–32.879×). The [complete durable default run and large query
-replay](git-comparison.md#resident-cache-and-edit-diff-follow-up-25-october-2026)
+At clean source `991fdc9`, the
+[five-trial original MemoryStore workload](performance.md#paired-results-after-the-diff-fix)
+exceeds 2× in all eleven cases (2.217–32.879×). The
+[complete durable default run and large query replay](git-comparison.md#resident-cache-and-edit-diff-follow-up-25-october-2026)
 beat Git in every measured functional median. All seven large-profile query cases
 improve by at least 2× over the preserved Scion build. The default run reaches 2×
 in seven of eight functional cases; its prepared commit improves 1.833×.
 
+## Metadata reuse and the fixed five-run result
+
+Published source
+[`bd393c7`](https://github.com/wieslawsoltes/scion/commit/bd393c7cd064d03d231d6b0af8a05afb181f13c0)
+adds adaptive metadata frame reuse in the reusable storage codec. Related
+64–256 KiB metadata can reuse standard 8 KiB Zstandard frames after at least
+75% exact byte reuse. Cold or unrelated inputs retain whole-frame encoding.
+Full raw equality verifies every chunk-key hit, and the previous raw input,
+retained frames and bounded index share a 1 MiB accounted per-thread budget.
+Canonical bytes, object IDs, envelope compatibility, full-object verification,
+blob compression and FULL-synchronous publication remain unchanged. The
+[compression investigation](metadata-compression.md) retains rejected parameter
+experiments, admission costs, encoded-size/decode tradeoffs and the production
+policy.
+
+The [declared five-run default-profile batch](git-comparison.md#metadata-compression-fixed-batch-26-october-2026)
+uses the same logical workload, 31 samples and three warmups per run, independent
+stores, Git 2.56.0, all six execution-order permutations, and the byte-identical
+historical baseline executable. All five runs are retained and validated by the
+strict report summarizer. It reports medians of run p50 values, separate medians
+of run p95 values, and individual-run ranges; it does not pool operation samples.
+The earlier unfinished batch lost with the temporary environment is excluded
+and its interruption is recorded in the evaluation plan.
+
+The prepared-commit gap is closed **for this declared aggregate**: candidate
+latency is 1,022.379 µs, preserved baseline latency 2,266.107 µs, and Git latency
+3,436.183 µs. The ratios of median run p50 values are **2.2165× over the baseline**
+and **3.361× over Git**. All five individual commit runs exceed 2× over the
+baseline, ranging from 2.190–2.427×. No publication durability or acknowledged
+work was removed.
+
+All eight functional aggregate cases beat Git and exceed 2× over the preserved
+Scion baseline, with baseline improvements of 2.016–2.801×. This does not mean
+every individual run meets 2×: fresh reads reach only 1.863× in run 3 and resident
+spread reads 1.815× in run 5. All five runs still beat Git in every functional
+p50 case. Resident reads have a 1.614× ratio of median run p95 values, so the p50
+target is not an all-percentile result.
+
+The repeated [unchanged MemoryStore workload](performance.md#latest-paired-results-with-metadata-frame-reuse)
+exceeds 2× in all eleven ratios of median trial p50 values (2.233–34.246×).
+The newly generated large-history complete run exceeds 2× and beats Git in all
+eight functional p50 cases; its subsequent query-only replay does so in all
+seven functional query cases. Graph queries in that replay are 10.24–52.54×
+faster than Git. The replay does not remeasure commits. Explicit snapshot
+preparation, artifact sizes, controls, full report identities, and historical
+measurements remain in the linked reports. The measured production code has
+not changed since `bd393c7`; subsequent documentation/evidence commits do not
+alter the binaries measured here.
+
 ## Remaining investigation
 
-1. Reduce durable prepared-commit latency with sufficient margin: the latest
-   complete run records 1.833× improvement, while previous runs range above and
-   below 2×. Preserve FULL synchronization and validate any change against the
-   same independent baseline and Git workloads.
-2. Keep transport, startup, and repository-open controls visible. They remain
-   below 2× and must not be represented as completed targets.
-3. Retain every measurement and failure that informs a change. Local engine and
+1. Improve the margin and stability of fresh and resident file reads. Their
+   aggregate p50 ratios meet 2×, but the retained individual runs above expose
+   misses. Keep all trials and original workloads when assessing changes.
+2. Improve transport, startup, and repository-open controls while retaining their
+   complete costs. The default aggregate's baseline ratios are 1.017×, 1.488×,
+   and 1.719×, respectively. The large complete run's no-op is slower than both
+   Git (Git / Scion = 0.957×) and the preserved Scion baseline (0.968×). These
+   controls remain below the requested targets.
+3. Improve latency tails separately from medians. The default resident-read
+   ratio of median run p95 values is 1.614×. MemoryStore one-file commits at
+   1,000 and 10,000 files have p95 ratios of 1.929× and 1.586×. Preserve these
+   observations when evaluating future changes.
+4. Retain every measurement and failure that informs a change. Local engine and
    durable-query results do not establish arbitrary-workload, cold-cache,
-   concurrent-writer, or distributed-service speedups.
+   concurrent-writer, or distributed-service speedups. Those require separate
+   representative load and failure measurements.

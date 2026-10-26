@@ -4,8 +4,10 @@
 same generated repository. It checks every query result and saves individual
 samples, summary statistics, configurations, tool versions and source hashes.
 The comparison uses `LocalStore`, including SQLite and filesystem durability.
-The latest complete default run and large query replay are the
-[resident-cache follow-up](#resident-cache-and-edit-diff-follow-up-25-october-2026).
+The latest complete default batch and new large evaluations are the
+[metadata-compression fixed batch](#metadata-compression-fixed-batch-26-october-2026).
+The earlier [resident-cache follow-up](#resident-cache-and-edit-diff-follow-up-25-october-2026)
+remains available with its original results.
 The [non-snapshot three-way comparison](#optimized-three-way-comparison-25-october-2026)
 retains the ordinary SQLite graph path and its original observations.
 The [Git 2.56.0 version follow-up](#git-2560-follow-up-25-october-2026) retains the
@@ -14,6 +16,223 @@ earlier default and 100,000-commit histories as an optimization record.
 These measurements describe the specified workload and machine. They do not
 establish a general performance advantage over Git, distributed server throughput,
 or behavior under cold caches, concurrent writers or real monorepo contents.
+
+## Metadata compression fixed batch: 26 October 2026
+
+The declared five-run batch at clean public source
+[`bd393c7`](https://github.com/wieslawsoltes/scion/commit/bd393c7cd064d03d231d6b0af8a05afb181f13c0)
+meets the functional **p50** targets: all eight operations beat Git 2.56.0 and
+improve at least 2× over the preserved original Scion executable. The unchanged
+MemoryStore workload passes the same p50 improvement target in all eleven cases.
+The new full large-history comparison passes in all eight functional cases,
+and its query-only replay passes in all seven queries. Controls, individual runs,
+and latency tails have exceptions, recorded below.
+
+The implementation reuses exact unchanged metadata chunks through the public
+storage codec. It adds bounded per-thread retention while keeping full-object
+verification, version-1 envelopes, blob encoding, and durable publication.
+[Metadata compression](metadata-compression.md) explains admission, accounting,
+compatibility, and the codec-only size/decode/admission tradeoffs. These comparisons
+measure the complete optimized revision, including earlier engine, storage,
+linkage, and frozen-graph changes; they do not isolate the new codec's contribution.
+
+### Evaluation and reconstruction
+
+The [immutable plan](benchmarks/metadata-2026-10-26-evaluation-plan.json) declared
+five complete default runs before any replacement timing. Each has 100,000 paths,
+a 10,000-commit trunk, 1,000 commits per arm, 31 samples per operation, three
+warmups, independent baseline/candidate stores, and all six execution orders.
+SQLite remains WAL with `synchronous=FULL`; Git uses `core.fsync=all` and the
+`fsync` method. Caches are warm, and the fixture shares 128 deterministic 1 KiB
+bodies across its paths. Fresh-process operations include startup and shutdown;
+prepared commits and spread reads use resident workers.
+
+Temporary files from the preceding unfinished batch were lost between sessions.
+Only progress messages survived, so none of those provisional timings is
+reconstructed, pooled, or used here. The replacement batch retains every run.
+The original large fixture was also unavailable: the large evaluation below
+constructs a new full fixture and replays only that newly retained fixture.
+
+Both original Scion baselines were rebuilt byte-for-byte: the durable driver is
+`ff6a44c736b135d4ec920f4d497a92fa3cac4a2936ff284a6c4abeb1ef6aa6c6`,
+and the original MemoryStore driver is
+`5d57e2666f61a1ec99863317055ba02b4e5dd8abf12d301ae7ab5eb0a888b831`.
+The historical reports remain unchanged. The candidate uses a verified static-CRT
+GNU/Linux release executable; the historical durable baseline retains its
+original dynamic linkage. All use Rust 1.99.1 on the recorded Linux AMD EPYC 9V74
+host. Git 2.56.0 was rebuilt from the official release archive with Rust support
+and the prior build options; its newly recorded binary hash is
+`6b0fe38de2fe4331c56251819920c58820f8dfffd9e342b9a854bfffbbd67935`.
+
+Source, helper, executable, and provenance identities were checked before and
+after every stage. The [independent audit](benchmarks/metadata-2026-10-26-audit.json)
+recomputes all 6,975 raw Git-comparison observations, the five-run aggregation,
+and the original MemoryStore trial summaries. It also verifies all nine stages,
+29 ordered events, 18 identity guards, and the published file mapping.
+
+### Default profile: fixed five-run aggregate
+
+Each p50 below is the **median of five run p50 values**. Each p95 is separately
+the **median of five run p95 values**. Speedups divide the corresponding median
+run p50s; samples are not pooled, and these are not medians of per-run ratios.
+No run was selected or discarded. Individual ratios and ranges remain in the
+[aggregate JSON](benchmarks/git-comparison-2026-10-26-metadata-summary.json).
+
+| Operation | Scion p50 / p95, µs | Baseline p50, µs | Git p50, µs | Baseline / Scion | Git / Scion |
+|---|---:|---:|---:|---:|---:|
+| Prepared durable commit | 1,022.379 / 1,322.540 | 2,266.107 | 3,436.183 | 2.217× | 3.361× |
+| Positive ancestry | 799.704 / 1,036.302 | 1,854.692 | 3,814.463 | 2.319× | 4.770× |
+| Negative ancestry | 823.039 / 1,128.949 | 2,191.349 | 3,830.536 | 2.663× | 4.654× |
+| Ancestor merge base | 794.948 / 1,062.741 | 1,910.456 | 3,464.006 | 2.403× | 4.358× |
+| Divergent merge base | 799.424 / 1,082.751 | 2,239.431 | 2,020.896 | 2.801× | 2.528× |
+| Fresh file read, 1 KiB | 1,306.406 / 1,743.089 | 2,633.094 | 1,462.782 | 2.016× | 1.120× |
+| Fresh one-file text diff | 1,466.929 / 2,097.438 | 3,699.205 | 1,805.208 | 2.522× | 1.231× |
+| Resident spread file read | 17.617 / 52.539 | 38.969 | 42.564 | 2.212× | 2.416× |
+
+The prepared-commit aggregate is **2.217×** over the original Scion build and
+**3.361×** over Git. The smallest baseline margin is fresh file reads at **2.016×**.
+All five runs individually beat Git in every functional p50, but two individual
+baseline ratios are below 2×: fresh reads in run 3 (**1.863×**) and resident reads
+in run 5 (**1.815×**). The aggregate result is not a guarantee for every run.
+
+| Operation | Scion p50 / p95, µs | Baseline p50, µs | Git p50, µs | Baseline / Scion | Git / Scion |
+|---|---:|---:|---:|---:|---:|
+| Process startup control | 679.163 / 896.329 | 1,010.812 | 972.805 | 1.488× | 1.432× |
+| Repository-open control | 813.656 / 1,056.291 | 1,399.023 | 1,005.084 | 1.719× | 1.235× |
+| Resident no-op control | 15.824 / 43.736 | 16.094 | 19.720 | 1.017× | 1.246× |
+
+All three overhead controls remain below 2× over baseline. The resident-read
+aggregate p95 improvement is **1.614×**, also below 2×. Individual p95 observations
+include Git wins for small diff in run 2 (**0.797× Git/Scion**) and fresh reads
+in run 4 (**0.859×**). The p50 target does not establish a 2× tail improvement.
+
+| Operation | Scion run p50 range, µs | Baseline / Scion per-run range | Git / Scion per-run range |
+|---|---:|---:|---:|
+| Prepared durable commit | 908.908–1,134.878 | 2.190–2.427× | 3.163–3.652× |
+| Positive ancestry | 694.105–889.458 | 2.237–2.437× | 4.661–5.234× |
+| Negative ancestry | 754.305–946.415 | 2.663–2.791× | 4.654–5.318× |
+| Ancestor merge base | 708.897–906.624 | 2.259–2.480× | 4.350–4.886× |
+| Divergent merge base | 762.007–930.962 | 2.613–2.857× | 2.242–2.629× |
+| Fresh file read, 1 KiB | 1,148.238–1,792.297 | 1.863–2.272× | 1.068–1.245× |
+| Fresh one-file text diff | 1,244.036–1,779.138 | 2.455–2.798× | 1.225–1.398× |
+| Resident spread file read | 17.376–33.130 | 1.815–2.243× | 1.459–2.416× |
+| Process startup control | 593.835–844.180 | 1.431–1.650× | 1.325–1.527× |
+| Repository-open control | 779.373–910.660 | 1.694–1.853× | 1.226–1.312× |
+| Resident no-op control | 13.931–16.304 | 0.997–1.055× | 1.040–1.246× |
+
+Complete reports and their original individual samples:
+
+| Run | Raw JSON | Sample CSV | Summary CSV |
+|---|---|---|---|
+| 1 | [JSON](benchmarks/git-comparison-2026-10-26-metadata-run-1.json) | [Samples](benchmarks/git-comparison-2026-10-26-metadata-run-1.csv) | [Summary](benchmarks/git-comparison-2026-10-26-metadata-run-1-summary.csv) |
+| 2 | [JSON](benchmarks/git-comparison-2026-10-26-metadata-run-2.json) | [Samples](benchmarks/git-comparison-2026-10-26-metadata-run-2.csv) | [Summary](benchmarks/git-comparison-2026-10-26-metadata-run-2-summary.csv) |
+| 3 | [JSON](benchmarks/git-comparison-2026-10-26-metadata-run-3.json) | [Samples](benchmarks/git-comparison-2026-10-26-metadata-run-3.csv) | [Summary](benchmarks/git-comparison-2026-10-26-metadata-run-3-summary.csv) |
+| 4 | [JSON](benchmarks/git-comparison-2026-10-26-metadata-run-4.json) | [Samples](benchmarks/git-comparison-2026-10-26-metadata-run-4.csv) | [Summary](benchmarks/git-comparison-2026-10-26-metadata-run-4-summary.csv) |
+| 5 | [JSON](benchmarks/git-comparison-2026-10-26-metadata-run-5.json) | [Samples](benchmarks/git-comparison-2026-10-26-metadata-run-5.csv) | [Summary](benchmarks/git-comparison-2026-10-26-metadata-run-5-summary.csv) |
+
+### New large profile: complete run and query replay
+
+The new fixture contains 100,000 paths, a 100,000-commit trunk, and 10,000 commits
+per arm: 120,036 total graph nodes after the prepared edits and side commit.
+The full run retains all eight functional operations, three controls, 31 samples,
+and three warmups. All eight functional p50s beat Git and improve **2.111–3.070×**
+over the preserved baseline.
+
+| Operation | Scion p50 / p95, µs | Baseline p50, µs | Git p50, µs | Baseline / Scion | Git / Scion |
+|---|---:|---:|---:|---:|---:|
+| Prepared durable commit | 1,048.819 / 1,320.789 | 2,244.580 | 3,513.381 | 2.140× | 3.350× |
+| Positive ancestry | 1,025.946 / 1,497.537 | 2,505.726 | 48,870.316 | 2.442× | 47.634× |
+| Negative ancestry | 999.176 / 1,320.410 | 3,067.232 | 49,476.869 | 3.070× | 49.518× |
+| Ancestor merge base | 891.668 / 1,397.165 | 2,300.902 | 38,305.524 | 2.580× | 42.959× |
+| Divergent merge base | 916.932 / 1,202.172 | 2,705.817 | 10,253.392 | 2.951× | 11.182× |
+| Fresh file read, 1 KiB | 1,298.517 / 1,763.437 | 2,740.530 | 1,533.191 | 2.111× | 1.181× |
+| Fresh one-file text diff | 1,355.262 / 1,993.544 | 3,674.397 | 1,862.767 | 2.711× | 1.374× |
+| Resident spread file read | 17.106 / 20.711 | 38.778 | 40.451 | 2.267× | 2.365× |
+
+| Operation | Scion p50 / p95, µs | Baseline p50, µs | Git p50, µs | Baseline / Scion | Git / Scion |
+|---|---:|---:|---:|---:|---:|
+| Process startup control | 619.143 / 787.938 | 1,043.523 | 949.671 | 1.685× | 1.534× |
+| Repository-open control | 887.778 / 1,512.283 | 1,488.824 | 1,098.926 | 1.677× | 1.238× |
+| Resident no-op control | 15.253 / 60.351 | 14.772 | 14.602 | 0.968× | 0.957× |
+
+The large full-run no-op p50 is slightly slower than both Git and baseline
+(**0.957× Git/Scion**, **0.968× baseline/Scion**). Its repository-open p95 is also
+slightly slower than Git (**0.982× Git/Scion**). Both are retained controls.
+
+[Full raw JSON](benchmarks/git-comparison-2026-10-26-metadata-large-full.json),
+[individual samples](benchmarks/git-comparison-2026-10-26-metadata-large-full.csv),
+and [summary CSV](benchmarks/git-comparison-2026-10-26-metadata-large-full-summary.csv).
+
+The subsequent replay verifies the new fixture marker and both independent
+stores, exports a new graph artifact, and measures queries only. It does not
+remeasure prepared commits or resident no-op. All seven functional p50s beat Git
+and improve **2.089–3.313×** over baseline; graph queries are **10.235–52.542×**
+faster than Git on this fixture.
+
+| Operation | Scion p50 / p95, µs | Baseline p50, µs | Git p50, µs | Baseline / Scion | Git / Scion |
+|---|---:|---:|---:|---:|---:|
+| Positive ancestry | 926.056 / 1,214.000 | 2,542.232 | 48,656.724 | 2.745× | 52.542× |
+| Negative ancestry | 932.845 / 1,200.510 | 3,090.457 | 42,000.304 | 3.313× | 45.024× |
+| Ancestor merge base | 912.050 / 1,373.640 | 2,425.826 | 39,084.121 | 2.660× | 42.853× |
+| Divergent merge base | 922.260 / 1,621.944 | 2,685.096 | 9,439.665 | 2.911× | 10.235× |
+| Fresh file read, 1 KiB | 1,386.860 / 1,702.431 | 2,896.806 | 1,649.976 | 2.089× | 1.190× |
+| Fresh one-file text diff | 1,305.678 / 1,860.675 | 3,461.026 | 1,751.810 | 2.651× | 1.342× |
+| Resident spread file read | 18.658 / 40.972 | 39.079 | 39.670 | 2.094× | 2.126× |
+
+| Operation | Scion p50 / p95, µs | Baseline p50, µs | Git p50, µs | Baseline / Scion | Git / Scion |
+|---|---:|---:|---:|---:|---:|
+| Process startup control | 622.087 / 930.582 | 1,010.729 | 946.857 | 1.625× | 1.522× |
+| Repository-open control | 805.604 / 1,157.555 | 1,390.125 | 1,005.245 | 1.726× | 1.248× |
+
+[Replay raw JSON](benchmarks/git-comparison-2026-10-26-metadata-large-queries.json),
+[individual samples](benchmarks/git-comparison-2026-10-26-metadata-large-queries.csv),
+and [summary CSV](benchmarks/git-comparison-2026-10-26-metadata-large-queries-summary.csv).
+
+### Preparation, memory scope, and reproducibility
+
+Only candidate ancestry and merge-base queries use the explicitly exported
+frozen graph artifact. Reads, diffs, writes, and resident requests use ordinary
+LocalStore APIs. The artifact has frozen membership and must be rebuilt to
+include subsequent commits. Export includes reading and verifying the source
+changesets and rebuilding graph metadata. Query timings include artifact open,
+identity/integrity checks, response output, and shutdown.
+
+| Evaluation | Graph nodes | Artifact bytes | Scion export wall time | Git pack + commit-graph setup |
+|---|---:|---:|---:|---:|
+| Default five runs | 12,036 | 8,923,168 | 0.443 s median; 0.413–0.469 s range | 0.713 s median; 0.673–0.737 s range |
+| New large full run | 120,036 | 96,467,328 | 6.027 s | 6.369 s |
+| New large query replay | 120,036 | 96,467,328 | 6.063 s | 1.188 s |
+
+The replay reruns Git's native query preparation as well as Scion export. Setup
+is excluded from query latency for both implementations and retained in each
+report. These costs and extra artifact bytes matter when deciding whether to
+prepare an index for a workload.
+
+The separate [original MemoryStore workload](performance.md) exceeds 2× in all
+eleven p50 cases across five alternating trials: initial commits improve
+**4.968–6.452×**, one-file commits **2.233–3.805×**, one-file diffs **3.815–4.661×**,
+and ancestry **23.848–34.246×**. MemoryStore does not measure durable writes, and
+each initial-commit row has only one observation per trial. Its p95 edit metrics
+at 1,000 and 10,000 paths remain below 2×.
+
+Reproduce the fixed comparison aggregation with
+[`summarize_git_runs.py`](../scripts/summarize_git_runs.py). The exact
+[one-off evaluation runner](../scripts/diagnostics/metadata_evaluation_2026_10_26.py),
+[read-only audit](../scripts/diagnostics/audit_metadata_evidence_2026_10_26.py),
+[events](benchmarks/metadata-2026-10-26-evaluation-events.jsonl),
+[completed result](benchmarks/metadata-2026-10-26-evaluation-result.json),
+[static candidate build](benchmarks/metadata-2026-10-26-static-build.json),
+[baseline reconstruction](benchmarks/durable-baseline-2026-10-26-recovery.json), and
+[Git build](benchmarks/git-2.56-2026-10-26-build.json) retain the actual commands,
+paths, configurations, hashes, and return codes. The one-off scripts preserve
+this evaluation's paths and pinned source IDs; they are evidence tooling, not
+product dependencies.
+
+The [evidence index](benchmarks/metadata-2026-10-26-evidence-index.json) maps all
+49 imported files to their original paths and SHA-256 values. JSON, JSONL, logs,
+and diagnostic source are byte-for-byte copies; CSV line endings alone are
+normalized to LF. Raw source/provenance paths inside reports are unchanged.
+Earlier measurements, including unfavorable observations, remain below.
 
 ## Resident cache and edit-diff follow-up: 25 October 2026
 
